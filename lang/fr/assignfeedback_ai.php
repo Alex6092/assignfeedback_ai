@@ -1,0 +1,82 @@
+<?php
+defined('MOODLE_INTERNAL') || die();
+
+$string['pluginname']         = 'Correction IA';
+$string['privacy:metadata']   = 'Le plugin Correction IA transmet le texte des soumissions à un LLM externe et stocke le feedback JSON résultant.';
+
+$string['enabled']      = 'Correction IA';
+$string['enabled_help'] = 'Si activé, le devoir est corrigé par une IA qui peut laisser des commentaires de feedback pour chaque soumission.';
+
+$string['default']                  = 'Activé par défaut';
+$string['default_help']             = 'Si activé, la Correction IA sera active pour tous les nouveaux devoirs.';
+$string['apiurl']                   = 'URL de l\'API LM Studio';
+$string['apiurl_help']              = 'Point d\'accès compatible OpenAI. Défaut : http://localhost:1234/v1/chat/completions';
+$string['model']                    = 'Nom du modèle';
+$string['model_help']               = 'Identifiant du modèle utilisé dans les appels API, ex. qwen3.5-9b-instruct.';
+$string['apikey']                   = 'Clé API';
+$string['apikey_help']              = 'Clé secrète envoyée dans l\'en-tête HTTP "Authorization: Bearer ...". Laisser vide si le serveur n\'en demande pas (cas par défaut de LM Studio). La valeur est chiffrée en base.';
+$string['apiurl_override']          = 'Remplacer l\'URL de l\'API du site';
+$string['model_override']           = 'Remplacer le nom du modèle du site';
+$string['apikey_override']          = 'Remplacer la clé API du site';
+$string['defaultsystemprompt']      = 'Prompt système par défaut';
+$string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défini au niveau du devoir.';
+$string['pdftotextpath']            = 'Chemin du binaire pdftotext';
+$string['pdftotextpath_help']       = 'Chemin absolu vers l\'exécutable pdftotext (paquet poppler-utils). Laisser vide pour une détection automatique dans /usr/bin, /usr/local/bin, etc.';
+$string['pdftotextmissing']         = 'Le binaire pdftotext est introuvable sur le serveur. Installez le paquet poppler-utils ou renseignez le chemin dans les réglages du plugin.';
+$string['pdftotexterror']           = 'Erreur d\'extraction du texte PDF.';
+
+$string['systemprompt']           = 'Prompt système';
+$string['systemprompt_help']      = 'Instructions envoyées à l\'IA en rôle « system ».';
+$string['exercise']               = 'Énoncé de l\'exercice';
+$string['exercise_help']          = 'Le texte de l\'exercice auquel l\'étudiant devait répondre.';
+$string['expectedanswer']         = 'Corrigé attendu / barème';
+$string['expectedanswer_help']    = 'Réponse de référence que l\'IA utilisera pour évaluer les copies.';
+$string['competencies']           = 'Compétences évaluées';
+$string['competencies_help']      = 'Compétences ou critères que l\'IA doit évaluer, une par ligne.';
+
+$string['nofeedback']            = 'Aucun feedback IA généré pour l\'instant.';
+$string['feedbackerror']         = 'Erreur de lecture du feedback IA. Veuillez régénérer.';
+$string['generate']              = 'Générer le feedback IA';
+$string['regenerate']            = 'Régénérer le feedback IA';
+$string['strengths']             = 'Points forts';
+$string['improvements']          = 'Points à améliorer';
+$string['detailedfeedback']      = 'Feedback détaillé';
+$string['competency_scores']     = 'Scores par compétence';
+$string['competency']            = 'Compétence';
+$string['mastery_level']         = 'Niveau de maîtrise';
+$string['commentary']            = 'Commentaire';
+$string['score']                 = 'Score';
+
+$string['nosubmissiontext']      = '(Aucun texte de soumission trouvé)';
+$string['noconfiguration']       = 'La Correction IA n\'est pas configurée pour ce devoir.';
+$string['generationerror']       = 'Erreur lors de l\'appel à l\'IA. Vérifiez la connexion LM Studio.';
+$string['generationsuccess']     = 'Feedback IA généré avec succès.';
+$string['generationpending']     = 'Génération du feedback IA en cours…';
+$string['generationfailed']      = 'Échec de la génération';
+$string['queued']                = 'Feedback ajouté à la file de génération.';
+$string['queuedcount']           = '{$a} génération(s) ajoutée(s) à la file.';
+$string['lockcontention']        = 'Un autre appel IA est en cours, retenter plus tard.';
+
+$string['taskname']              = 'Génération différée du feedback IA';
+
+// Page de gestion (manage.php)
+$string['manage']                = 'Gérer';
+$string['managepagetitle']       = 'Gestion des feedbacks IA';
+$string['student']               = 'Étudiant';
+$string['status']                = 'Statut';
+$string['attempts']              = 'Tentatives';
+$string['lasterror']             = 'Dernière erreur';
+$string['lastupdate']            = 'Dernière mise à jour';
+$string['actions']               = 'Actions';
+$string['retry']                 = 'Relancer';
+$string['statuspending']         = 'En cours';
+$string['statusgenerated']       = 'Généré';
+$string['statusfailed']          = 'Échec';
+$string['nofbrow']               = 'Aucune ligne';
+$string['nosubmissions']         = 'Aucune soumission validée pour ce devoir.';
+$string['requeuefailed']         = 'Relancer les échecs';
+$string['requeueall']            = 'Tout regénérer';
+$string['requeuemissing']        = 'Générer pour les soumissions sans feedback';
+$string['countgenerated']        = '{$a} généré(s)';
+$string['countpending']          = '{$a} en cours';
+$string['countfailed']           = '{$a} échec(s)';

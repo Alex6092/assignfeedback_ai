@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/assign/feedback/ai/db" VERSION="20240601" COMMENT="assignfeedback_ai">
+  <TABLES>
+
+    <TABLE NAME="assignfeedback_ai" COMMENT="AI feedback configuration per assignment">
+      <FIELDS>
+        <FIELD NAME="id"              TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="assignment"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="systemprompt"    TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="exercise"        TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="expectedanswer"  TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="competencies"    TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="apiurl"          TYPE="char" LENGTH="512" NOTNULL="false"/>
+        <FIELD NAME="apiurl_override" TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="model"           TYPE="char" LENGTH="255" NOTNULL="false"/>
+        <FIELD NAME="model_override"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="apikey"          TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="apikey_override" TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecreated"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"    TYPE="primary" FIELDS="id"/>
+        <KEY NAME="assignment" TYPE="unique"  FIELDS="assignment"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="assignfeedback_ai_grade" COMMENT="AI feedback per student grade">
+      <FIELDS>
+        <FIELD NAME="id"            TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="assignment"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="grade"         TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid"        TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="aifeedback"    TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="status"        TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="pending"/>
+        <FIELD NAME="attempts"      TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="error_message" TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"          TYPE="primary" FIELDS="id"/>
+        <KEY NAME="assignment_grade" TYPE="unique"  FIELDS="assignment, grade"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>
