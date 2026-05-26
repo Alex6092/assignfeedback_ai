@@ -25,6 +25,20 @@ $string['pdftotextpath_help']       = 'Absolute path to the pdftotext executable
 $string['pdftotextmissing']         = 'pdftotext binary not found on the server. Install poppler-utils or set the path in the plugin settings.';
 $string['pdftotexterror']           = 'PDF text extraction error.';
 
+// === Vision ===
+$string['vision_heading']               = 'Vision (image reading)';
+$string['vision_enabled']               = 'Send images to the model';
+$string['vision_enabled_help']          = 'If enabled, images found in submissions (PDFs with illustrations, embedded images in the online editor, PNG/JPEG attachments, etc.) are sent to the LLM together with the text. Requires a multimodal model in LM Studio.';
+$string['vision_enabled_override']      = 'Override the site vision setting';
+$string['maximagespersubmission']       = 'Maximum images per submission';
+$string['maximagespersubmission_help']  = 'Global cap on images sent to the LLM for a single student submission. Controls context size and generation time. Default: 5.';
+$string['imagemindimension']            = 'Minimum image dimension (pixels)';
+$string['imagemindimension_help']       = 'Images extracted from a PDF whose width OR height is below this value are skipped (filters out decorative thumbnails). Default: 200.';
+$string['pdftoppmpath']                 = 'Path to pdftoppm binary';
+$string['pdftoppmpath_help']            = 'Absolute path to the pdftoppm executable (poppler-utils), used to rasterise PDF pages that contain images. Leave empty for auto-detection.';
+$string['pdfimagespath']                = 'Path to pdfimages binary';
+$string['pdfimagespath_help']           = 'Absolute path to the pdfimages executable (poppler-utils), used to detect pages containing images. Leave empty for auto-detection.';
+
 $string['systemprompt']           = 'System prompt';
 $string['systemprompt_help']      = 'Instructions sent to the AI as the system role.';
 $string['exercise']               = 'Exercise statement';

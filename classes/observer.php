@@ -150,6 +150,7 @@ class observer {
             'apiurl', 'apiurl_override',
             'model',  'model_override',
             'apikey', 'apikey_override',
+            'vision_enabled', 'vision_enabled_override',
         );
         foreach ($fields as $f) {
             $key = 'assignfeedback_ai_' . $f;

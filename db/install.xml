@@ -16,6 +16,8 @@
         <FIELD NAME="model_override"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="apikey"          TYPE="text"               NOTNULL="false"/>
         <FIELD NAME="apikey_override" TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="vision_enabled"          TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="vision_enabled_override" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timecreated"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timemodified"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
       </FIELDS>

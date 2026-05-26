@@ -156,6 +156,23 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->disabledIf('assignfeedback_ai_apikey',
             'assignfeedback_ai_apikey_override', 'notchecked');
 
+        // --- Vision (override optionnel) ---
+        $def_vision = (int)get_config('assignfeedback_ai', 'vision_enabled');
+
+        $mform->addElement('advcheckbox', 'assignfeedback_ai_vision_enabled_override',
+            get_string('vision_enabled_override', 'assignfeedback_ai'));
+        $mform->setDefault('assignfeedback_ai_vision_enabled_override',
+            ($cfg && !empty($cfg->vision_enabled_override)) ? 1 : 0);
+
+        $mform->addElement('advcheckbox', 'assignfeedback_ai_vision_enabled',
+            get_string('vision_enabled', 'assignfeedback_ai'));
+        $mform->setDefault('assignfeedback_ai_vision_enabled',
+            ($cfg && !empty($cfg->vision_enabled_override))
+                ? (int)$cfg->vision_enabled
+                : $def_vision);
+        $mform->disabledIf('assignfeedback_ai_vision_enabled',
+            'assignfeedback_ai_vision_enabled_override', 'notchecked');
+
         // Cache tous les champs si le plugin IA n'est pas activé pour ce devoir.
         $hideifoff = array(
             'assignfeedback_ai_systemprompt',
@@ -168,6 +185,8 @@ class assign_feedback_ai extends assign_feedback_plugin {
             'assignfeedback_ai_model',
             'assignfeedback_ai_apikey_override',
             'assignfeedback_ai_apikey',
+            'assignfeedback_ai_vision_enabled_override',
+            'assignfeedback_ai_vision_enabled',
         );
         foreach ($hideifoff as $field) {
             $mform->hideIf($field, 'assignfeedback_ai_enabled', 'notchecked');
@@ -208,6 +227,9 @@ class assign_feedback_ai extends assign_feedback_plugin {
                                 ? (string)$formdata->assignfeedback_ai_apikey : '';
         $row->apikey          = ($plainkey === '') ? '' : self::encrypt_secret($plainkey);
         $row->apikey_override = !empty($formdata->assignfeedback_ai_apikey_override) ? 1 : 0;
+
+        $row->vision_enabled          = !empty($formdata->assignfeedback_ai_vision_enabled) ? 1 : 0;
+        $row->vision_enabled_override = !empty($formdata->assignfeedback_ai_vision_enabled_override) ? 1 : 0;
 
         $row->timemodified    = time();
 
@@ -456,9 +478,9 @@ class assign_feedback_ai extends assign_feedback_plugin {
             throw new moodle_exception('noconfiguration', 'assignfeedback_ai');
         }
 
-        $text     = $this->extract_submission((int)$fb->userid);
-        $messages = $this->build_messages($text, $cfg);
-        $result   = $this->call_api($messages, $cfg);
+        $extracted = $this->extract_submission((int)$fb->userid, $cfg);
+        $messages  = $this->build_messages($extracted, $cfg);
+        $result    = $this->call_api($messages, $cfg);
 
         if ($result === false) {
             throw new moodle_exception('generationerror', 'assignfeedback_ai');
@@ -596,17 +618,30 @@ class assign_feedback_ai extends assign_feedback_plugin {
     //  METHODES PRIVEES — EXTRACTION DE TEXTE
     // =========================================================
 
-    private function extract_submission($userid) {
+    /**
+     * Extrait le contenu d'une soumission étudiante.
+     *
+     * @param int      $userid
+     * @param stdClass $cfg config du plugin pour ce devoir (pour vision_enabled).
+     * @return array {text: string, images: array<{source,data_url}>}
+     */
+    private function extract_submission($userid, $cfg = null) {
         global $DB;
 
-        $parts      = array();
-        $submission = $this->assignment->get_user_submission($userid, false);
+        // Calcule le budget d'images sur toute la soumission.
+        $maximages = $this->vision_image_budget($cfg);
+        $images    = array();
+        $parts     = array();
 
+        $submission = $this->assignment->get_user_submission($userid, false);
         if (!$submission) {
-            return get_string('nosubmissiontext', 'assignfeedback_ai');
+            return array(
+                'text'   => get_string('nosubmissiontext', 'assignfeedback_ai'),
+                'images' => array(),
+            );
         }
 
-        // Texte en ligne — requête directe car get_onlinetext_submission() est private depuis Moodle 4.x.
+        // Texte en ligne (requête directe car get_onlinetext_submission() est private en 4.x).
         $online_plugin = $this->assignment->get_submission_plugin_by_type('onlinetext');
         if ($online_plugin && $online_plugin->is_enabled()) {
             $online = $DB->get_record('assignsubmission_onlinetext',
@@ -614,9 +649,13 @@ class assign_feedback_ai extends assign_feedback_plugin {
             if ($online && !empty($online->onlinetext)) {
                 $parts[] = strip_tags($online->onlinetext);
             }
+            // Images embarquées dans l'éditeur HTML.
+            if ($maximages > 0 && count($images) < $maximages) {
+                $this->collect_onlinetext_images((int)$submission->id, $images, $maximages);
+            }
         }
 
-        // Fichiers joints
+        // Fichiers joints.
         $fs      = get_file_storage();
         $context = $this->assignment->get_context();
         $files   = $fs->get_area_files(
@@ -625,20 +664,68 @@ class assign_feedback_ai extends assign_feedback_plugin {
         );
 
         foreach ($files as $file) {
-            $txt = $this->read_file($file);
+            $txt = $this->read_file($file, $images, $maximages);
             if ($txt !== '') {
                 $parts[] = '=== ' . $file->get_filename() . " ===\n" . $txt;
             }
         }
 
-        if (empty($parts)) {
-            return get_string('nosubmissiontext', 'assignfeedback_ai');
+        if (empty($parts) && empty($images)) {
+            return array(
+                'text'   => get_string('nosubmissiontext', 'assignfeedback_ai'),
+                'images' => array(),
+            );
         }
 
-        return implode("\n\n", $parts);
+        return array(
+            'text'   => empty($parts) ? get_string('nosubmissiontext', 'assignfeedback_ai')
+                                       : implode("\n\n", $parts),
+            'images' => $images,
+        );
     }
 
-    private function read_file($file) {
+    /**
+     * Détermine le nombre max d'images à envoyer pour la soumission.
+     * Retourne 0 si vision désactivée (= jamais d'images).
+     */
+    private function vision_image_budget($cfg) {
+        $enabled = (!empty($cfg) && !empty($cfg->vision_enabled_override))
+            ? (int)$cfg->vision_enabled
+            : (int)get_config('assignfeedback_ai', 'vision_enabled');
+
+        if (!$enabled) {
+            return 0;
+        }
+        $max = (int)get_config('assignfeedback_ai', 'maximagespersubmission');
+        return ($max > 0) ? $max : 5;
+    }
+
+    /**
+     * Récupère les images embarquées dans l'éditeur HTML d'une soumission online text
+     * et les pousse dans $images (data URL).
+     */
+    private function collect_onlinetext_images($submissionid, array &$images, $maximages) {
+        $fs       = get_file_storage();
+        $context  = $this->assignment->get_context();
+        $editorfiles = $fs->get_area_files(
+            $context->id, 'assignsubmission_onlinetext', 'submissions_onlinetext',
+            $submissionid, 'filename', false
+        );
+        foreach ($editorfiles as $file) {
+            if (count($images) >= $maximages) {
+                break;
+            }
+            $url = $this->file_to_data_url($file);
+            if ($url !== null) {
+                $images[] = array(
+                    'source'   => 'Image en ligne : ' . $file->get_filename(),
+                    'data_url' => $url,
+                );
+            }
+        }
+    }
+
+    private function read_file($file, array &$images, $maximages) {
         $name = $file->get_filename();
         $ext  = strtolower(substr($name, (int)strrpos($name, '.')));
         $mime = $file->get_mimetype();
@@ -646,10 +733,20 @@ class assign_feedback_ai extends assign_feedback_plugin {
         if (strpos($mime, 'text/') === 0 || in_array($ext, $this->code_extensions())) {
             return $file->get_content();
         }
-        if ($ext === '.pdf')  { return $this->read_pdf($file); }
+        if ($ext === '.pdf')  { return $this->read_pdf($file, $images, $maximages); }
         if ($ext === '.docx') { return $this->read_docx($file); }
-        if ($ext === '.zip')  { return $this->read_zip($file); }
+        if ($ext === '.zip')  { return $this->read_zip($file, $images, $maximages); }
 
+        // Image soumise directement (PNG/JPEG/WebP/GIF) — pas de texte, juste l'image.
+        if ($maximages > 0 && count($images) < $maximages) {
+            $url = $this->file_to_data_url($file);
+            if ($url !== null) {
+                $images[] = array(
+                    'source'   => $file->get_filename(),
+                    'data_url' => $url,
+                );
+            }
+        }
         return '';
     }
 
@@ -700,7 +797,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         return false;
     }
 
-    private function read_pdf($file) {
+    private function read_pdf($file, array &$images = null, $maximages = 0) {
         global $CFG;
 
         $tmpbase = tempnam($CFG->tempdir, 'aifb_');
@@ -709,7 +806,11 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $file->copy_content_to($tmp);
 
         try {
-            return $this->read_pdf_path($tmp);
+            $text = $this->read_pdf_path($tmp);
+            if ($images !== null && $maximages > 0 && count($images) < $maximages) {
+                $this->extract_pdf_images($tmp, $file->get_filename(), $images, $maximages);
+            }
+            return $text;
         } finally {
             @unlink($tmp);
         }
@@ -742,16 +843,34 @@ class assign_feedback_ai extends assign_feedback_plugin {
      * Retourne null s'il est introuvable.
      */
     private function find_pdftotext() {
-        $configured = trim((string)get_config('assignfeedback_ai', 'pdftotextpath'));
+        return $this->find_binary('pdftotext', 'pdftotextpath');
+    }
+
+    private function find_pdfimages() {
+        return $this->find_binary('pdfimages', 'pdfimagespath');
+    }
+
+    private function find_pdftoppm() {
+        return $this->find_binary('pdftoppm', 'pdftoppmpath');
+    }
+
+    /**
+     * Localise un binaire externe : réglage admin → chemins courants → command -v.
+     * @param string $name nom du binaire (ex: pdftotext)
+     * @param string $configname nom du réglage admin (ex: pdftotextpath)
+     * @return string|null
+     */
+    private function find_binary($name, $configname) {
+        $configured = trim((string)get_config('assignfeedback_ai', $configname));
         if ($configured !== '' && is_executable($configured)) {
             return $configured;
         }
 
         $candidates = array(
-            '/usr/bin/pdftotext',
-            '/usr/local/bin/pdftotext',
-            '/opt/homebrew/bin/pdftotext',
-            '/opt/local/bin/pdftotext',
+            '/usr/bin/'         . $name,
+            '/usr/local/bin/'   . $name,
+            '/opt/homebrew/bin/' . $name,
+            '/opt/local/bin/'   . $name,
         );
         foreach ($candidates as $c) {
             if (is_executable($c)) {
@@ -759,7 +878,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
             }
         }
 
-        $found = @shell_exec('command -v pdftotext 2>/dev/null');
+        $found = @shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null');
         $found = $found !== null ? trim($found) : '';
         if ($found !== '' && is_executable($found)) {
             return $found;
@@ -799,7 +918,156 @@ class assign_feedback_ai extends assign_feedback_plugin {
         return $out;
     }
 
-    private function read_zip($file) {
+    // =========================================================
+    //  METHODES PRIVEES — EXTRACTION D'IMAGES (VISION)
+    // =========================================================
+
+    /**
+     * Énumère les pages d'un PDF contenant au moins une image "significative".
+     * Une image est jugée significative si ses dimensions dépassent le seuil
+     * imagemindimension (200×200 px par défaut).
+     *
+     * @return int[] tableau (trié, sans doublon) des numéros de page
+     */
+    private function detect_pdf_image_pages($pdfpath) {
+        $bin = $this->find_pdfimages();
+        if ($bin === null) {
+            debugging('assignfeedback_ai: pdfimages introuvable', DEBUG_DEVELOPER);
+            return array();
+        }
+
+        $minsize = (int)get_config('assignfeedback_ai', 'imagemindimension');
+        if ($minsize <= 0) {
+            $minsize = 200;
+        }
+
+        $cmd = escapeshellarg($bin) . ' -list ' . escapeshellarg($pdfpath) . ' 2>&1';
+        $lines = array();
+        $exitcode = 0;
+        exec($cmd, $lines, $exitcode);
+        if ($exitcode !== 0) {
+            debugging('assignfeedback_ai: pdfimages échec (' . implode("\n", $lines) . ')',
+                DEBUG_DEVELOPER);
+            return array();
+        }
+
+        $pages = array();
+        foreach ($lines as $i => $line) {
+            // Saute les 2 lignes d'en-tête de pdfimages.
+            if ($i < 2) {
+                continue;
+            }
+            $tokens = preg_split('/\s+/', trim($line));
+            // Format: page num type width height color comp bpc enc interp object ...
+            if (count($tokens) < 5) {
+                continue;
+            }
+            $page = (int)$tokens[0];
+            $type = (string)$tokens[2];
+            $w    = (int)$tokens[3];
+            $h    = (int)$tokens[4];
+            // On garde uniquement les vraies images (pas les masques) suffisamment grandes.
+            if ($page > 0 && $type === 'image' && $w >= $minsize && $h >= $minsize) {
+                $pages[$page] = true;
+            }
+        }
+
+        $list = array_keys($pages);
+        sort($list);
+        return $list;
+    }
+
+    /**
+     * Rasterise une page de PDF en JPEG via pdftoppm, retourne une data URL.
+     * @return string|null
+     */
+    private function rasterize_pdf_page($pdfpath, $pagenum, $dpi = 100) {
+        global $CFG;
+
+        $bin = $this->find_pdftoppm();
+        if ($bin === null) {
+            debugging('assignfeedback_ai: pdftoppm introuvable', DEBUG_DEVELOPER);
+            return null;
+        }
+
+        $tmpprefix = tempnam($CFG->tempdir, 'aifb_pg_');
+        @unlink($tmpprefix);
+
+        $cmd = escapeshellarg($bin)
+            . ' -jpeg'
+            . ' -r ' . (int)$dpi
+            . ' -f ' . (int)$pagenum
+            . ' -l ' . (int)$pagenum
+            . ' ' . escapeshellarg($pdfpath)
+            . ' ' . escapeshellarg($tmpprefix)
+            . ' 2>&1';
+        $out      = array();
+        $exitcode = 0;
+        exec($cmd, $out, $exitcode);
+        if ($exitcode !== 0) {
+            debugging('assignfeedback_ai: pdftoppm échec (' . implode("\n", $out) . ')',
+                DEBUG_DEVELOPER);
+            return null;
+        }
+
+        // pdftoppm produit prefix-N.jpg ou prefix-0N.jpg selon la pagination.
+        $candidates = glob($tmpprefix . '-*.jpg');
+        if (empty($candidates)) {
+            return null;
+        }
+        $imgfile = $candidates[0];
+        $bytes   = @file_get_contents($imgfile);
+        @unlink($imgfile);
+
+        if ($bytes === false || $bytes === '') {
+            return null;
+        }
+        return 'data:image/jpeg;base64,' . base64_encode($bytes);
+    }
+
+    /**
+     * Étend le tableau $images (passé par référence) avec les pages de PDF qui
+     * contiennent des images significatives, dans la limite de $maximages au total.
+     * Le label "source" est utilisé pour l'introduire au LLM dans build_messages().
+     */
+    private function extract_pdf_images($pdfpath, $label, array &$images, $maximages) {
+        if (count($images) >= $maximages) {
+            return;
+        }
+        $pages = $this->detect_pdf_image_pages($pdfpath);
+        if (empty($pages)) {
+            return;
+        }
+        foreach ($pages as $page) {
+            if (count($images) >= $maximages) {
+                break;
+            }
+            $url = $this->rasterize_pdf_page($pdfpath, $page);
+            if ($url !== null) {
+                $images[] = array(
+                    'source'   => $label . ' (page ' . $page . ')',
+                    'data_url' => $url,
+                );
+            }
+        }
+    }
+
+    /**
+     * Charge un fichier image (stored_file) en data URL pour envoi au LLM.
+     */
+    private function file_to_data_url($file) {
+        $mime = $file->get_mimetype();
+        if (!preg_match('#^image/(png|jpeg|jpg|webp|gif)$#', $mime, $m)) {
+            return null;
+        }
+        $bytes = $file->get_content();
+        if ($bytes === false || $bytes === '') {
+            return null;
+        }
+        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+    }
+
+    private function read_zip($file, array &$images = null, $maximages = 0) {
         global $CFG;
         if (!class_exists('ZipArchive')) {
             return '';
@@ -810,7 +1078,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $file->copy_content_to($tmp);
 
         try {
-            return $this->read_zip_path($tmp);
+            return $this->read_zip_path($tmp, $file->get_filename(), $images, $maximages);
         } finally {
             @unlink($tmp);
         }
@@ -826,7 +1094,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
      * Limites mesurées sur la TAILLE DE TEXTE EXTRAIT (pas sur le poids du fichier
      * source : un PDF avec images peut peser 5 Mo et donner 2 Ko de texte).
      */
-    private function read_zip_path($zippath) {
+    private function read_zip_path($zippath, $ziplabel = '', array &$images = null, $maximages = 0) {
         global $CFG;
 
         $parts     = array();
@@ -866,6 +1134,11 @@ class assign_feedback_ai extends assign_feedback_plugin {
                 file_put_contents($tmppdf, $bytes);
                 try {
                     $extracted = $this->read_pdf_path($tmppdf);
+                    // Extraction d'images sur les PDF imbriqués (budget partagé).
+                    if ($images !== null && $maximages > 0 && count($images) < $maximages) {
+                        $label = ($ziplabel !== '' ? $ziplabel . '/' : '') . $name;
+                        $this->extract_pdf_images($tmppdf, $label, $images, $maximages);
+                    }
                 } catch (\Throwable $e) {
                     $extracted = '[Échec extraction PDF : ' . $e->getMessage() . ']';
                 }
@@ -880,6 +1153,21 @@ class assign_feedback_ai extends assign_feedback_plugin {
                 file_put_contents($tmpdocx, $bytes);
                 $extracted = $this->read_docx_path($tmpdocx);
                 @unlink($tmpdocx);
+
+            } else if (preg_match('/^\.(png|jpe?g|webp|gif)$/', $ext)
+                       && $images !== null && $maximages > 0 && count($images) < $maximages) {
+                // Image livrée directement dans le ZIP.
+                $bytes = $zip->getFromIndex($i);
+                if ($bytes !== false) {
+                    $mime = ($ext === '.png') ? 'image/png'
+                          : (($ext === '.gif') ? 'image/gif'
+                          : (($ext === '.webp') ? 'image/webp' : 'image/jpeg'));
+                    $images[] = array(
+                        'source'   => ($ziplabel !== '' ? $ziplabel . '/' : '') . $name,
+                        'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
+                    );
+                }
+                continue;
 
             } else {
                 continue; // Type non géré.
@@ -918,13 +1206,25 @@ class assign_feedback_ai extends assign_feedback_plugin {
     //  METHODES PRIVEES — PROMPT
     // =========================================================
 
-    private function build_messages($submission_text, $cfg) {
+    /**
+     * Construit les messages envoyés à l'API. Accepte soit une chaîne (legacy),
+     * soit le tableau {text, images} retourné par extract_submission().
+     */
+    private function build_messages($submission, $cfg) {
         $system = (!empty($cfg->systemprompt))
             ? $cfg->systemprompt
             : self::default_system_prompt();
 
-        $parts = array();
+        // Normalise l'entrée.
+        if (is_array($submission)) {
+            $text   = isset($submission['text'])   ? (string)$submission['text']   : '';
+            $images = isset($submission['images']) ? (array)$submission['images'] : array();
+        } else {
+            $text   = (string)$submission;
+            $images = array();
+        }
 
+        $parts = array();
         if (!empty($cfg->exercise)) {
             $parts[] = "EXERCICE :\n" . $cfg->exercise;
         }
@@ -934,11 +1234,43 @@ class assign_feedback_ai extends assign_feedback_plugin {
         if (!empty($cfg->expectedanswer)) {
             $parts[] = "ATTENDUS / CORRIGE :\n" . $cfg->expectedanswer;
         }
-        $parts[] = "REPONSE ETUDIANT :\n" . $submission_text;
+        $parts[] = "REPONSE ETUDIANT :\n" . $text;
+        if (!empty($images)) {
+            $parts[] = "Les images jointes ci-dessous font partie de la réponse étudiant. "
+                    . "Tu dois les analyser pour évaluer.";
+        }
+        $textcontent = implode("\n\n", $parts);
+
+        // Mode texte simple — content reste une string pour rester rétrocompatible.
+        if (empty($images)) {
+            return array(
+                array('role' => 'system', 'content' => $system),
+                array('role' => 'user',   'content' => $textcontent),
+            );
+        }
+
+        // Mode multimodal — content devient un tableau de blocs (format OpenAI).
+        $usercontent = array(
+            array('type' => 'text', 'text' => $textcontent),
+        );
+        foreach ($images as $img) {
+            $src = isset($img['source'])   ? (string)$img['source']   : '';
+            $url = isset($img['data_url']) ? (string)$img['data_url'] : '';
+            if ($url === '') {
+                continue;
+            }
+            if ($src !== '') {
+                $usercontent[] = array('type' => 'text', 'text' => 'Image : ' . $src);
+            }
+            $usercontent[] = array(
+                'type'      => 'image_url',
+                'image_url' => array('url' => $url),
+            );
+        }
 
         return array(
             array('role' => 'system', 'content' => $system),
-            array('role' => 'user',   'content' => implode("\n\n", $parts)),
+            array('role' => 'user',   'content' => $usercontent),
         );
     }
 
