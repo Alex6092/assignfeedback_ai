@@ -48,4 +48,50 @@ if ($ADMIN->fulltree) {
         '',
         PARAM_RAW
     ));
+
+    // === Vision ===
+    $settings->add(new admin_setting_heading(
+        'assignfeedback_ai/vision_heading',
+        new lang_string('vision_heading', 'assignfeedback_ai'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'assignfeedback_ai/vision_enabled',
+        new lang_string('vision_enabled', 'assignfeedback_ai'),
+        new lang_string('vision_enabled_help', 'assignfeedback_ai'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'assignfeedback_ai/maximagespersubmission',
+        new lang_string('maximagespersubmission', 'assignfeedback_ai'),
+        new lang_string('maximagespersubmission_help', 'assignfeedback_ai'),
+        5,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'assignfeedback_ai/imagemindimension',
+        new lang_string('imagemindimension', 'assignfeedback_ai'),
+        new lang_string('imagemindimension_help', 'assignfeedback_ai'),
+        200,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'assignfeedback_ai/pdftoppmpath',
+        new lang_string('pdftoppmpath', 'assignfeedback_ai'),
+        new lang_string('pdftoppmpath_help', 'assignfeedback_ai'),
+        '',
+        PARAM_RAW
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'assignfeedback_ai/pdfimagespath',
+        new lang_string('pdfimagespath', 'assignfeedback_ai'),
+        new lang_string('pdfimagespath_help', 'assignfeedback_ai'),
+        '',
+        PARAM_RAW
+    ));
 }

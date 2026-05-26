@@ -28,5 +28,24 @@ function xmldb_assignfeedback_ai_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026050900, 'assignfeedback', 'ai');
     }
 
+    if ($oldversion < 2026051000) {
+        $table = new xmldb_table('assignfeedback_ai');
+
+        $fields = array(
+            new xmldb_field('vision_enabled',          XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'apikey_override'),
+            new xmldb_field('vision_enabled_override', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'vision_enabled'),
+        );
+
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026051000, 'assignfeedback', 'ai');
+    }
+
     return true;
 }

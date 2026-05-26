@@ -25,6 +25,20 @@ $string['pdftotextpath_help']       = 'Chemin absolu vers l\'exécutable pdftote
 $string['pdftotextmissing']         = 'Le binaire pdftotext est introuvable sur le serveur. Installez le paquet poppler-utils ou renseignez le chemin dans les réglages du plugin.';
 $string['pdftotexterror']           = 'Erreur d\'extraction du texte PDF.';
 
+// === Vision ===
+$string['vision_heading']               = 'Vision (lecture d\'images)';
+$string['vision_enabled']               = 'Activer l\'envoi d\'images au modèle';
+$string['vision_enabled_help']          = 'Si activé, les images contenues dans les soumissions (PDF avec illustrations, images embarquées dans l\'éditeur en ligne, fichiers PNG/JPEG joints, etc.) sont envoyées au LLM avec le texte. Nécessite un modèle multimodal côté LM Studio.';
+$string['vision_enabled_override']      = 'Remplacer le réglage Vision du site';
+$string['maximagespersubmission']       = 'Nombre maximum d\'images par soumission';
+$string['maximagespersubmission_help']  = 'Plafond global d\'images envoyées au LLM pour une seule soumission étudiante. Permet de contrôler la consommation de contexte et le temps de génération. Défaut : 5.';
+$string['imagemindimension']            = 'Taille minimale d\'image (pixels)';
+$string['imagemindimension_help']       = 'Les images extraites d\'un PDF dont la largeur OU la hauteur est inférieure à cette valeur sont ignorées (filtre les vignettes décoratives). Défaut : 200.';
+$string['pdftoppmpath']                 = 'Chemin du binaire pdftoppm';
+$string['pdftoppmpath_help']            = 'Chemin absolu vers l\'exécutable pdftoppm (paquet poppler-utils), utilisé pour rasteriser les pages de PDF contenant des images. Laisser vide pour détection auto.';
+$string['pdfimagespath']                = 'Chemin du binaire pdfimages';
+$string['pdfimagespath_help']           = 'Chemin absolu vers l\'exécutable pdfimages (paquet poppler-utils), utilisé pour détecter les pages contenant des images. Laisser vide pour détection auto.';
+
 $string['systemprompt']           = 'Prompt système';
 $string['systemprompt_help']      = 'Instructions envoyées à l\'IA en rôle « system ».';
 $string['exercise']               = 'Énoncé de l\'exercice';
