@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="question/type/aiessay/db" VERSION="20260529" COMMENT="qtype_aiessay — essay-style questions auto-graded by an LLM">
+  <TABLES>
+
+    <TABLE NAME="qtype_aiessay_options" COMMENT="Per-question configuration for the AI-graded essay type">
+      <FIELDS>
+        <FIELD NAME="id"                       TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="questionid"               TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+
+        <!-- Essay UI options (mirroring qtype_essay where it makes sense) -->
+        <FIELD NAME="responseformat"           TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="editor"/>
+        <FIELD NAME="responserequired"         TYPE="int"  LENGTH="2"   NOTNULL="true" DEFAULT="1"/>
+        <FIELD NAME="responsefieldlines"       TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="15"/>
+        <FIELD NAME="minwordlimit"             TYPE="int"  LENGTH="10"  NOTNULL="false"/>
+        <FIELD NAME="maxwordlimit"             TYPE="int"  LENGTH="10"  NOTNULL="false"/>
+        <FIELD NAME="attachments"              TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="attachmentsrequired"      TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="filetypeslist"            TYPE="text"               NOTNULL="false"/>
+
+        <!-- AI prompt configuration -->
+        <FIELD NAME="systemprompt"             TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="expectedanswer"           TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="competencies"             TYPE="text"               NOTNULL="false"/>
+
+        <!-- AI runtime overrides (same pattern as assignfeedback_ai) -->
+        <FIELD NAME="apiurl"                   TYPE="char" LENGTH="512" NOTNULL="false"/>
+        <FIELD NAME="apiurl_override"          TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="model"                    TYPE="char" LENGTH="255" NOTNULL="false"/>
+        <FIELD NAME="model_override"           TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="apikey"                   TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="apikey_override"          TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="vision_enabled"           TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="vision_enabled_override"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"    TYPE="primary" FIELDS="id"/>
+        <KEY NAME="questionid" TYPE="foreign-unique" FIELDS="questionid" REFTABLE="question" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="qtype_aiessay_grading" COMMENT="One row per question_attempt graded (or being graded) by the LLM">
+      <FIELDS>
+        <FIELD NAME="id"               TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="questionattemptid" TYPE="int" LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="questionid"       TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid"           TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="status"           TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="pending"/>
+        <FIELD NAME="attempts"         TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="aifeedback"       TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="error_message"    TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="mark"             TYPE="number" LENGTH="10" DECIMALS="5" NOTNULL="false"/>
+        <FIELD NAME="timecreated"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"            TYPE="primary" FIELDS="id"/>
+        <KEY NAME="questionattempt"    TYPE="unique"  FIELDS="questionattemptid"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>
