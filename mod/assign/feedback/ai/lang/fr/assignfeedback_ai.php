@@ -9,6 +9,7 @@ $string['enabled_help'] = 'Si activé, le devoir est corrigé par une IA qui peu
 
 $string['default']                  = 'Activé par défaut';
 $string['default_help']             = 'Si activé, la Correction IA sera active pour tous les nouveaux devoirs.';
+$string['sharedconfignote']         = 'Les réglages communs (URL de l\'API, modèle, clé API, vision, binaires) sont gérés dans le plugin <em>Correction IA (bibliothèque partagée)</em> — voir <strong>Administration → Plugins → Plugins locaux → Correction IA (bibliothèque partagée)</strong>.';
 $string['apiurl']                   = 'URL de l\'API LM Studio';
 $string['apiurl_help']              = 'Point d\'accès compatible OpenAI. Défaut : http://localhost:1234/v1/chat/completions';
 $string['model']                    = 'Nom du modèle';

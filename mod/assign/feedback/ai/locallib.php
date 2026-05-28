@@ -69,10 +69,10 @@ class assign_feedback_ai extends assign_feedback_plugin {
 
         $cfg = $this->load_config($assignid);
 
-        // Valeurs par défaut globales
-        $def_url    = (string)get_config('assignfeedback_ai', 'apiurl');
-        $def_model  = (string)get_config('assignfeedback_ai', 'model');
-        $def_prompt = (string)get_config('assignfeedback_ai', 'defaultsystemprompt');
+        // Valeurs par défaut globales — désormais dans local_aifeedback.
+        $def_url    = (string)get_config('local_aifeedback', 'apiurl');
+        $def_model  = (string)get_config('local_aifeedback', 'model');
+        $def_prompt = (string)get_config('local_aifeedback', 'defaultsystemprompt');
 
         if ($def_url   === '') { $def_url   = 'http://localhost:1234/v1/chat/completions'; }
         if ($def_model === '') { $def_model = 'qwen3.5-9b-instruct'; }
@@ -157,7 +157,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
             'assignfeedback_ai_apikey_override', 'notchecked');
 
         // --- Vision (override optionnel) ---
-        $def_vision = (int)get_config('assignfeedback_ai', 'vision_enabled');
+        $def_vision = (int)get_config('local_aifeedback', 'vision_enabled');
 
         $mform->addElement('advcheckbox', 'assignfeedback_ai_vision_enabled_override',
             get_string('vision_enabled_override', 'assignfeedback_ai'));
@@ -597,7 +597,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
             $rowid              = (int)$DB->insert_record(self::TABLE_GRADE, $row);
         }
 
-        \assignfeedback_ai\task\generate_feedback_task::queue($rowid);
+        \assignfeedback_ai\job_handler::enqueue($rowid);
 
         return $rowid;
     }
@@ -691,12 +691,12 @@ class assign_feedback_ai extends assign_feedback_plugin {
     private function vision_image_budget($cfg) {
         $enabled = (!empty($cfg) && !empty($cfg->vision_enabled_override))
             ? (int)$cfg->vision_enabled
-            : (int)get_config('assignfeedback_ai', 'vision_enabled');
+            : (int)get_config('local_aifeedback', 'vision_enabled');
 
         if (!$enabled) {
             return 0;
         }
-        $max = (int)get_config('assignfeedback_ai', 'maximagespersubmission');
+        $max = (int)get_config('local_aifeedback', 'maximagespersubmission');
         return ($max > 0) ? $max : 5;
     }
 
@@ -861,7 +861,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
      * @return string|null
      */
     private function find_binary($name, $configname) {
-        $configured = trim((string)get_config('assignfeedback_ai', $configname));
+        $configured = trim((string)get_config('local_aifeedback', $configname));
         if ($configured !== '' && is_executable($configured)) {
             return $configured;
         }
@@ -936,7 +936,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
             return array();
         }
 
-        $minsize = (int)get_config('assignfeedback_ai', 'imagemindimension');
+        $minsize = (int)get_config('local_aifeedback', 'imagemindimension');
         if ($minsize <= 0) {
             $minsize = 200;
         }
@@ -1316,16 +1316,16 @@ class assign_feedback_ai extends assign_feedback_plugin {
     // =========================================================
     //  HELPERS — CHIFFREMENT DES SECRETS (API keys)
     // =========================================================
-    // Les vraies implémentations sont dans \assignfeedback_ai\secret pour
-    // pouvoir être appelées sans charger mod_assign (ex: page de réglages
-    // admin). On garde ici des wrappers pour la compatibilité du code interne.
+    // Depuis Phase 3.A, les vraies implémentations vivent dans
+    // \local_aifeedback\secret (bibliothèque partagée). On garde ici des
+    // wrappers pour le code interne déjà écrit qui les appelle.
 
     public static function encrypt_secret($plain) {
-        return \assignfeedback_ai\secret::encrypt($plain);
+        return \local_aifeedback\secret::encrypt($plain);
     }
 
     public static function decrypt_secret($value) {
-        return \assignfeedback_ai\secret::decrypt($value);
+        return \local_aifeedback\secret::decrypt($value);
     }
 
     /**
@@ -1393,26 +1393,8 @@ class assign_feedback_ai extends assign_feedback_plugin {
     // =========================================================
 
     private function call_api($messages, $cfg) {
-        // Résolution config : override par devoir → sinon réglage global.
-        $defurl    = (string)get_config('assignfeedback_ai', 'apiurl');
-        $defmodel  = (string)get_config('assignfeedback_ai', 'model');
-        $defapikey = self::decrypt_secret((string)get_config('assignfeedback_ai', 'apikey'));
-
-        if ($defurl === '')   { $defurl   = 'http://localhost:1234/v1/chat/completions'; }
-        if ($defmodel === '') { $defmodel = 'qwen/qwen3-8b'; }
-
-        $url    = (!empty($cfg->apiurl_override) && !empty($cfg->apiurl))
-                  ? $cfg->apiurl : $defurl;
-        $model  = (!empty($cfg->model_override)  && !empty($cfg->model))
-                  ? $cfg->model  : $defmodel;
-        $apikey = (!empty($cfg->apikey_override) && !empty($cfg->apikey))
-                  ? self::decrypt_secret($cfg->apikey) : $defapikey;
-
-        $payload = json_encode(array(
-            'model'           => $model,
-            'temperature'     => 0.2,
-            'max_tokens'      => 2048,
-            'messages'        => $messages,
+        // Construction des overrides pour la lib partagée.
+        $options = array(
             'response_format' => array(
                 'type'        => 'json_schema',
                 'json_schema' => array(
@@ -1421,60 +1403,26 @@ class assign_feedback_ai extends assign_feedback_plugin {
                     'schema' => self::response_schema(),
                 ),
             ),
-            'extra_body'    => array(
-                'enable_thinking' => false
-            ),
-        ), JSON_UNESCAPED_UNICODE);
-
-        $headers = array(
-            'Content-Type: application/json',
-            'Accept: application/json',
+            'extra_body' => array('enable_thinking' => false),
+            'temperature' => 0.2,
+            'max_tokens'  => 2048,
         );
-        if ($apikey !== '') {
-            $headers[] = 'Authorization: Bearer ' . $apikey;
+        if (!empty($cfg->apiurl_override) && !empty($cfg->apiurl)) {
+            $options['apiurl'] = $cfg->apiurl;
+        }
+        if (!empty($cfg->model_override) && !empty($cfg->model)) {
+            $options['model'] = $cfg->model;
+        }
+        if (!empty($cfg->apikey_override) && !empty($cfg->apikey)) {
+            $options['apikey'] = self::decrypt_secret($cfg->apikey);
         }
 
-        $curl = new curl();
-        $curl->setopt(array(
-            'CURLOPT_TIMEOUT'        => 180,
-            'CURLOPT_CONNECTTIMEOUT' => 15,
-            'CURLOPT_RETURNTRANSFER' => true,
-            'CURLOPT_HTTPHEADER'     => $headers,
-        ));
-
-        $raw = $curl->post($url, $payload);
-
-        if ($curl->get_errno()) {
-            debugging('assignfeedback_ai: curl error: ' . $curl->error, DEBUG_DEVELOPER);
+        try {
+            return \local_aifeedback\api::call($messages, $options);
+        } catch (\Throwable $e) {
+            debugging('assignfeedback_ai: API call failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             return false;
         }
-
-        $data = json_decode($raw, true);
-        if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
-            debugging('assignfeedback_ai: bad API response: ' . substr($raw, 0, 300), DEBUG_DEVELOPER);
-            return false;
-        }
-
-        $content = trim((string)$data['choices'][0]['message']['content']);
-
-        // Retire les balises markdown si le modèle les ajoute
-        $content = preg_replace('/^```(?:json)?\s*/i', '', $content);
-        $content = preg_replace('/\s*```\s*$/i', '', $content);
-        $content = trim($content);
-
-        // Cherche le premier { au cas où le modèle ajoute du texte avant
-        $start = strpos($content, '{');
-        if ($start !== false && $start > 0) {
-            $content = substr($content, $start);
-        }
-
-        $result = json_decode($content, true);
-        if (!is_array($result)) {
-            debugging('assignfeedback_ai: JSON parse error: ' . json_last_error_msg(), DEBUG_DEVELOPER);
-            return false;
-        }
-
-        return $result;
     }
 
     // =========================================================

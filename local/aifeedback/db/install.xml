@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aifeedback/db" VERSION="20260511" COMMENT="local_aifeedback — shared infrastructure for AI feedback plugins">
+  <TABLES>
+    <!-- Pas de table propre pour l'instant : la config vit dans mdl_config_plugins
+         et chaque plugin consommateur (assignfeedback_ai, qtype_aiessay, etc.)
+         gère son propre stockage métier. -->
+  </TABLES>
+</XMLDB>
