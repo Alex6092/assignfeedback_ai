@@ -9,6 +9,7 @@ $string['enabled_help'] = 'If enabled, the assignment is corrected by an AI that
 
 $string['default']                  = 'Enabled by default';
 $string['default_help']             = 'If set, AI Feedback will be active for all new assignments.';
+$string['sharedconfignote']         = 'Shared settings (API URL, model, API key, vision, binaries) are managed in the <em>AI feedback (shared library)</em> plugin — see <strong>Site administration → Plugins → Local plugins → AI feedback (shared library)</strong>.';
 $string['apiurl']                   = 'LM Studio API URL';
 $string['apiurl_help']              = 'OpenAI-compatible endpoint. Default: http://localhost:1234/v1/chat/completions';
 $string['model']                    = 'Model name';

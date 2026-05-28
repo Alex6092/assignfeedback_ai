@@ -1,13 +1,12 @@
 <?php
-namespace assignfeedback_ai;
+namespace local_aifeedback;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
  * Helpers de chiffrement/déchiffrement pour les secrets stockés en base
- * (typiquement la clé API). Cette classe est volontairement autonome :
- * elle ne dépend ni de mod_assign ni de la classe principale, pour pouvoir
- * être chargée depuis n'importe quel contexte (settings admin notamment).
+ * (typiquement la clé API). Cette classe est volontairement autonome : elle
+ * ne dépend de rien d'autre que \core\encryption.
  */
 class secret {
 
@@ -16,7 +15,7 @@ class secret {
 
     /**
      * Chiffre une chaîne via \core\encryption (sodium).
-     * Retombe sur la valeur en clair si l'extension sodium n'est pas dispo.
+     * Retombe sur la valeur en clair si sodium n'est pas dispo (avec debug log).
      */
     public static function encrypt($plain) {
         if ($plain === null || $plain === '') {
@@ -25,7 +24,7 @@ class secret {
         try {
             return self::PREFIX . \core\encryption::encrypt((string)$plain);
         } catch (\Throwable $e) {
-            debugging('assignfeedback_ai: chiffrement indisponible, stockage en clair ('
+            debugging('local_aifeedback: chiffrement indisponible, stockage en clair ('
                 . $e->getMessage() . ')', DEBUG_DEVELOPER);
             return (string)$plain;
         }
@@ -43,7 +42,7 @@ class secret {
             try {
                 return \core\encryption::decrypt(substr($value, strlen(self::PREFIX)));
             } catch (\Throwable $e) {
-                debugging('assignfeedback_ai: déchiffrement échoué (' . $e->getMessage() . ')',
+                debugging('local_aifeedback: déchiffrement échoué (' . $e->getMessage() . ')',
                     DEBUG_DEVELOPER);
                 return '';
             }

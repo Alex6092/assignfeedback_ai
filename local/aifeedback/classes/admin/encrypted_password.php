@@ -1,5 +1,5 @@
 <?php
-namespace assignfeedback_ai\admin;
+namespace local_aifeedback\admin;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -18,14 +18,14 @@ class encrypted_password extends \admin_setting_configpasswordunmask {
         if ($raw === null) {
             return null;
         }
-        return \assignfeedback_ai\secret::decrypt($raw);
+        return \local_aifeedback\secret::decrypt($raw);
     }
 
     public function write_setting($data) {
         if (!is_string($data)) {
             $data = '';
         }
-        $tostore = ($data === '') ? '' : \assignfeedback_ai\secret::encrypt($data);
+        $tostore = ($data === '') ? '' : \local_aifeedback\secret::encrypt($data);
         return ($this->config_write($this->name, $tostore) ? '' : get_string('errorsetting', 'admin'));
     }
 }

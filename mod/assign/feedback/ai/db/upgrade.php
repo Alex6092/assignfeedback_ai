@@ -47,5 +47,31 @@ function xmldb_assignfeedback_ai_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026051000, 'assignfeedback', 'ai');
     }
 
+    if ($oldversion < 2026051100) {
+        // Phase 3.A — migration des réglages globaux vers local_aifeedback.
+        // L'install de local_aifeedback est garantie par $plugin->dependencies
+        // dans version.php, donc on peut écrire dans son namespace de config.
+        $tomigrate = array(
+            'apiurl', 'model', 'apikey', 'defaultsystemprompt',
+            'vision_enabled', 'maximagespersubmission', 'imagemindimension',
+            'pdftotextpath', 'pdftoppmpath', 'pdfimagespath',
+        );
+        foreach ($tomigrate as $key) {
+            $oldvalue = get_config('assignfeedback_ai', $key);
+            if ($oldvalue === false || $oldvalue === '' || $oldvalue === null) {
+                continue; // rien à migrer
+            }
+            // On ne réécrit pas si une valeur a déjà été posée côté local.
+            $existing = get_config('local_aifeedback', $key);
+            if ($existing === false || $existing === '' || $existing === null) {
+                set_config($key, $oldvalue, 'local_aifeedback');
+            }
+            // On laisse les anciennes valeurs en base pour permettre un rollback
+            // (Moodle se chargera de les ignorer puisque le code ne les lit plus).
+        }
+
+        upgrade_plugin_savepoint(true, 2026051100, 'assignfeedback', 'ai');
+    }
+
     return true;
 }
