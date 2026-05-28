@@ -1,0 +1,3 @@
+# Build artefacts produits par le script de packaging
+/dist/
+*.zip
