@@ -249,7 +249,7 @@ question/type/aiessay/             Question « composition » corrigée par IA
 - [x] **Phase 2** — Support de la vision (PDF / ZIP / images intégrées)
 - [x] **Phase 3.A** — Extraction de l'infrastructure partagée dans `local_aifeedback`
 - [x] **Phase 3.B** — Type de question `qtype_aiessay`
-- [ ] **Phase 3.C** — Type de question `qtype_aishortanswer` (réponse courte)
+- [x] **Phase 3.C** — Type de question `qtype_aishortanswer` (réponse courte)
 - [ ] **Phase 4** — Générateur d'exercices
 
 ---
