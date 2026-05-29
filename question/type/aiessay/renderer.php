@@ -123,6 +123,15 @@ class qtype_aiessay_renderer extends qtype_renderer {
         if (!$row) {
             return '';
         }
+        // Dès qu'on dispose d'un feedback exploitable, on affiche la carte —
+        // même si status='failed' (qui, avec le découplage LLM/note, ne
+        // concerne que l'échec d'application de la note, pas le feedback).
+        if (!empty($row->aifeedback)) {
+            $result = json_decode($row->aifeedback, true);
+            if (is_array($result)) {
+                return $this->render_card($result);
+            }
+        }
         if ($row->status === 'pending') {
             return html_writer::div(
                 get_string('feedback_pending', 'qtype_aiessay'), 'alert alert-info');
@@ -131,12 +140,8 @@ class qtype_aiessay_renderer extends qtype_renderer {
             return html_writer::div(
                 get_string('feedback_failed', 'qtype_aiessay'), 'alert alert-warning');
         }
-        $result = json_decode($row->aifeedback, true);
-        if (!is_array($result)) {
-            return html_writer::div(
-                get_string('feedback_error', 'qtype_aiessay'), 'alert alert-danger');
-        }
-        return $this->render_card($result);
+        return html_writer::div(
+            get_string('feedback_error', 'qtype_aiessay'), 'alert alert-danger');
     }
 
     private function render_card($result) {

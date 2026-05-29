@@ -1,3 +1,15 @@
-# Build artefacts produits par le script de packaging
-/dist/
+# Archives de build (packaging des plugins pour déploiement Moodle)
 *.zip
+dist/
+
+# Fichiers IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs / temporaires
+*.log
+*.tmp
+

@@ -40,6 +40,16 @@ class qtype_aiessay_question extends question_with_responses {
     public $vision_enabled;
     public $vision_enabled_override;
 
+    /**
+     * On force le behaviour "manualgraded" quel que soit le réglage du quiz :
+     * la correction est asynchrone (LLM via la queue partagée), donc du point
+     * de vue du question_engine c'est de la notation manuelle posée a posteriori.
+     * Même pattern que qtype_essay.
+     */
+    public function make_behaviour(question_attempt $qa, $preferredbehaviour) {
+        return question_engine::make_behaviour('manualgraded', $qa, $preferredbehaviour);
+    }
+
     public function get_expected_data() {
         $data = array();
         if ($this->responseformat === 'editor' || $this->responseformat === 'editorfilepicker') {
