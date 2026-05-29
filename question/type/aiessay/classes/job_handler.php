@@ -8,7 +8,8 @@ defined('MOODLE_INTERNAL') || die();
  *
  * Toute la mécanique (file, retry, découplage LLM/note, notation quiz) vit dans
  * la base partagée \local_aifeedback\quiz_grader. Ici on ne fournit que ce qui
- * est propre à la composition : le schéma JSON complet et le prompt par défaut.
+ * est propre à la composition : le schéma JSON de sortie (allégé, aligné sur
+ * ce que la carte rend réellement) et le prompt système par défaut.
  */
 class job_handler extends \local_aifeedback\quiz_grader {
 
@@ -17,8 +18,10 @@ class job_handler extends \local_aifeedback\quiz_grader {
     }
 
     /**
-     * Schéma JSON complet : niveau, score, points forts/à améliorer, feedback
-     * détaillé et évaluation par compétences.
+     * Schéma JSON allégé : niveau + score + feedback détaillé. On a
+     * volontairement retiré points_forts / points_a_ameliorer / tableau de
+     * compétences car la carte rendue côté UI ne les affiche pas — les
+     * générer ralentirait la réponse et consommerait du contexte pour rien.
      */
     protected function response_schema(): array {
         $levels = array(
@@ -31,31 +34,11 @@ class job_handler extends \local_aifeedback\quiz_grader {
             'type'                 => 'object',
             'additionalProperties' => false,
             'properties'           => array(
-                'niveau' => array('type' => 'string', 'enum' => $levels),
-                'score'  => array('type' => 'integer', 'minimum' => 0, 'maximum' => 100),
-                'points_forts'        => array('type' => 'array',
-                    'items' => array('type' => 'string')),
-                'points_a_ameliorer'  => array('type' => 'array',
-                    'items' => array('type' => 'string')),
-                'feedback'            => array('type' => 'string'),
-                'competences_evaluees' => array(
-                    'type'  => 'array',
-                    'items' => array(
-                        'type'                 => 'object',
-                        'additionalProperties' => false,
-                        'properties' => array(
-                            'competence'  => array('type' => 'string'),
-                            'niveau'      => array('type' => 'string', 'enum' => $levels),
-                            'commentaire' => array('type' => 'string'),
-                        ),
-                        'required' => array('competence', 'niveau', 'commentaire'),
-                    ),
-                ),
+                'niveau'   => array('type' => 'string', 'enum' => $levels),
+                'score'    => array('type' => 'integer', 'minimum' => 0, 'maximum' => 100),
+                'feedback' => array('type' => 'string'),
             ),
-            'required' => array(
-                'niveau', 'score', 'points_forts',
-                'points_a_ameliorer', 'feedback', 'competences_evaluees',
-            ),
+            'required' => array('niveau', 'score', 'feedback'),
         );
     }
 
