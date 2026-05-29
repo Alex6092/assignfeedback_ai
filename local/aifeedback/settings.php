@@ -44,6 +44,20 @@ if ($hassiteconfig) {
         PARAM_TEXT
     ));
 
+    // === Accessibilité ===
+    $settings->add(new admin_setting_heading(
+        'local_aifeedback/accessibility_heading',
+        new lang_string('accessibility_heading', 'local_aifeedback'),
+        ''
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aifeedback/spelling_tolerance',
+        new lang_string('spelling_tolerance', 'local_aifeedback'),
+        new lang_string('spelling_tolerance_help', 'local_aifeedback'),
+        1
+    ));
+
     // === Vision ===
     $settings->add(new admin_setting_heading(
         'local_aifeedback/vision_heading',
@@ -116,7 +130,7 @@ if ($hassiteconfig) {
         'local_aifeedback/max_attempts_to_grade',
         new lang_string('max_attempts_to_grade', 'local_aifeedback'),
         new lang_string('max_attempts_to_grade_help', 'local_aifeedback'),
-        3,
+        0,
         PARAM_INT
     ));
 

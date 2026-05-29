@@ -1214,6 +1214,8 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $system = (!empty($cfg->systemprompt))
             ? $cfg->systemprompt
             : self::default_system_prompt();
+        // Consigne d'accessibilité (tolérance orthographique) selon le réglage global.
+        $system .= \local_aifeedback\prompt::accessibility_suffix();
 
         // Normalise l'entrée.
         if (is_array($submission)) {

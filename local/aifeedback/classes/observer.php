@@ -43,10 +43,10 @@ class observer {
 
         $userid = (int)$quizattempt->userid;
 
+        // Plafond de corrections IA par (quiz, question, utilisateur).
+        // 0 (ou non défini) = illimité : on s'appuie alors sur le délai entre
+        // tentatives du quiz (réglage natif de Moodle) pour throttler le LLM.
         $maxgraded = (int)get_config('local_aifeedback', 'max_attempts_to_grade');
-        if ($maxgraded <= 0) {
-            $maxgraded = 3;
-        }
 
         foreach ($qarecords as $r) {
             // Un type est "noté par IA" s'il expose \qtype_xxx\job_handler
@@ -67,12 +67,29 @@ class observer {
                 continue;
             }
 
-            // Plafond de tentatives notées par l'IA pour ce (composant, question, user).
-            $alreadygraded = $DB->count_records_select('local_aifeedback_qgrading',
-                'component = ? AND questionid = ? AND userid = ? AND status IN (?, ?, ?)',
-                array($component, $questionid, $userid, 'pending', 'generated', 'failed'));
-            if ($alreadygraded >= $maxgraded) {
-                continue;
+            // Plafond optionnel, compté PAR QUIZ pour ce (question, user). On
+            // scope par quiz (et non globalement par questionid) afin de ne pas
+            // pénaliser la réutilisation d'une même question dans un autre quiz.
+            if ($maxgraded > 0) {
+                $alreadygraded = $DB->count_records_sql("
+                    SELECT COUNT(g.id)
+                      FROM {local_aifeedback_qgrading} g
+                      JOIN {question_attempts} qa  ON qa.id = g.questionattemptid
+                      JOIN {quiz_attempts}     qza ON qza.uniqueid = qa.questionusageid
+                     WHERE g.component  = :component
+                       AND g.questionid = :questionid
+                       AND g.userid     = :userid
+                       AND qza.quiz     = :quizid
+                       AND g.status IN ('pending', 'generated', 'failed')",
+                    array(
+                        'component'  => $component,
+                        'questionid' => $questionid,
+                        'userid'     => $userid,
+                        'quizid'     => (int)$quizattempt->quiz,
+                    ));
+                if ($alreadygraded >= $maxgraded) {
+                    continue;
+                }
             }
 
             $now = time();

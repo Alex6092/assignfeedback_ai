@@ -192,6 +192,8 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
         $defprompt = (string)get_config('local_aifeedback', 'defaultsystemprompt');
         $system    = !empty($question->systemprompt) ? (string)$question->systemprompt
                    : ($defprompt !== '' ? $defprompt : $this->default_system_prompt());
+        // Consigne d'accessibilité (tolérance orthographique) selon le réglage global.
+        $system   .= \local_aifeedback\prompt::accessibility_suffix();
 
         $exercise = trim(html_to_text((string)$question->questiontext, 0, false));
 

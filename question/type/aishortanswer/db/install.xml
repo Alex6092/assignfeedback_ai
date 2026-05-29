@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="question/type/aishortanswer/db" VERSION="20260529" COMMENT="qtype_aishortanswer — short-answer questions auto-graded by an LLM">
+  <TABLES>
+
+    <TABLE NAME="qtype_aishortanswer_options" COMMENT="Per-question configuration for the AI-graded short answer type">
+      <FIELDS>
+        <FIELD NAME="id"                  TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="questionid"          TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+
+        <!-- Taille de la zone de saisie : 1 = champ une ligne, N = textarea de N lignes -->
+        <FIELD NAME="responsefieldlines"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="1"/>
+
+        <!-- Configuration IA -->
+        <FIELD NAME="systemprompt"        TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="expectedanswer"      TYPE="text"               NOTNULL="false"/>
+
+        <!-- Surcharges runtime (même motif que qtype_aiessay / assignfeedback_ai) -->
+        <FIELD NAME="apiurl"              TYPE="char" LENGTH="512" NOTNULL="false"/>
+        <FIELD NAME="apiurl_override"     TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="model"               TYPE="char" LENGTH="255" NOTNULL="false"/>
+        <FIELD NAME="model_override"      TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="apikey"              TYPE="text"               NOTNULL="false"/>
+        <FIELD NAME="apikey_override"     TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"    TYPE="primary" FIELDS="id"/>
+        <KEY NAME="questionid" TYPE="foreign-unique" FIELDS="questionid" REFTABLE="question" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>

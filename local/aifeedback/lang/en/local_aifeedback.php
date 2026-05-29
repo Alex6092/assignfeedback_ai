@@ -17,6 +17,11 @@ $string['apikey_help']              = 'Secret key sent as the HTTP header "Autho
 $string['defaultsystemprompt']      = 'Default system prompt';
 $string['defaultsystemprompt_help'] = 'Used when no assignment-level or question-level prompt is defined.';
 
+// Accessibility
+$string['accessibility_heading']    = 'Accessibility';
+$string['spelling_tolerance']       = 'Spelling tolerance (SpLD students)';
+$string['spelling_tolerance_help']  = 'If enabled, the AI is instructed never to assess spelling, grammar or syntax, and to grade only the substance (concepts, reasoning, knowledge). Recommended so as not to penalise students with specific learning difficulties (dyslexia, dysorthographia). Applies to all AI grading (assignments and quiz questions). Enabled by default.';
+
 // Vision
 $string['vision_heading']               = 'Vision (image reading)';
 $string['vision_enabled']               = 'Send images to the model';
@@ -38,7 +43,13 @@ $string['pdfimagespath_help']  = 'Absolute path to the pdfimages executable (pop
 // Quiz / questions
 $string['quiz_heading']                  = 'AI questions (quiz)';
 $string['max_attempts_to_grade']         = 'Max attempts graded by AI';
-$string['max_attempts_to_grade_help']    = 'Maximum number of attempts by a single student on a single question that will be graded by the LLM. Beyond this, the question stays awaiting manual grading. Prevents abuse on quizzes with unlimited attempts. Default: 3.';
+$string['max_attempts_to_grade_help']    = 'Maximum number of AI gradings per student per question, within a single quiz. Beyond this, the question stays awaiting manual grading. <strong>0 = unlimited (recommended)</strong>: in that case, prefer the quiz\'s native "Enforced delay between attempts" setting to throttle the LLM. Default: 0.';
+
+// Retry a grading
+$string['retry_button']      = 'Re-run AI grading';
+$string['retry_queued']      = 'AI grading re-queued — it will be processed shortly (next cron run).';
+$string['retry_notfound']    = 'Grading row not found.';
+$string['retry_pagetitle']   = 'Re-run an AI grading';
 
 // Question grading (shared quiz_grader / feedback_card base)
 $string['emptyresponse']          = '(No response provided)';

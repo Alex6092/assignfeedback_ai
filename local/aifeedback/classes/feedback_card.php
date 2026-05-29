@@ -12,9 +12,13 @@ defined('MOODLE_INTERNAL') || die();
  */
 class feedback_card {
 
+    /** Au-delà de ce délai (s), une ligne 'pending' est considérée bloquée. */
+    const STALE_PENDING_SECONDS = 600;
+
     /**
      * Point d'entrée pour un renderer de qtype : lit la ligne de grading
-     * partagée pour ce question_attempt et rend l'état approprié.
+     * partagée pour ce question_attempt et rend l'état approprié, plus un
+     * bouton de relance pour les enseignants si la correction a échoué/bloqué.
      *
      * @param \question_attempt $qa
      * @param string $component frankenstyle du qtype (ex. 'qtype_aiessay'),
@@ -27,24 +31,90 @@ class feedback_card {
         if (!$row) {
             return '';
         }
+
+        $body = '';
         // Dès qu'un feedback exploitable existe, on l'affiche — même si
         // status='failed' (qui ne reflète qu'un échec d'application de note).
         if (!empty($row->aifeedback)) {
             $result = json_decode($row->aifeedback, true);
             if (is_array($result)) {
-                return self::render($result, $component);
+                $body = self::render($result, $component);
             }
         }
-        if ($row->status === 'pending') {
-            return \html_writer::div(
-                get_string('feedback_pending', 'local_aifeedback'), 'alert alert-info');
+        if ($body === '') {
+            if ($row->status === 'pending') {
+                $body = \html_writer::div(
+                    get_string('feedback_pending', 'local_aifeedback'), 'alert alert-info');
+            } else if ($row->status === 'failed') {
+                $body = \html_writer::div(
+                    get_string('feedback_failed', 'local_aifeedback'), 'alert alert-warning');
+            } else {
+                $body = \html_writer::div(
+                    get_string('feedback_error', 'local_aifeedback'), 'alert alert-danger');
+            }
         }
-        if ($row->status === 'failed') {
-            return \html_writer::div(
-                get_string('feedback_failed', 'local_aifeedback'), 'alert alert-warning');
+
+        return $body . self::retry_control($qa, $row);
+    }
+
+    /**
+     * Bouton « Relancer la correction IA » pour les enseignants, sur les
+     * corrections échouées ou bloquées (pending ancien). Vide sinon.
+     */
+    protected static function retry_control(\question_attempt $qa, \stdClass $row): string {
+        global $PAGE;
+
+        $stalepending = ($row->status === 'pending'
+            && (int)$row->timemodified < time() - self::STALE_PENDING_SECONDS);
+        if ($row->status !== 'failed' && !$stalepending) {
+            return '';
         }
+
+        $context = self::quiz_context_from_qaid((int)$qa->get_database_id());
+        if (!$context || !has_capability('mod/quiz:grade', $context)) {
+            return '';
+        }
+
+        $returnurl = '';
+        if (!empty($PAGE) && $PAGE->has_set_url()) {
+            try {
+                $returnurl = $PAGE->url->out_as_local_url(false);
+            } catch (\Throwable $e) {
+                $returnurl = '';
+            }
+        }
+        $url = new \moodle_url('/local/aifeedback/retry.php', array(
+            'id'        => (int)$row->id,
+            'sesskey'   => sesskey(),
+            'returnurl' => $returnurl,
+        ));
         return \html_writer::div(
-            get_string('feedback_error', 'local_aifeedback'), 'alert alert-danger');
+            \html_writer::link($url, get_string('retry_button', 'local_aifeedback'),
+                array('class' => 'btn btn-secondary btn-sm')),
+            'local-aifeedback-retry mt-2');
+    }
+
+    /**
+     * Résout le contexte module quiz à partir d'un question_attempt id.
+     * Retourne null si ce n'est pas (ou plus) rattaché à un quiz.
+     */
+    public static function quiz_context_from_qaid(int $qaid): ?\context {
+        global $DB;
+        $qarec = $DB->get_record('question_attempts',
+            array('id' => $qaid), 'id, questionusageid');
+        if (!$qarec) {
+            return null;
+        }
+        $quizattempt = $DB->get_record('quiz_attempts',
+            array('uniqueid' => (int)$qarec->questionusageid), 'id, quiz');
+        if (!$quizattempt) {
+            return null;
+        }
+        $cm = get_coursemodule_from_instance('quiz', (int)$quizattempt->quiz);
+        if (!$cm) {
+            return null;
+        }
+        return \context_module::instance($cm->id);
     }
 
     /**

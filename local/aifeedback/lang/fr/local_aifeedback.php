@@ -17,6 +17,11 @@ $string['apikey_help']              = 'Clé secrète envoyée dans l\'en-tête H
 $string['defaultsystemprompt']      = 'Prompt système par défaut';
 $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défini au niveau du devoir ou de la question.';
 
+// Accessibilité
+$string['accessibility_heading']    = 'Accessibilité';
+$string['spelling_tolerance']       = 'Tolérance orthographique (élèves dys)';
+$string['spelling_tolerance_help']  = 'Si activé, l\'IA reçoit la consigne de ne jamais évaluer l\'orthographe, la grammaire ni la syntaxe, et de noter uniquement le fond (concepts, raisonnement, connaissances). Recommandé pour ne pas pénaliser les élèves présentant des troubles dys. S\'applique à toutes les corrections IA (devoirs et questions de quiz). Activé par défaut.';
+
 // Vision
 $string['vision_heading']               = 'Vision (lecture d\'images)';
 $string['vision_enabled']               = 'Activer l\'envoi d\'images au modèle';
@@ -38,7 +43,13 @@ $string['pdfimagespath_help']  = 'Chemin absolu vers l\'exécutable pdfimages (p
 // Quiz / questions
 $string['quiz_heading']                  = 'Questions IA (quiz)';
 $string['max_attempts_to_grade']         = 'Tentatives max corrigées par l\'IA';
-$string['max_attempts_to_grade_help']    = 'Nombre maximum de tentatives d\'un même étudiant sur une même question qui seront corrigées par le LLM. Au-delà, la question reste en attente d\'une correction manuelle. Évite l\'abus en cas de quiz à tentatives illimitées. Défaut : 3.';
+$string['max_attempts_to_grade_help']    = 'Nombre maximum de corrections IA par étudiant et par question, pour un même quiz. Au-delà, la question reste en attente d\'une correction manuelle. <strong>0 = illimité (recommandé)</strong> : dans ce cas, utilisez plutôt le réglage natif « Délai imposé entre les tentatives » du quiz pour limiter la sollicitation du LLM. Défaut : 0.';
+
+// Relance d'une correction
+$string['retry_button']      = 'Relancer la correction IA';
+$string['retry_queued']      = 'Correction IA relancée — elle sera traitée sous peu (à la prochaine exécution du cron).';
+$string['retry_notfound']    = 'Ligne de correction introuvable.';
+$string['retry_pagetitle']   = 'Relancer une correction IA';
 
 // Correction des questions (base partagée quiz_grader / feedback_card)
 $string['emptyresponse']          = '(Aucune réponse fournie)';
