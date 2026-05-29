@@ -46,10 +46,13 @@ $string['max_attempts_to_grade']         = 'Tentatives max corrigées par l\'IA'
 $string['max_attempts_to_grade_help']    = 'Nombre maximum de corrections IA par étudiant et par question, pour un même quiz. Au-delà, la question reste en attente d\'une correction manuelle. <strong>0 = illimité (recommandé)</strong> : dans ce cas, utilisez plutôt le réglage natif « Délai imposé entre les tentatives » du quiz pour limiter la sollicitation du LLM. Défaut : 0.';
 
 // Relance d'une correction
-$string['retry_button']      = 'Relancer la correction IA';
-$string['retry_queued']      = 'Correction IA relancée — elle sera traitée sous peu (à la prochaine exécution du cron).';
-$string['retry_notfound']    = 'Ligne de correction introuvable.';
-$string['retry_pagetitle']   = 'Relancer une correction IA';
+$string['retry_button']         = 'Relancer la correction IA';
+$string['retry_queued']         = 'Correction IA relancée — elle sera traitée sous peu (à la prochaine exécution du cron).';
+$string['retry_notfound']       = 'Ligne de correction introuvable.';
+$string['retry_pagetitle']      = 'Relancer une correction IA';
+$string['retry_confirm_body']   = 'Confirmer la relance de la correction IA pour cette copie. Elle sera remise en file d\'attente et traitée à la prochaine exécution du cron.';
+$string['retry_confirm_button'] = 'Confirmer la relance';
+$string['retry_lasterror']      = 'Dernière erreur :';
 
 // Correction des questions (base partagée quiz_grader / feedback_card)
 $string['emptyresponse']          = '(Aucune réponse fournie)';

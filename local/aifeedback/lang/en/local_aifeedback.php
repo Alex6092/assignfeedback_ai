@@ -46,10 +46,13 @@ $string['max_attempts_to_grade']         = 'Max attempts graded by AI';
 $string['max_attempts_to_grade_help']    = 'Maximum number of AI gradings per student per question, within a single quiz. Beyond this, the question stays awaiting manual grading. <strong>0 = unlimited (recommended)</strong>: in that case, prefer the quiz\'s native "Enforced delay between attempts" setting to throttle the LLM. Default: 0.';
 
 // Retry a grading
-$string['retry_button']      = 'Re-run AI grading';
-$string['retry_queued']      = 'AI grading re-queued — it will be processed shortly (next cron run).';
-$string['retry_notfound']    = 'Grading row not found.';
-$string['retry_pagetitle']   = 'Re-run an AI grading';
+$string['retry_button']         = 'Re-run AI grading';
+$string['retry_queued']         = 'AI grading re-queued — it will be processed shortly (next cron run).';
+$string['retry_notfound']       = 'Grading row not found.';
+$string['retry_pagetitle']      = 'Re-run an AI grading';
+$string['retry_confirm_body']   = 'Confirm re-running the AI grading for this attempt. It will be re-queued and processed at the next cron run.';
+$string['retry_confirm_button'] = 'Confirm re-run';
+$string['retry_lasterror']      = 'Last error:';
 
 // Question grading (shared quiz_grader / feedback_card base)
 $string['emptyresponse']          = '(No response provided)';

@@ -221,21 +221,14 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Commentaire HTML minimaliste stocké sur la question (la carte complète
-     * est rendue par feedback_card à la relecture).
+     * Carte HTML complète stockée comme commentaire de notation manuelle :
+     * elle s'affiche ainsi partout où Moodle rend le commentaire (review
+     * étudiant, vue enseignant, rapport de notation manuelle, export…), sans
+     * dépendre de specific_feedback() qui n'est pas appelé sur toutes les
+     * pages quand la question est en notation manuelle.
      */
     protected function render_feedback_comment($result) {
-        $niveau = isset($result['niveau'])   ? (string)$result['niveau'] : '';
-        $score  = isset($result['score'])    ? (int)$result['score']     : 0;
-        $fb     = isset($result['feedback']) ? (string)$result['feedback'] : '';
-
-        $html  = '<div class="local-aifeedback-comment">';
-        $html .= '<p><strong>' . s($niveau) . '</strong> — ' . $score . '/100</p>';
-        if ($fb !== '') {
-            $html .= '<p>' . nl2br(s($fb)) . '</p>';
-        }
-        $html .= '</div>';
-        return $html;
+        return \local_aifeedback\feedback_card::render((array)$result, static::component_name());
     }
 
     /**
@@ -271,5 +264,56 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
         $row->timemodified  = time();
         $row->status        = ((int)$row->attempts >= self::MAX_ATTEMPTS) ? 'failed' : 'pending';
         $DB->update_record(self::TABLE, $row);
+
+        // Définitivement en échec : pose un commentaire de notation manuelle
+        // visible à la relecture, avec le motif et un lien de relance pour
+        // l'enseignant. Best effort — si le quba ne se charge pas, on ignore.
+        if ($row->status === 'failed') {
+            $this->post_failure_comment($row);
+        }
+    }
+
+    /**
+     * Pose, en best effort, un commentaire HTML sur la question_attempt
+     * échouée : message d'erreur + lien de relance vers /local/aifeedback/retry.php.
+     * Le mark reste null (la question conserve son état needsgrading).
+     */
+    protected function post_failure_comment(\stdClass $row): void {
+        global $CFG, $DB;
+        try {
+            require_once($CFG->dirroot . '/lib/questionlib.php');
+
+            $qarec = $DB->get_record('question_attempts',
+                array('id' => (int)$row->questionattemptid));
+            if (!$qarec) {
+                return;
+            }
+            $quba = \question_engine::load_questions_usage_by_activity(
+                (int)$qarec->questionusageid);
+
+            $retryurl = (new \moodle_url('/local/aifeedback/retry.php',
+                array('id' => (int)$row->id)))->out(false);
+            $errmsg   = isset($row->error_message) ? (string)$row->error_message : '';
+
+            $html  = \html_writer::start_div('alert alert-warning local-aifeedback-failed');
+            $html .= \html_writer::tag('p',
+                \html_writer::tag('strong', get_string('feedback_failed', 'local_aifeedback')));
+            if ($errmsg !== '') {
+                $html .= \html_writer::tag('p',
+                    \html_writer::tag('em', s($errmsg)),
+                    array('class' => 'small text-muted'));
+            }
+            $html .= \html_writer::div(
+                \html_writer::link($retryurl,
+                    get_string('retry_button', 'local_aifeedback'),
+                    array('class' => 'btn btn-secondary btn-sm')),
+                'mt-2');
+            $html .= \html_writer::end_div();
+
+            $quba->manual_grade((int)$qarec->slot, $html, null, FORMAT_HTML);
+            \question_engine::save_questions_usage_by_activity($quba);
+        } catch (\Throwable $e) {
+            // Ne jamais lever depuis le path d'échec.
+        }
     }
 }

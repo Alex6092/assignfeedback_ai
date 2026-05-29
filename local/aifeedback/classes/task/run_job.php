@@ -104,6 +104,14 @@ class run_job extends \core\task\adhoc_task {
                 $processed++;
             }
 
+            // 2b) Drain cross-handler : on consomme aussi les autres run_job
+            //     adhoc en attente d'AUTRES handlers IA (ex. aishortanswer
+            //     juste après aiessay), tant qu'on tient le lock LLM. Évite
+            //     d'attendre un tick de cron complet entre deux questions IA
+            //     d'une même tentative de quiz.
+            $processed += $this->drain_other_handlers(
+                $myhandler, self::BATCH_LIMIT - $processed, $deadline);
+
             mtrace("local_aifeedback: tick terminé, $processed job(s) traités (handler=$myhandler)");
 
         } finally {
@@ -139,5 +147,61 @@ class run_job extends \core\task\adhoc_task {
             mtrace("local_aifeedback: échec job ($handlername): " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Cherche d'autres jobs IA en attente pour des handlers DIFFÉRENTS et les
+     * exécute immédiatement (on tient déjà le lock LLM). Retourne le nombre de
+     * jobs effectivement traités ici.
+     *
+     * On scanne la table métier {local_aifeedback_qgrading} plutôt que
+     * {task_adhoc}, pour deux raisons :
+     *   - robuste contre la concurrence du cron : si un autre worker a pris la
+     *     task adhoc en parallèle (et l'a re-enqueuée à +30s sur lock busy),
+     *     elle est invisible côté task_adhoc, mais la ligne métier, elle,
+     *     reste en 'pending' — on peut donc la consommer tout de suite ;
+     *   - rattrape les 'pending' orphelins (cas où l'enqueue adhoc aurait
+     *     échoué silencieusement par le passé).
+     *
+     * Les tasks adhoc "zombies" éventuellement laissées en queue ne posent pas
+     * de problème : quand elles tournent, quiz_grader::execute() vérifie le
+     * statut et fait no-op si la ligne n'est plus 'pending'.
+     */
+    private function drain_other_handlers(string $myhandler, int $budget, int $deadline): int {
+        global $DB;
+        if ($budget <= 0) {
+            return 0;
+        }
+        $processed = 0;
+
+        while ($processed < $budget && time() < $deadline) {
+            $row = $DB->get_record_sql("
+                SELECT id, component
+                  FROM {local_aifeedback_qgrading}
+                 WHERE status = ?
+                   AND component <> ?
+              ORDER BY timecreated ASC",
+                array('pending', $myhandler),
+                IGNORE_MULTIPLE
+            );
+            if (!$row) {
+                break;
+            }
+
+            $handler = $this->instantiate_handler((string)$row->component);
+            if ($handler === null) {
+                // Handler manquant pour ce composant : on évite de boucler.
+                mtrace('local_aifeedback: handler introuvable pour drainage: ' . $row->component);
+                break;
+            }
+
+            $payload = new \stdClass();
+            $payload->rowid = (int)$row->id;
+            if (!$this->try_run($handler, $payload, (string)$row->component)) {
+                break; // erreur transitoire — on ne s'acharne pas
+            }
+            $processed++;
+        }
+        return $processed;
     }
 }
