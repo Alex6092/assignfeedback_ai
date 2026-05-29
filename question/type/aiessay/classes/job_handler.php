@@ -72,65 +72,93 @@ class job_handler implements \local_aifeedback\job_handler {
     private function process_one(\stdClass $row) {
         global $DB;
 
-        // 1) Récupère le question_attempt et son contexte quiz.
-        $qa = \question_engine::load_question_attempt((int)$row->questionattemptid);
-        if (!$qa) {
+        // 1) Récupère le question_attempt via son question_usage_by_activity.
+        //    \question_engine n'expose pas de load_question_attempt() ; on
+        //    charge le quba et on en extrait le qa via le slot.
+        //    Attention : la méthode s'appelle load_questions_usage_by_activity
+        //    (le "by_activity" désigne le type d'objet retourné, pas la clé).
+        $qarec = $DB->get_record('question_attempts',
+            array('id' => (int)$row->questionattemptid));
+        if (!$qarec) {
             throw new \moodle_exception('questionattemptmissing', 'qtype_aiessay');
         }
+        $quba     = \question_engine::load_questions_usage_by_activity((int)$qarec->questionusageid);
+        $qa       = $quba->get_question_attempt((int)$qarec->slot);
         $question = $qa->get_question();
 
-        // 2) Construit les messages avec la config IA de cette question.
-        $messages = $this->build_messages($qa, $question);
+        // === ÉTAPE A : obtention du résultat LLM (coûteuse) =================
+        // Si un résultat est déjà mis en cache (parce qu'un run précédent a
+        // obtenu la réponse du LLM mais a échoué à APPLIQUER la note), on le
+        // réutilise au lieu de rappeler le modèle. C'est ce découplage qui
+        // évite les appels LLM multiples sur erreur d'application de note.
+        if (!empty($row->aifeedback)) {
+            $result = json_decode($row->aifeedback, true);
+            if (!is_array($result)) {
+                // Cache corrompu : on repart pour un appel propre.
+                $result = null;
+            }
+        } else {
+            $result = null;
+        }
 
-        // 3) Appel LLM via la lib partagée, en passant les overrides per-question.
-        $options = array(
-            'response_format' => array(
-                'type'        => 'json_schema',
-                'json_schema' => array(
-                    'name'   => 'qtype_aiessay_response',
-                    'strict' => true,
-                    'schema' => self::response_schema(),
+        if ($result === null) {
+            $messages = $this->build_messages($qa, $question);
+            $options  = array(
+                'response_format' => array(
+                    'type'        => 'json_schema',
+                    'json_schema' => array(
+                        'name'   => 'qtype_aiessay_response',
+                        'strict' => true,
+                        'schema' => self::response_schema(),
+                    ),
                 ),
-            ),
-            'extra_body' => array('enable_thinking' => false),
-        );
-        if (!empty($question->apiurl_override) && !empty($question->apiurl)) {
-            $options['apiurl'] = $question->apiurl;
-        }
-        if (!empty($question->model_override) && !empty($question->model)) {
-            $options['model'] = $question->model;
-        }
-        if (!empty($question->apikey_override) && !empty($question->apikey)) {
-            // L'apikey est déjà déchiffrée par get_question_options() / initialise_question_instance().
-            $options['apikey'] = $question->apikey;
-        }
-        $result = \local_aifeedback\api::call($messages, $options);
+                'extra_body' => array('enable_thinking' => false),
+            );
+            if (!empty($question->apiurl_override) && !empty($question->apiurl)) {
+                $options['apiurl'] = $question->apiurl;
+            }
+            if (!empty($question->model_override) && !empty($question->model)) {
+                $options['model'] = $question->model;
+            }
+            if (!empty($question->apikey_override) && !empty($question->apikey)) {
+                // Déjà déchiffrée par initialise_question_instance().
+                $options['apikey'] = $question->apikey;
+            }
+            $result = \local_aifeedback\api::call($messages, $options);
 
-        // 4) Calcule la note : 0–100 → maxmark, arrondi au 0.25 supérieur.
-        $score   = isset($result['score']) ? max(0, min(100, (int)$result['score'])) : 0;
-        $maxmark = (float)$qa->get_max_mark();
-        $raw     = ($score / 100.0) * $maxmark;
-        $mark    = \local_aifeedback\math::round_up_quarter($raw);
-        if ($mark > $maxmark) {
-            $mark = $maxmark; // sécurité, ne dépasse jamais le max
+            // Note : 0–100 → maxmark, arrondi au 0.25 supérieur.
+            $score   = isset($result['score']) ? max(0, min(100, (int)$result['score'])) : 0;
+            $maxmark = (float)$qa->get_max_mark();
+            $mark    = \local_aifeedback\math::round_up_quarter(($score / 100.0) * $maxmark);
+            if ($mark > $maxmark) {
+                $mark = $maxmark; // sécurité, ne dépasse jamais le max
+            }
+
+            // On PERSISTE le résultat LLM immédiatement, AVANT toute tentative
+            // d'application de la note. Ainsi, si l'étape B échoue, le retry
+            // réutilisera ce cache et ne rappellera jamais le LLM.
+            $row->aifeedback   = json_encode($result, JSON_UNESCAPED_UNICODE);
+            $row->mark         = $mark;
+            $row->timemodified = time();
+            $DB->update_record('qtype_aiessay_grading', $row);
+        } else {
+            $mark = (float)$row->mark;
         }
 
-        // 5) Commentaire HTML rendu depuis le feedback IA (carte structurée).
+        // === ÉTAPE B : application de la note au quiz (fragile, idempotente) =
+        // manual_grade est idempotent (même commentaire + même note) : un
+        // re-run après échec partiel ne crée pas d'incohérence.
         $commenthtml = $this->render_feedback_comment($result);
-
-        // 6) Applique manual_grade sur le question_attempt + sauvegarde.
-        $quba = \question_engine::load_questions_usage_by_id($qa->get_usage_id());
         $quba->manual_grade($qa->get_slot(), $commenthtml, $mark, FORMAT_HTML);
         \question_engine::save_questions_usage_by_activity($quba);
 
-        // 7) Recalcule la note totale de la tentative + meilleure note quiz.
-        $this->recompute_quiz_grade($quba);
+        // Recalcule sumgrades de la tentative + note finale (quiz_grades +
+        // propagation au carnet de notes via quiz_update_grades).
+        $this->recompute_quiz_grade($qarec);
 
-        // 8) Persiste le résultat.
+        // === ÉTAPE C : succès complet =====================================
         $row->status        = 'generated';
         $row->error_message = null;
-        $row->aifeedback    = json_encode($result, JSON_UNESCAPED_UNICODE);
-        $row->mark          = $mark;
         $row->timemodified  = time();
         $DB->update_record('qtype_aiessay_grading', $row);
     }
@@ -191,31 +219,31 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Met à jour quiz_attempts.sumgrades et la meilleure note de l'utilisateur.
+     * Recalcule la note du quiz après notation de la question par l'IA.
+     *
+     * En Moodle 4.3+ la mécanique a été refactorée dans \mod_quiz\grade_calculator
+     * (les anciennes fonctions quiz_save_best_grade() / quiz_set_grade() ont été
+     * supprimées en 5.x). On passe donc par le grade_calculator :
+     *   - recompute_all_attempt_sumgrades() : recalcule quiz_attempts.sumgrades
+     *     (qui était NULL tant que la question était en needsgrading) ;
+     *   - recompute_final_grade($userid)    : recalcule quiz_grades pour
+     *     l'utilisateur ET propage au carnet de notes (quiz_update_grades).
      */
-    private function recompute_quiz_grade($quba) {
+    private function recompute_quiz_grade($qarec) {
         global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quiz/lib.php');
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 
         $quizattempt = $DB->get_record('quiz_attempts',
-            array('uniqueid' => (int)$quba->get_id()));
+            array('uniqueid' => (int)$qarec->questionusageid));
         if (!$quizattempt) {
             return; // pas un quiz_attempt (autre consumer de l'engine de questions)
         }
 
-        $total = 0.0;
-        foreach ($quba->get_slots() as $slot) {
-            $m = $quba->get_question_mark($slot);
-            if ($m !== null) {
-                $total += (float)$m;
-            }
-        }
-        $DB->set_field('quiz_attempts', 'sumgrades', $total, array('id' => $quizattempt->id));
-
-        $quiz = $DB->get_record('quiz', array('id' => $quizattempt->quiz));
-        if ($quiz) {
-            quiz_save_best_grade($quiz, $quizattempt->userid);
-        }
+        $quizobj = \mod_quiz\quiz_settings::create((int)$quizattempt->quiz);
+        $calc    = $quizobj->get_grade_calculator();
+        $calc->recompute_all_attempt_sumgrades();
+        $calc->recompute_final_grade((int)$quizattempt->userid);
     }
 
     private function record_failure($rowid, $errmsg) {

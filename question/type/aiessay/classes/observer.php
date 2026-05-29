@@ -14,23 +14,40 @@ defined('MOODLE_INTERNAL') || die();
 class observer {
 
     public static function attempt_submitted(\mod_quiz\event\attempt_submitted $event) {
-        global $CFG, $DB;
-
-        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+        global $DB;
 
         $attemptid = (int)$event->objectid;
         if ($attemptid <= 0) {
             return;
         }
 
-        try {
-            $attemptobj = \quiz_attempt::create($attemptid);
-        } catch (\Throwable $e) {
+        $quizattempt = $DB->get_record('quiz_attempts', array('id' => $attemptid));
+        if (!$quizattempt) {
             return;
         }
 
-        $userid = (int)$attemptobj->get_userid();
-        $usage  = $attemptobj->get_question_usage();
+        // On évite l'API \question_engine (load_questions_usage_by_id /
+        // load_question_attempt) car ces noms de méthode varient selon les
+        // versions de Moodle. Lister directement les question_attempts de
+        // type aiessay rattachés au question_usage suffit : on n'a pas
+        // besoin d'instancier la question pour décider d'enqueuer un job.
+        $qarecords = $DB->get_records_sql("
+            SELECT qa.id AS qaid, qa.slot, qa.questionid AS questionid
+              FROM {question_attempts} qa
+              JOIN {question} q ON q.id = qa.questionid
+             WHERE qa.questionusageid = :usageid
+               AND q.qtype = :qtype
+          ORDER BY qa.slot
+        ", array(
+            'usageid' => (int)$quizattempt->uniqueid,
+            'qtype'   => 'aiessay',
+        ));
+
+        if (empty($qarecords)) {
+            return;
+        }
+
+        $userid = (int)$quizattempt->userid;
 
         // Cap éventuel sur le nombre de tentatives notées par l'IA.
         $maxgraded = (int)get_config('local_aifeedback', 'max_attempts_to_grade');
@@ -38,32 +55,26 @@ class observer {
             $maxgraded = 3;
         }
 
-        foreach ($attemptobj->get_slots() as $slot) {
-            $qa = $usage->get_question_attempt($slot);
-            $question = $qa->get_question();
-            if ($question->get_type_name() !== 'aiessay') {
+        foreach ($qarecords as $qarec) {
+            $qaid       = (int)$qarec->qaid;
+            $questionid = (int)$qarec->questionid;
+
+            // Idempotence : si déjà une ligne pour ce question_attempt, on ne refait pas.
+            if ($DB->record_exists('qtype_aiessay_grading',
+                    array('questionattemptid' => $qaid))) {
                 continue;
             }
 
-            // Compte combien de tentatives de CET étudiant sur CETTE question
-            // ont déjà été notées par l'IA (via les autres question_attempt
-            // référencés dans qtype_aiessay_grading).
-            $alreadygraded = self::count_user_question_gradings($userid, (int)$question->id);
+            // Cap : combien de tentatives notées par l'IA sur cette question pour ce user.
+            $alreadygraded = self::count_user_question_gradings($userid, $questionid);
             if ($alreadygraded >= $maxgraded) {
-                continue; // au-delà du plafond → la copie restera en needsgrading manuel
-            }
-
-            // Idempotence : si déjà une ligne pour ce question_attempt, on ne refait pas.
-            $existing = $DB->get_record('qtype_aiessay_grading',
-                array('questionattemptid' => (int)$qa->get_database_id()));
-            if ($existing) {
                 continue;
             }
 
             $now = time();
             $row = new \stdClass();
-            $row->questionattemptid = (int)$qa->get_database_id();
-            $row->questionid        = (int)$question->id;
+            $row->questionattemptid = $qaid;
+            $row->questionid        = $questionid;
             $row->userid            = $userid;
             $row->status            = 'pending';
             $row->attempts          = 0;
@@ -73,7 +84,6 @@ class observer {
             $row->timecreated       = $now;
             $row->timemodified      = $now;
             $rowid = $DB->insert_record('qtype_aiessay_grading', $row);
-
             \qtype_aiessay\job_handler::enqueue($rowid);
         }
     }
