@@ -23,8 +23,6 @@ $string['defaultsystemprompt']      = 'Prompt système par défaut';
 $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défini au niveau du devoir.';
 $string['pdftotextpath']            = 'Chemin du binaire pdftotext';
 $string['pdftotextpath_help']       = 'Chemin absolu vers l\'exécutable pdftotext (paquet poppler-utils). Laisser vide pour une détection automatique dans /usr/bin, /usr/local/bin, etc.';
-$string['pdftotextmissing']         = 'Le binaire pdftotext est introuvable sur le serveur. Installez le paquet poppler-utils ou renseignez le chemin dans les réglages du plugin.';
-$string['pdftotexterror']           = 'Erreur d\'extraction du texte PDF.';
 
 // === Vision ===
 $string['vision_heading']               = 'Vision (lecture d\'images)';

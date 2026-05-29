@@ -39,6 +39,8 @@ $string['pdftoppmpath']        = 'Chemin du binaire pdftoppm';
 $string['pdftoppmpath_help']   = 'Chemin absolu vers l\'exécutable pdftoppm (poppler-utils), utilisé pour rasteriser les pages PDF en images. Laisser vide pour détection auto.';
 $string['pdfimagespath']       = 'Chemin du binaire pdfimages';
 $string['pdfimagespath_help']  = 'Chemin absolu vers l\'exécutable pdfimages (poppler-utils), utilisé pour détecter les pages contenant des images. Laisser vide pour détection auto.';
+$string['pdftotextmissing']    = 'Le binaire pdftotext est introuvable sur le serveur. Installez le paquet poppler-utils ou renseignez le chemin dans les réglages du plugin.';
+$string['pdftotexterror']      = 'Erreur d\'extraction du texte PDF.';
 
 // Quiz / questions
 $string['quiz_heading']                  = 'Questions IA (quiz)';

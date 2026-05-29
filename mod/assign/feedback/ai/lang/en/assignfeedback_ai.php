@@ -23,8 +23,6 @@ $string['defaultsystemprompt']      = 'Default system prompt';
 $string['defaultsystemprompt_help'] = 'Used when no assignment-level prompt is defined.';
 $string['pdftotextpath']            = 'Path to pdftotext binary';
 $string['pdftotextpath_help']       = 'Absolute path to the pdftotext executable (poppler-utils package). Leave empty to auto-detect in /usr/bin, /usr/local/bin, etc.';
-$string['pdftotextmissing']         = 'pdftotext binary not found on the server. Install poppler-utils or set the path in the plugin settings.';
-$string['pdftotexterror']           = 'PDF text extraction error.';
 
 // === Vision ===
 $string['vision_heading']               = 'Vision (image reading)';

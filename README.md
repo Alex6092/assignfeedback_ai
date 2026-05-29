@@ -220,17 +220,23 @@ différent.
 local/aifeedback/                  Bibliothèque partagée
 ├── classes/
 │   ├── api.php                    Appel HTTP OpenAI + JSON Schema + surcharges
+│   ├── content_extractor.php      Extraction texte/PDF/DOCX/ZIP + images (vision)
 │   ├── task/run_job.php           File d'attente ad-hoc + verrou global + drainage
 │   ├── secret.php                 Chiffrement/déchiffrement de la clé API
 │   ├── math.php                   round_up_quarter()
 │   ├── job_handler.php            Interface des handlers
+│   ├── quiz_grader.php            Base partagée des correcteurs IA pour quiz
+│   ├── feedback_card.php          Rendu HTML des cartes de feedback
+│   ├── prompt.php                 Consignes injectées (accessibilité dys, etc.)
+│   ├── observer.php               Observer partagé des soumissions de quiz
 │   └── admin/encrypted_password.php
 ├── settings.php                   Tous les réglages globaux
+├── retry.php                      Relance manuelle d'une correction IA
 └── version.php
 
 mod/assign/feedback/ai/            Feedback IA des devoirs
 ├── classes/{job_handler,observer}.php
-├── locallib.php / lib.php         Extraction (texte/PDF/images), rendu du feedback
+├── locallib.php / lib.php         Pilotage de la correction (délègue l'extraction à local_aifeedback)
 ├── db/{events,install,upgrade,access}.xml/php
 └── settings.php
 

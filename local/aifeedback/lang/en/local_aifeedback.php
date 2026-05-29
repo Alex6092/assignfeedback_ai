@@ -39,6 +39,8 @@ $string['pdftoppmpath']        = 'Path to pdftoppm binary';
 $string['pdftoppmpath_help']   = 'Absolute path to the pdftoppm executable (poppler-utils), used to rasterise PDF pages to images. Leave empty for auto-detection.';
 $string['pdfimagespath']       = 'Path to pdfimages binary';
 $string['pdfimagespath_help']  = 'Absolute path to the pdfimages executable (poppler-utils), used to detect pages containing images. Leave empty for auto-detection.';
+$string['pdftotextmissing']    = 'pdftotext binary not found on the server. Install poppler-utils or set the path in the plugin settings.';
+$string['pdftotexterror']      = 'PDF text extraction error.';
 
 // Quiz / questions
 $string['quiz_heading']                  = 'AI questions (quiz)';
