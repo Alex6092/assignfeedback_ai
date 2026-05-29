@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Feuille de copie -->
+  <rect x="20" y="12" width="52" height="76" rx="6" fill="#6c63ff" opacity="0.15"/>
+  <rect x="20" y="12" width="52" height="76" rx="6" fill="none" stroke="#6c63ff" stroke-width="4"/>
+  <!-- Lignes de texte rédigé -->
+  <line x1="30" y1="30" x2="62" y2="30" stroke="#6c63ff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="30" y1="42" x2="62" y2="42" stroke="#6c63ff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="30" y1="54" x2="54" y2="54" stroke="#6c63ff" stroke-width="4" stroke-linecap="round"/>
+  <!-- Pastille IA -->
+  <circle cx="72" cy="74" r="20" fill="#6c63ff"/>
+  <text x="72" y="81" font-size="22" font-weight="bold" text-anchor="middle"
+        font-family="sans-serif" fill="#ffffff">AI</text>
+</svg>

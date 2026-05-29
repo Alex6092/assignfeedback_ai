@@ -40,5 +40,21 @@ $string['quiz_heading']                  = 'AI questions (quiz)';
 $string['max_attempts_to_grade']         = 'Max attempts graded by AI';
 $string['max_attempts_to_grade_help']    = 'Maximum number of attempts by a single student on a single question that will be graded by the LLM. Beyond this, the question stays awaiting manual grading. Prevents abuse on quizzes with unlimited attempts. Default: 3.';
 
+// Question grading (shared quiz_grader / feedback_card base)
+$string['emptyresponse']          = '(No response provided)';
+$string['questionattemptmissing'] = 'The question attempt linked to this AI job cannot be found.';
+
+// Feedback card
+$string['feedback_pending']  = 'AI feedback is being generated. Come back in a few moments to see it.';
+$string['feedback_failed']   = 'AI feedback generation failed. A teacher needs to grade this response manually.';
+$string['feedback_error']    = 'Error reading AI feedback.';
+$string['strengths']         = 'Strengths';
+$string['improvements']      = 'Areas for improvement';
+$string['detailedfeedback']  = 'Detailed feedback';
+$string['competency_scores'] = 'Competency scores';
+$string['competency']        = 'Competency';
+$string['mastery_level']     = 'Mastery level';
+$string['commentary']        = 'Commentary';
+
 // Errors
 $string['apicallfailed'] = 'The AI API call failed.';

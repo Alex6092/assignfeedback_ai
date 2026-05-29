@@ -38,29 +38,5 @@
       </KEYS>
     </TABLE>
 
-    <TABLE NAME="qtype_aiessay_grading" COMMENT="One row per question_attempt graded (or being graded) by the LLM">
-      <FIELDS>
-        <FIELD NAME="id"               TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="questionattemptid" TYPE="int" LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="questionid"       TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="userid"           TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="status"           TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="pending"/>
-        <FIELD NAME="attempts"         TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="aifeedback"       TYPE="text"               NOTNULL="false"/>
-        <FIELD NAME="error_message"    TYPE="text"               NOTNULL="false"/>
-        <FIELD NAME="mark"             TYPE="number" LENGTH="10" DECIMALS="5" NOTNULL="false"/>
-        <FIELD NAME="timecreated"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="timemodified"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-      </FIELDS>
-      <KEYS>
-        <KEY NAME="primary"            TYPE="primary" FIELDS="id"/>
-        <KEY NAME="questionattempt"    TYPE="unique"  FIELDS="questionattemptid"/>
-      </KEYS>
-      <INDEXES>
-        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
-        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
-      </INDEXES>
-    </TABLE>
-
   </TABLES>
 </XMLDB>

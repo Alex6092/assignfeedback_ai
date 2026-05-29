@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aifeedback/db" VERSION="20260529" COMMENT="Shared AI feedback infrastructure">
+  <TABLES>
+
+    <TABLE NAME="local_aifeedback_qgrading" COMMENT="One row per quiz question_attempt graded (or being graded) by the LLM, shared by all AI question types">
+      <FIELDS>
+        <FIELD NAME="id"                TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="component"         TYPE="char"   LENGTH="100" NOTNULL="true" DEFAULT="" COMMENT="Frankenstyle of the owning qtype, e.g. qtype_aiessay"/>
+        <FIELD NAME="questionattemptid" TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="questionid"        TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid"            TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="status"            TYPE="char"   LENGTH="20"  NOTNULL="true" DEFAULT="pending"/>
+        <FIELD NAME="attempts"          TYPE="int"    LENGTH="4"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="aifeedback"        TYPE="text"                NOTNULL="false"/>
+        <FIELD NAME="error_message"     TYPE="text"                NOTNULL="false"/>
+        <FIELD NAME="mark"              TYPE="number" LENGTH="10"  DECIMALS="5" NOTNULL="false"/>
+        <FIELD NAME="timecreated"       TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"      TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"         TYPE="primary" FIELDS="id"/>
+        <KEY NAME="questionattempt" TYPE="unique"  FIELDS="questionattemptid"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="component_status" UNIQUE="false" FIELDS="component, status"/>
+        <INDEX NAME="comp_question_user" UNIQUE="false" FIELDS="component, questionid, userid"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>

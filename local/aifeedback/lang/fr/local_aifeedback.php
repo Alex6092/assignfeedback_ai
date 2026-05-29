@@ -40,5 +40,21 @@ $string['quiz_heading']                  = 'Questions IA (quiz)';
 $string['max_attempts_to_grade']         = 'Tentatives max corrigées par l\'IA';
 $string['max_attempts_to_grade_help']    = 'Nombre maximum de tentatives d\'un même étudiant sur une même question qui seront corrigées par le LLM. Au-delà, la question reste en attente d\'une correction manuelle. Évite l\'abus en cas de quiz à tentatives illimitées. Défaut : 3.';
 
+// Correction des questions (base partagée quiz_grader / feedback_card)
+$string['emptyresponse']          = '(Aucune réponse fournie)';
+$string['questionattemptmissing'] = 'La tentative de question liée à ce job IA est introuvable.';
+
+// Carte de feedback
+$string['feedback_pending']  = 'Le feedback IA est en cours de génération. Reviens consulter cette tentative dans quelques instants.';
+$string['feedback_failed']   = 'La génération du feedback IA a échoué. Un enseignant doit examiner cette copie manuellement.';
+$string['feedback_error']    = 'Erreur de lecture du feedback IA.';
+$string['strengths']         = 'Points forts';
+$string['improvements']      = 'Points à améliorer';
+$string['detailedfeedback']  = 'Feedback détaillé';
+$string['competency_scores'] = 'Scores par compétence';
+$string['competency']        = 'Compétence';
+$string['mastery_level']     = 'Niveau de maîtrise';
+$string['commentary']        = 'Commentaire';
+
 // Erreurs
 $string['apicallfailed'] = 'L\'appel à l\'API IA a échoué.';
