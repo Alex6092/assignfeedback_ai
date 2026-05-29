@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aiquizgen/db" VERSION="20260529" COMMENT="AI quiz generator">
+  <TABLES>
+
+    <TABLE NAME="local_aiquizgen_jobs" COMMENT="One row per quiz/test generation request. The job goes through the shared local_aifeedback queue.">
+      <FIELDS>
+        <FIELD NAME="id"               TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="courseid"         TYPE="int"  LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+        <FIELD NAME="userid"           TYPE="int"  LENGTH="10"  NOTNULL="true"  DEFAULT="0" COMMENT="Teacher who triggered the generation"/>
+        <FIELD NAME="status"           TYPE="char" LENGTH="20"  NOTNULL="true"  DEFAULT="pending" COMMENT="pending | running | done | failed"/>
+        <FIELD NAME="params"           TYPE="text"              NOTNULL="false" COMMENT="JSON of generation form data (source descriptor, per-type counts, output mode, etc.)"/>
+        <FIELD NAME="sourcetext"       TYPE="text"              NOTNULL="false" COMMENT="Extracted text from source(s) — cached for retry and visibility"/>
+        <FIELD NAME="resultcategoryid" TYPE="int"  LENGTH="10"  NOTNULL="false" COMMENT="Created question_categories.id"/>
+        <FIELD NAME="resultquizid"     TYPE="int"  LENGTH="10"  NOTNULL="false" COMMENT="Created (or augmented) course-module ID of the quiz"/>
+        <FIELD NAME="log"              TYPE="text"              NOTNULL="false" COMMENT="Progress log lines (one entry per LLM call / step)"/>
+        <FIELD NAME="lasterror"        TYPE="text"              NOTNULL="false"/>
+        <FIELD NAME="attempts"         TYPE="int"  LENGTH="4"   NOTNULL="true"  DEFAULT="0"/>
+        <FIELD NAME="timecreated"      TYPE="int"  LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+        <FIELD NAME="timemodified"     TYPE="int"  LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course_status" UNIQUE="false" FIELDS="courseid, status"/>
+        <INDEX NAME="userid"        UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>

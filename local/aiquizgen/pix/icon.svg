@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Feuille du fond (effet de pile : plusieurs questions générées) -->
+  <rect x="26" y="18" width="48" height="68" rx="5" fill="#6c63ff" opacity="0.10"/>
+  <rect x="26" y="18" width="48" height="68" rx="5" fill="none" stroke="#6c63ff" stroke-width="3" opacity="0.4"/>
+  <!-- Feuille de devant -->
+  <rect x="18" y="14" width="48" height="68" rx="5" fill="#6c63ff" opacity="0.15"/>
+  <rect x="18" y="14" width="48" height="68" rx="5" fill="none" stroke="#6c63ff" stroke-width="4"/>
+  <!-- Lignes de questions -->
+  <line x1="26" y1="28" x2="58" y2="28" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="26" y1="40" x2="54" y2="40" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="26" y1="52" x2="58" y2="52" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="26" y1="64" x2="48" y2="64" stroke="#6c63ff" stroke-width="3" stroke-linecap="round"/>
+  <!-- Pastille IA -->
+  <circle cx="74" cy="74" r="20" fill="#6c63ff"/>
+  <text x="74" y="81" font-size="22" font-weight="bold" text-anchor="middle"
+        font-family="sans-serif" fill="#ffffff">AI</text>
+</svg>
