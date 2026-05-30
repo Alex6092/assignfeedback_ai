@@ -29,9 +29,13 @@ $string['source_lesson_help']   = 'Lesson from this course whose contents (page 
 $string['source_lesson_choose'] = 'Choose a lesson';
 $string['source_lesson_none']   = 'No lesson is available in this course.';
 
-$string['counts_heading']   = 'Types and counts';
-$string['mcqcount']         = 'Standard Moodle multiple choice';
-$string['mcqcount_help']    = 'Number of multiple-choice questions (standard Moodle qtype) to generate from the source. Between 1 and 50. Other types (AI short answer, AI essay, random-pool MCQ) will be added in upcoming development steps.';
+$string['counts_heading']        = 'Types and counts';
+$string['mcqcount']              = 'Standard Moodle multiple choice';
+$string['mcqcount_help']         = 'Number of multiple-choice questions (standard Moodle qtype) to generate from the source. Between 0 and 50. Set 0 to only generate AI short-answer questions.';
+$string['shortanswercount']      = 'AI-graded short answers';
+$string['shortanswercount_help'] = 'Number of short-answer questions (1–3 sentences) auto-graded by the LLM (qtype_aishortanswer). Between 0 and 50. Use sparingly: each student submission will trigger an LLM call to grade it.';
+$string['essaycount']            = 'AI-graded essays';
+$string['essaycount_help']       = 'Number of essay prompts (1–2 pages written by the student) auto-graded by the LLM (qtype_aiessay). Between 0 and 10. Use VERY sparingly: grading an essay takes several seconds per submission, and long open-ended questions are harder to grade consistently by an LLM.';
 
 $string['variation_heading']         = 'Per-student variation';
 $string['variation_mode']            = 'Variation mode';
@@ -50,8 +54,14 @@ $string['quizname_help']    = 'The quiz will be created in the general section o
 $string['generate_button']  = 'Generate the test';
 
 // Validation errors
-$string['error_mcqcount_min']           = 'At least 1 question is required.';
-$string['error_mcqcount_max']           = 'Maximum 50 questions per generation.';
+$string['error_total_min']                 = 'Request at least one question (MCQ or short answer).';
+$string['error_mcqcount_negative']         = 'The MCQ count cannot be negative.';
+$string['error_mcqcount_min']              = 'At least 1 MCQ if you ask for any.';
+$string['error_mcqcount_max']              = 'Maximum 50 MCQ per generation.';
+$string['error_shortanswercount_negative'] = 'The short-answer count cannot be negative.';
+$string['error_shortanswercount_max']      = 'Maximum 50 short answers per generation.';
+$string['error_essaycount_negative']       = 'The essay count cannot be negative.';
+$string['error_essaycount_max']            = 'Maximum 10 essays per generation (expensive to grade).';
 $string['error_source_required']        = 'You must provide a source PDF file.';
 $string['error_source_lesson_required'] = 'You must pick a lesson.';
 $string['error_source_lesson_invalid']  = 'The selected lesson does not belong to this course.';

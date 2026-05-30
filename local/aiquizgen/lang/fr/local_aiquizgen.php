@@ -29,9 +29,13 @@ $string['source_lesson_help']   = 'Leçon du cours dont le contenu (titres + tex
 $string['source_lesson_choose'] = 'Choisir une leçon';
 $string['source_lesson_none']   = 'Aucune leçon n\'est disponible dans ce cours.';
 
-$string['counts_heading']   = 'Types et nombres';
-$string['mcqcount']         = 'QCM standard Moodle';
-$string['mcqcount_help']    = 'Nombre de questions à choix multiple (type Moodle standard) à générer à partir de la source. Entre 1 et 50. Les autres types (réponse courte IA, composition IA, QCM à pool aléatoire) seront ajoutés dans les étapes suivantes de développement.';
+$string['counts_heading']        = 'Types et nombres';
+$string['mcqcount']              = 'QCM standard Moodle';
+$string['mcqcount_help']         = 'Nombre de questions à choix multiple (type Moodle standard) à générer à partir de la source. Entre 0 et 50. Met 0 si tu ne veux que des réponses courtes IA.';
+$string['shortanswercount']      = 'Réponses courtes corrigées par IA';
+$string['shortanswercount_help'] = 'Nombre de questions à réponse courte (1 à 3 phrases) corrigées automatiquement par le LLM (type qtype_aishortanswer). Entre 0 et 50. À utiliser avec parcimonie : chaque copie d\'étudiant déclenchera un appel au LLM à la soumission du quiz.';
+$string['essaycount']            = 'Compositions corrigées par IA';
+$string['essaycount_help']       = 'Nombre de sujets de composition (1 à 2 pages rédigées par l\'étudiant) corrigés automatiquement par le LLM (type qtype_aiessay). Entre 0 et 10. À utiliser TRÈS parcimonieusement : la correction d\'une composition est longue (plusieurs secondes par copie), et les questions ouvertes longues sont plus difficiles à noter de manière homogène par un LLM.';
 
 $string['variation_heading']         = 'Variation entre étudiants';
 $string['variation_mode']            = 'Mode de variation';
@@ -50,8 +54,14 @@ $string['quizname_help']    = 'Le quiz sera créé dans la section générale du
 $string['generate_button']  = 'Générer le test';
 
 // Erreurs de validation
-$string['error_mcqcount_min']           = 'Au moins 1 question est requise.';
-$string['error_mcqcount_max']           = 'Maximum 50 questions par génération.';
+$string['error_total_min']                  = 'Demande au moins une question (QCM ou réponse courte).';
+$string['error_mcqcount_negative']          = 'Le nombre de QCM ne peut pas être négatif.';
+$string['error_mcqcount_min']               = 'Au moins 1 QCM si tu en demandes.';
+$string['error_mcqcount_max']               = 'Maximum 50 QCM par génération.';
+$string['error_shortanswercount_negative']  = 'Le nombre de réponses courtes ne peut pas être négatif.';
+$string['error_shortanswercount_max']       = 'Maximum 50 réponses courtes par génération.';
+$string['error_essaycount_negative']        = 'Le nombre de compositions ne peut pas être négatif.';
+$string['error_essaycount_max']             = 'Maximum 10 compositions par génération (coûteuses à corriger).';
 $string['error_source_required']        = 'Vous devez fournir un fichier PDF source.';
 $string['error_source_lesson_required'] = 'Vous devez choisir une leçon.';
 $string['error_source_lesson_invalid']  = 'La leçon sélectionnée n\'appartient pas à ce cours.';

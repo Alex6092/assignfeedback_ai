@@ -91,6 +91,20 @@ class generate_form extends \moodleform {
         $mform->addHelpButton('mcqcount', 'mcqcount', 'local_aiquizgen');
         $mform->addRule('mcqcount', null, 'required', null, 'client');
 
+        $mform->addElement('text', 'shortanswercount',
+            get_string('shortanswercount', 'local_aiquizgen'),
+            array('size' => 4));
+        $mform->setType('shortanswercount', PARAM_INT);
+        $mform->setDefault('shortanswercount', 0);
+        $mform->addHelpButton('shortanswercount', 'shortanswercount', 'local_aiquizgen');
+
+        $mform->addElement('text', 'essaycount',
+            get_string('essaycount', 'local_aiquizgen'),
+            array('size' => 4));
+        $mform->setType('essaycount', PARAM_INT);
+        $mform->setDefault('essaycount', 0);
+        $mform->addHelpButton('essaycount', 'essaycount', 'local_aiquizgen');
+
         // -----------------------------------------------------------
         //  VARIATION (fixe vs tirage aléatoire par tentative)
         // -----------------------------------------------------------
@@ -150,14 +164,43 @@ class generate_form extends \moodleform {
 
         $errors = parent::validation($data, $files);
 
-        $count = isset($data['mcqcount']) ? (int)$data['mcqcount'] : 0;
-        if ($count < 1) {
-            $errors['mcqcount'] = get_string('error_mcqcount_min', 'local_aiquizgen');
-        } else if ($count > 50) {
-            $errors['mcqcount'] = get_string('error_mcqcount_max', 'local_aiquizgen');
+        $mcq    = isset($data['mcqcount'])
+            ? (int)$data['mcqcount'] : 0;
+        $sa     = isset($data['shortanswercount'])
+            ? (int)$data['shortanswercount'] : 0;
+        $essay  = isset($data['essaycount'])
+            ? (int)$data['essaycount'] : 0;
+
+        if ($mcq < 0) {
+            $errors['mcqcount'] = get_string('error_mcqcount_negative',
+                'local_aiquizgen');
+        } else if ($mcq > 50) {
+            $errors['mcqcount'] = get_string('error_mcqcount_max',
+                'local_aiquizgen');
+        }
+        if ($sa < 0) {
+            $errors['shortanswercount'] = get_string(
+                'error_shortanswercount_negative', 'local_aiquizgen');
+        } else if ($sa > 50) {
+            $errors['shortanswercount'] = get_string(
+                'error_shortanswercount_max', 'local_aiquizgen');
+        }
+        if ($essay < 0) {
+            $errors['essaycount'] = get_string(
+                'error_essaycount_negative', 'local_aiquizgen');
+        } else if ($essay > 10) {
+            // Plafond plus strict pour les compositions : coûteuses à corriger.
+            $errors['essaycount'] = get_string(
+                'error_essaycount_max', 'local_aiquizgen');
+        }
+        $totalcount = max(0, $mcq) + max(0, $sa) + max(0, $essay);
+        if ($totalcount < 1 && empty($errors['mcqcount'])
+                            && empty($errors['shortanswercount'])
+                            && empty($errors['essaycount'])) {
+            $errors['mcqcount'] = get_string('error_total_min', 'local_aiquizgen');
         }
 
-        // Cohérence du tirage aléatoire.
+        // Cohérence du tirage aléatoire (basé sur le total).
         $variationmode = isset($data['variationmode'])
             ? (string)$data['variationmode'] : 'fixed';
         if ($variationmode === 'random') {
@@ -166,8 +209,7 @@ class generate_form extends \moodleform {
             if ($rpp < 1) {
                 $errors['randomperattempt'] = get_string(
                     'error_randomperattempt_min', 'local_aiquizgen');
-            } else if ($count >= 1 && $rpp > $count) {
-                // On ne peut pas tirer plus de questions que ce qu'on génère.
+            } else if ($totalcount >= 1 && $rpp > $totalcount) {
                 $errors['randomperattempt'] = get_string(
                     'error_randomperattempt_max', 'local_aiquizgen');
             }

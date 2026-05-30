@@ -113,11 +113,20 @@ class job_handler implements \local_aifeedback\job_handler {
     protected function process_one(\stdClass $job): void {
         global $DB;
 
-        $params   = json_decode((string)$job->params, true) ?: array();
-        $mcqcount = isset($params['mcqcount']) ? (int)$params['mcqcount'] : 10;
-        $quizname = isset($params['quizname']) ? trim((string)$params['quizname']) : 'Test IA';
+        $params           = json_decode((string)$job->params, true) ?: array();
+        $mcqcount         = isset($params['mcqcount'])
+            ? max(0, (int)$params['mcqcount']) : 0;
+        $shortanswercount = isset($params['shortanswercount'])
+            ? max(0, (int)$params['shortanswercount']) : 0;
+        $essaycount       = isset($params['essaycount'])
+            ? max(0, (int)$params['essaycount']) : 0;
+        $quizname = isset($params['quizname'])
+            ? trim((string)$params['quizname']) : 'Test IA';
         if ($quizname === '') {
             $quizname = 'Test IA';
+        }
+        if ($mcqcount + $shortanswercount + $essaycount < 1) {
+            throw new \moodle_exception('error_total_min', 'local_aiquizgen');
         }
 
         // Contexte cours : sert UNIQUEMENT à retrouver le PDF source
@@ -133,10 +142,32 @@ class job_handler implements \local_aifeedback\job_handler {
         $this->log($job, 'Texte extrait : ' . strlen($source['text']) . ' caractères'
             . ($imgcount > 0 ? ', ' . $imgcount . ' image(s)' : '') . '.');
 
-        // --- 2. Génération des QCM via LLM ---
-        $this->log($job, 'Appel LLM (génération de ' . $mcqcount . ' QCM)…');
-        $mcqs = $this->generate_mcqs($source['text'], $mcqcount, $source['images']);
-        $this->log($job, 'LLM a renvoyé ' . count($mcqs) . ' QCM valide(s).');
+        // --- 2. Génération des questions via LLM (un appel par type) ---
+        $mcqs   = array();
+        $sas    = array();
+        $essays = array();
+        if ($mcqcount > 0) {
+            $this->log($job, 'Appel LLM (génération de ' . $mcqcount . ' QCM)…');
+            $mcqs = $this->generate_mcqs($source['text'], $mcqcount, $source['images']);
+            $this->log($job, 'LLM a renvoyé ' . count($mcqs) . ' QCM valide(s).');
+        }
+        if ($shortanswercount > 0) {
+            $this->log($job, 'Appel LLM (génération de ' . $shortanswercount
+                . ' réponse(s) courte(s))…');
+            $sas = $this->generate_shortanswers($source['text'], $shortanswercount,
+                $source['images']);
+            $this->log($job, 'LLM a renvoyé ' . count($sas) . ' réponse(s) courte(s) valide(s).');
+        }
+        if ($essaycount > 0) {
+            $this->log($job, 'Appel LLM (génération de ' . $essaycount
+                . ' composition(s))…');
+            $essays = $this->generate_essays($source['text'], $essaycount,
+                $source['images']);
+            $this->log($job, 'LLM a renvoyé ' . count($essays) . ' composition(s) valide(s).');
+        }
+        if (empty($mcqs) && empty($sas) && empty($essays)) {
+            throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
+        }
 
         // --- 3. Création du module quiz EN PREMIER ---
         // Depuis Moodle 5.0 les banques de questions sont des modules : une
@@ -161,8 +192,27 @@ class job_handler implements \local_aifeedback\job_handler {
                 $qid = $this->create_question($mcq, $categoryid, $modulecontext, $job);
                 $questionids[] = $qid;
             } catch (\Throwable $e) {
-                // Une question rate : on log et on continue, on ne casse pas tout.
-                $this->log($job, 'Question #' . ($i + 1) . ' rejetée : ' . $e->getMessage());
+                $this->log($job, 'QCM #' . ($i + 1) . ' rejeté : ' . $e->getMessage());
+            }
+        }
+        foreach ($sas as $i => $sa) {
+            try {
+                $qid = $this->create_shortanswer_question($sa, $categoryid,
+                    $modulecontext, $job);
+                $questionids[] = $qid;
+            } catch (\Throwable $e) {
+                $this->log($job, 'Réponse courte #' . ($i + 1) . ' rejetée : '
+                    . $e->getMessage());
+            }
+        }
+        foreach ($essays as $i => $essay) {
+            try {
+                $qid = $this->create_essay_question($essay, $categoryid,
+                    $modulecontext, $job);
+                $questionids[] = $qid;
+            } catch (\Throwable $e) {
+                $this->log($job, 'Composition #' . ($i + 1) . ' rejetée : '
+                    . $e->getMessage());
             }
         }
         if (empty($questionids)) {
@@ -401,67 +451,77 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Appelle le LLM avec un JSON Schema strict et retourne un tableau
-     * (filtré) de QCM valides. Throw si rien d'exploitable.
-     *
-     * Si $images est non vide, construit un message user multimodal
-     * (texte + blocs image_url) au format OpenAI. Sinon, message texte
-     * simple.
+     * Construit le tableau de messages OpenAI pour un appel chat completions.
+     * - Sans images : message user texte simple
+     * - Avec images : message user multimodal (text + image_url blocs)
      */
-    private function generate_mcqs(string $sourcetext, int $count,
-            array $images = array()): array {
-        $system = $this->mcq_system_prompt();
-        $user   = "SOURCE :\n" . $sourcetext . "\n\n"
-                . "Génère exactement " . $count
-                . " QCM standard Moodle à partir de ce contenu.";
-        if (!empty($images)) {
-            $user .= "\n\nLes images ci-dessous illustrent la source. "
-                  . "Utilise-les si elles apportent du contenu pertinent "
-                  . "(schémas, diagrammes, exemples de code, formules) ; "
-                  . "ignore-les si elles sont purement décoratives.";
-        }
-
+    private function build_llm_messages(string $system, string $user,
+            array $images): array {
         if (empty($images)) {
-            $messages = array(
+            return array(
                 array('role' => 'system', 'content' => $system),
                 array('role' => 'user',   'content' => $user),
             );
-        } else {
-            $usercontent = array(
-                array('type' => 'text', 'text' => $user),
-            );
-            foreach ($images as $img) {
-                $src = isset($img['source'])   ? (string)$img['source']   : '';
-                $url = isset($img['data_url']) ? (string)$img['data_url'] : '';
-                if ($url === '') {
-                    continue;
-                }
-                if ($src !== '') {
-                    $usercontent[] = array('type' => 'text',
-                        'text' => 'Image : ' . $src);
-                }
-                $usercontent[] = array(
-                    'type'      => 'image_url',
-                    'image_url' => array('url' => $url),
-                );
+        }
+        $usercontent = array(
+            array('type' => 'text', 'text' => $user),
+        );
+        foreach ($images as $img) {
+            $src = isset($img['source'])   ? (string)$img['source']   : '';
+            $url = isset($img['data_url']) ? (string)$img['data_url'] : '';
+            if ($url === '') {
+                continue;
             }
-            $messages = array(
-                array('role' => 'system', 'content' => $system),
-                array('role' => 'user',   'content' => $usercontent),
+            if ($src !== '') {
+                $usercontent[] = array('type' => 'text',
+                    'text' => 'Image : ' . $src);
+            }
+            $usercontent[] = array(
+                'type'      => 'image_url',
+                'image_url' => array('url' => $url),
             );
         }
+        return array(
+            array('role' => 'system', 'content' => $system),
+            array('role' => 'user',   'content' => $usercontent),
+        );
+    }
 
+    /**
+     * Lance un appel LLM avec JSON Schema strict pour générer un tableau
+     * `questions`. Filtre via $validator, tronque à $count si LLM a dépassé,
+     * throw `llm_no_questions` si rien d'exploitable ne survit.
+     *
+     * Pattern partagé par les trois types de questions (MCQ / réponse courte
+     * IA / composition IA) — seuls le prompt système, le schéma JSON, le
+     * validateur et le `max_tokens` changent entre eux.
+     *
+     * @param string   $systemprompt prompt rôle system
+     * @param string   $userprompt   message user texte (sera enrichi de
+     *                                blocs image_url si $images non vide)
+     * @param array    $images       liste {source, data_url} pour multimodal
+     * @param string   $schemaname   nom unique du schéma côté response_format
+     * @param array    $schema       JSON Schema strict (avec « questions » array)
+     * @param int      $count        nombre demandé (tronqué si dépassement)
+     * @param callable $validator    fonction(array $q): bool — true si exploitable
+     * @param int      $maxtokens    plafond de tokens en réponse
+     */
+    private function call_llm_for_questions(string $systemprompt, string $userprompt,
+            array $images, string $schemaname, array $schema, int $count,
+            callable $validator, int $maxtokens = 4096): array {
+
+        $messages = $this->build_llm_messages($systemprompt, $userprompt, $images);
         $options = array(
             'response_format' => array(
                 'type'        => 'json_schema',
                 'json_schema' => array(
-                    'name'   => 'local_aiquizgen_mcq_response',
+                    'name'   => $schemaname,
                     'strict' => true,
-                    'schema' => $this->mcq_schema(),
+                    'schema' => $schema,
                 ),
             ),
             'temperature' => 0.4, // un peu de diversité, pas du créatif
-            'max_tokens'  => 4096,
+            'max_tokens'  => $maxtokens,
         );
 
         $result = \local_aifeedback\api::call($messages, $options);
@@ -470,25 +530,88 @@ class job_handler implements \local_aifeedback\job_handler {
             throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
         }
 
-        // Filtre les QCM mal formés (sans bonne réponse, sans énoncé, etc.)
-        $mcqs = array();
+        $valids = array();
         foreach ($result['questions'] as $q) {
-            if (!is_array($q)) {
-                continue;
-            }
-            if ($this->is_valid_mcq($q)) {
-                $mcqs[] = $q;
+            if (is_array($q) && $validator($q)) {
+                $valids[] = $q;
             }
         }
-
-        // Si LLM a dépassé, on tronque.
-        if (count($mcqs) > $count) {
-            $mcqs = array_slice($mcqs, 0, $count);
+        if (count($valids) > $count) {
+            $valids = array_slice($valids, 0, $count);
         }
-        if (empty($mcqs)) {
+        if (empty($valids)) {
             throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
         }
-        return $mcqs;
+        return $valids;
+    }
+
+    /**
+     * Note partagée par tous les wrappers ci-dessous : si $images est
+     * non vide, on annexe une consigne au user prompt pour expliciter
+     * quoi en faire (sans laisser le LLM les ignorer ou les surinterpréter).
+     */
+    private function image_consigne(): string {
+        return "\n\nLes images ci-dessous illustrent la source. "
+            . "Utilise-les si elles apportent du contenu pertinent "
+            . "(schémas, diagrammes, exemples de code, formules) ; "
+            . "ignore-les si elles sont purement décoratives.";
+    }
+
+    /**
+     * Génère N QCM via le LLM (qtype_multichoice).
+     */
+    private function generate_mcqs(string $sourcetext, int $count,
+            array $images = array()): array {
+        $user = "SOURCE :\n" . $sourcetext . "\n\n"
+              . "Génère exactement " . $count
+              . " QCM standard Moodle à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= $this->image_consigne();
+        }
+        return $this->call_llm_for_questions(
+            $this->mcq_system_prompt(), $user, $images,
+            'local_aiquizgen_mcq_response', $this->mcq_schema(), $count,
+            array($this, 'is_valid_mcq')
+        );
+    }
+
+    /**
+     * Génère N questions à réponse courte (qtype_aishortanswer).
+     */
+    private function generate_shortanswers(string $sourcetext, int $count,
+            array $images = array()): array {
+        $user = "SOURCE :\n" . $sourcetext . "\n\n"
+              . "Génère exactement " . $count
+              . " questions à réponse courte à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= $this->image_consigne();
+        }
+        return $this->call_llm_for_questions(
+            $this->sa_system_prompt(), $user, $images,
+            'local_aiquizgen_sa_response', $this->sa_schema(), $count,
+            array($this, 'is_valid_sa')
+        );
+    }
+
+    /**
+     * Génère N compositions (qtype_aiessay). Plafond de tokens relevé car
+     * chaque composition produit un énoncé + un corrigé attendu détaillé
+     * + une liste de compétences — facilement 600-1000 tokens par item.
+     */
+    private function generate_essays(string $sourcetext, int $count,
+            array $images = array()): array {
+        $user = "SOURCE :\n" . $sourcetext . "\n\n"
+              . "Génère exactement " . $count
+              . " sujet(s) de composition à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= $this->image_consigne();
+        }
+        // Marge tokens plus large : 6000 (laisse ~1000 t/composition).
+        return $this->call_llm_for_questions(
+            $this->essay_system_prompt(), $user, $images,
+            'local_aiquizgen_essay_response', $this->essay_schema(), $count,
+            array($this, 'is_valid_essay'), 6000
+        );
     }
 
     /**
@@ -626,6 +749,196 @@ class job_handler implements \local_aifeedback\job_handler {
             $DB->insert_record('qtype_multichoice_options', $options);
 
             // --- 6. Event question_created (utile pour les observers) ---
+            $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
+            if ($eventcontext) {
+                $event = \core\event\question_created::create_from_question_instance(
+                    $qdata, $eventcontext);
+                $event->trigger();
+            }
+
+            $transaction->allow_commit();
+            return (int)$qdata->id;
+
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
+        }
+    }
+
+    /**
+     * Crée une question de type qtype_aiessay par INSERTs directs.
+     *
+     * Même pattern que create_question / create_shortanswer_question, avec
+     * sa propre table d'options qtype_aiessay_options + champ `competencies`
+     * en plus de `expectedanswer`.
+     *
+     * Réglages par défaut alignés sur ce qu'un enseignant choisirait pour
+     * une compo libre :
+     *   - responseformat='editor', responsefieldlines=15
+     *   - pas de min/maxwordlimit, pas de pièces jointes
+     *   - systemprompt / apiurl / model / apikey / vision_enabled à null/0
+     *     (les réglages globaux de local_aifeedback s'appliqueront à la
+     *     correction)
+     */
+    private function create_essay_question(array $essay, int $categoryid,
+                                           \context $context, \stdClass $job): int {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $now    = time();
+            $userid = (int)$job->userid;
+
+            // --- 1. {question} -------------------------------------------
+            $qdata = new \stdClass();
+            $qdata->category              = $categoryid;
+            $qdata->parent                = 0;
+            $qdata->name                  = $this->truncate_name((string)$essay['name']);
+            $qdata->questiontext          = $this->ensure_html((string)$essay['questiontext']);
+            $qdata->questiontextformat    = FORMAT_HTML;
+            $qdata->generalfeedback       = '';
+            $qdata->generalfeedbackformat = FORMAT_HTML;
+            $qdata->defaultmark           = 1.0;
+            $qdata->penalty               = 0.0; // correction asynchrone, pas de pénalité
+            $qdata->qtype                 = 'aiessay';
+            $qdata->length                = 1;
+            $qdata->stamp                 = make_unique_id_code();
+            $qdata->timecreated           = $now;
+            $qdata->timemodified          = $now;
+            $qdata->createdby             = $userid;
+            $qdata->modifiedby            = $userid;
+            $qdata->idnumber              = null;
+
+            $qdata->id = $DB->insert_record('question', $qdata);
+
+            // --- 2. {question_bank_entries} ------------------------------
+            $entry = new \stdClass();
+            $entry->questioncategoryid = $categoryid;
+            $entry->idnumber           = null;
+            $entry->ownerid            = $userid;
+            $entry->id = $DB->insert_record('question_bank_entries', $entry);
+
+            // --- 3. {question_versions} ----------------------------------
+            $version = new \stdClass();
+            $version->questionbankentryid = $entry->id;
+            $version->questionid          = $qdata->id;
+            $version->version             = 1;
+            $version->status              = 'ready';
+            $version->id = $DB->insert_record('question_versions', $version);
+
+            // --- 4. {qtype_aiessay_options} ------------------------------
+            $options = new \stdClass();
+            $options->questionid              = $qdata->id;
+            $options->responseformat          = 'editor';
+            $options->responserequired        = 1;
+            $options->responsefieldlines      = 15;
+            $options->minwordlimit            = null;
+            $options->maxwordlimit            = null;
+            $options->attachments             = 0;
+            $options->attachmentsrequired     = 0;
+            $options->filetypeslist           = null;
+            $options->systemprompt            = null;
+            $options->expectedanswer          = trim((string)$essay['expected_answer']);
+            $options->competencies            = trim((string)($essay['competencies'] ?? ''));
+            $options->apiurl                  = null;
+            $options->apiurl_override         = 0;
+            $options->model                   = null;
+            $options->model_override          = 0;
+            $options->apikey                  = null;
+            $options->apikey_override         = 0;
+            $options->vision_enabled          = 0;
+            $options->vision_enabled_override = 0;
+            $DB->insert_record('qtype_aiessay_options', $options);
+
+            // --- 5. Event question_created -------------------------------
+            $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
+            if ($eventcontext) {
+                $event = \core\event\question_created::create_from_question_instance(
+                    $qdata, $eventcontext);
+                $event->trigger();
+            }
+
+            $transaction->allow_commit();
+            return (int)$qdata->id;
+
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
+        }
+    }
+
+    /**
+     * Crée une question de type qtype_aishortanswer par INSERTs directs.
+     *
+     * Même pattern que create_question() (multichoice) mais sans question_answers
+     * (le qtype n'a pas de réponses prédéfinies — c'est l'IA qui notera) et avec
+     * sa propre table d'options (qtype_aishortanswer_options).
+     *
+     * On laisse systemprompt / apiurl / model / apikey à NULL (les valeurs
+     * globales de local_aifeedback sont utilisées au moment de la correction).
+     * On stocke `expected_answer` côté DB pour aider le correcteur IA.
+     */
+    private function create_shortanswer_question(array $sa, int $categoryid,
+                                                 \context $context, \stdClass $job): int {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $now    = time();
+            $userid = (int)$job->userid;
+
+            // --- 1. {question} -------------------------------------------
+            $qdata = new \stdClass();
+            $qdata->category              = $categoryid; // legacy ignoré en 5.x
+            $qdata->parent                = 0;
+            $qdata->name                  = $this->truncate_name((string)$sa['name']);
+            $qdata->questiontext          = $this->ensure_html((string)$sa['questiontext']);
+            $qdata->questiontextformat    = FORMAT_HTML;
+            $qdata->generalfeedback       = '';
+            $qdata->generalfeedbackformat = FORMAT_HTML;
+            $qdata->defaultmark           = 1.0;
+            $qdata->penalty               = 0.0; // pas de pénalité (correction asynchrone)
+            $qdata->qtype                 = 'aishortanswer';
+            $qdata->length                = 1;
+            $qdata->stamp                 = make_unique_id_code();
+            $qdata->timecreated           = $now;
+            $qdata->timemodified          = $now;
+            $qdata->createdby             = $userid;
+            $qdata->modifiedby            = $userid;
+            $qdata->idnumber              = null;
+
+            $qdata->id = $DB->insert_record('question', $qdata);
+
+            // --- 2. {question_bank_entries} ------------------------------
+            $entry = new \stdClass();
+            $entry->questioncategoryid = $categoryid;
+            $entry->idnumber           = null;
+            $entry->ownerid            = $userid;
+            $entry->id = $DB->insert_record('question_bank_entries', $entry);
+
+            // --- 3. {question_versions} ----------------------------------
+            $version = new \stdClass();
+            $version->questionbankentryid = $entry->id;
+            $version->questionid          = $qdata->id;
+            $version->version             = 1;
+            $version->status              = 'ready';
+            $version->id = $DB->insert_record('question_versions', $version);
+
+            // --- 4. {qtype_aishortanswer_options} ------------------------
+            $options = new \stdClass();
+            $options->questionid         = $qdata->id;
+            $options->responsefieldlines = 2; // textarea 2 lignes par défaut
+            $options->systemprompt       = null; // utilise le prompt par défaut du qtype
+            $options->expectedanswer     = trim((string)$sa['expected_answer']);
+            $options->apiurl             = null;
+            $options->apiurl_override    = 0;
+            $options->model              = null;
+            $options->model_override     = 0;
+            $options->apikey             = null;
+            $options->apikey_override    = 0;
+            $DB->insert_record('qtype_aishortanswer_options', $options);
+
+            // --- 5. Event question_created -------------------------------
             $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
             if ($eventcontext) {
                 $event = \core\event\question_created::create_from_question_instance(
@@ -1016,6 +1329,122 @@ class job_handler implements \local_aifeedback\job_handler {
         );
     }
 
+    /**
+     * Prompt système pour la génération de questions à RÉPONSE COURTE
+     * (corrigées a posteriori par le qtype_aishortanswer).
+     *
+     * On vise des questions ouvertes brèves (1 à 3 phrases attendues),
+     * avec un corrigé court qui aidera l'IA correcteur.
+     */
+    private function sa_system_prompt(): string {
+        $p  = "Tu es un concepteur de questions ouvertes COURTES pour l'enseignement ";
+        $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
+        $p .= "À partir d'un contenu source (extrait de cours, polycopié, TD), tu dois ";
+        $p .= "générer EXACTEMENT le nombre de questions demandé, factuelles et conformes ";
+        $p .= "au contenu source.\n\n";
+        $p .= "Chaque question doit :\n";
+        $p .= "- pouvoir être répondue en 1 à 3 phrases (ou 1 définition courte),\n";
+        $p .= "- viser la COMPRÉHENSION : définir une notion, expliquer un mécanisme, ";
+        $p .= "justifier un choix, identifier un rôle, comparer deux concepts proches…\n";
+        $p .= "- ne PAS être à choix multiple, ni vrai/faux, ni à trous, ni à puces.\n";
+        $p .= "- ne PAS demander un simple mot isolé qu'on irait chercher dans le texte ";
+        $p .= "(ce serait mieux fait par un qtype_shortanswer classique).\n\n";
+        $p .= "Structure JSON imposée pour chaque question :\n";
+        $p .= "- \"name\" : titre court (max 80 caractères) identifiant la question dans la banque.\n";
+        $p .= "- \"questiontext\" : énoncé de la question en HTML simple (paragraphes <p>, ";
+        $p .= "gras <strong>, code <code> admis ; pas de tableaux ni d'images).\n";
+        $p .= "- \"expected_answer\" : corrigé concis (1 à 3 phrases ou 1 définition), ";
+        $p .= "en TEXTE BRUT, formulé comme une réponse modèle d'étudiant. Cette réponse ";
+        $p .= "sera utilisée par le correcteur IA à l'exécution du quiz pour évaluer ";
+        $p .= "les copies — sois précis et factuel.\n\n";
+        $p .= "Reste fidèle au contenu source : NE PAS inventer de faits non présents.\n\n";
+        $p .= "La structure JSON de ta réponse est imposée par le schéma fourni dans la requête.";
+        return $p;
+    }
+
+    private function sa_schema(): array {
+        return array(
+            'type'                 => 'object',
+            'additionalProperties' => false,
+            'properties' => array(
+                'questions' => array(
+                    'type'  => 'array',
+                    'items' => array(
+                        'type'                 => 'object',
+                        'additionalProperties' => false,
+                        'properties' => array(
+                            'name'            => array('type' => 'string'),
+                            'questiontext'    => array('type' => 'string'),
+                            'expected_answer' => array('type' => 'string'),
+                        ),
+                        'required' => array('name', 'questiontext', 'expected_answer'),
+                    ),
+                ),
+            ),
+            'required' => array('questions'),
+        );
+    }
+
+    /**
+     * Prompt système pour la génération de COMPOSITIONS (qtype_aiessay) :
+     * sujets longs nécessitant une réflexion structurée de l'étudiant
+     * (1 à 2 pages rédigées), avec un corrigé détaillé et une liste de
+     * compétences évaluées qui guideront la correction IA a posteriori.
+     */
+    private function essay_system_prompt(): string {
+        $p  = "Tu es un concepteur de sujets de COMPOSITION pour l'enseignement ";
+        $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
+        $p .= "À partir d'un contenu source (extrait de cours, polycopié, TD), tu dois ";
+        $p .= "générer EXACTEMENT le nombre de sujets demandé, exigeants mais traitables ";
+        $p .= "à partir du seul contenu fourni.\n\n";
+        $p .= "Chaque sujet doit :\n";
+        $p .= "- demander une RÉFLEXION STRUCTURÉE rédigée (l'étudiant écrira 1 à 2 ";
+        $p .= "pages : introduction + développement organisé + conclusion brève) ;\n";
+        $p .= "- aller au-delà de la simple restitution : justifier un choix de conception, ";
+        $p .= "comparer deux approches, analyser un cas, expliquer un mécanisme en profondeur ;\n";
+        $p .= "- ne PAS être un QCM, ni une réponse courte, ni une simple liste à puces.\n\n";
+        $p .= "Structure JSON imposée pour chaque sujet :\n";
+        $p .= "- \"name\" : titre court (max 80 caractères) identifiant le sujet dans la banque.\n";
+        $p .= "- \"questiontext\" : énoncé du sujet en HTML simple (paragraphes <p>, gras ";
+        $p .= "<strong>, code <code> admis ; PAS de tableaux ni d'images). Peut comporter ";
+        $p .= "une mise en situation, plusieurs consignes ou questions intermédiaires, et ";
+        $p .= "préciser le format attendu (« en 1 à 2 pages, structurez votre réponse… »).\n";
+        $p .= "- \"expected_answer\" : corrigé attendu DÉTAILLÉ en texte brut (plusieurs ";
+        $p .= "paragraphes), couvrant les points clés que l'étudiant doit mobiliser. Sera ";
+        $p .= "utilisé par le correcteur IA à l'exécution du quiz.\n";
+        $p .= "- \"competencies\" : liste des COMPÉTENCES ou critères évalués, une par ligne, ";
+        $p .= "alignée sur le référentiel BTS (\"Identifier les composants d'une architecture\", ";
+        $p .= "\"Justifier un choix de conception\", etc.). 3 à 6 compétences. Texte brut.\n\n";
+        $p .= "Reste fidèle au contenu source : NE PAS inventer de faits non présents.\n\n";
+        $p .= "La structure JSON de ta réponse est imposée par le schéma fourni dans la requête.";
+        return $p;
+    }
+
+    private function essay_schema(): array {
+        return array(
+            'type'                 => 'object',
+            'additionalProperties' => false,
+            'properties' => array(
+                'questions' => array(
+                    'type'  => 'array',
+                    'items' => array(
+                        'type'                 => 'object',
+                        'additionalProperties' => false,
+                        'properties' => array(
+                            'name'            => array('type' => 'string'),
+                            'questiontext'    => array('type' => 'string'),
+                            'expected_answer' => array('type' => 'string'),
+                            'competencies'    => array('type' => 'string'),
+                        ),
+                        'required' => array('name', 'questiontext',
+                            'expected_answer', 'competencies'),
+                    ),
+                ),
+            ),
+            'required' => array('questions'),
+        );
+    }
+
     // =====================================================================
     //  HELPERS
     // =====================================================================
@@ -1047,6 +1476,27 @@ class job_handler implements \local_aifeedback\job_handler {
             }
         }
         return $correctcount === 1;
+    }
+
+    /**
+     * Valide qu'une réponse courte produite par le LLM est exploitable :
+     * name, questiontext et expected_answer non vides.
+     */
+    private function is_valid_sa(array $sa): bool {
+        return !empty($sa['name'])
+            && !empty($sa['questiontext'])
+            && !empty($sa['expected_answer']);
+    }
+
+    /**
+     * Valide qu'une composition produite par le LLM est exploitable.
+     * `competencies` peut être vide (la correction IA fonctionnera quand
+     * même), donc on ne l'exige pas — seulement name + énoncé + corrigé.
+     */
+    private function is_valid_essay(array $essay): bool {
+        return !empty($essay['name'])
+            && !empty($essay['questiontext'])
+            && !empty($essay['expected_answer']);
     }
 
     /**

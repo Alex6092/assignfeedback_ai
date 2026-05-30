@@ -80,6 +80,18 @@ if (isset($params['mcqcount'])) {
         (int)$params['mcqcount'],
     );
 }
+if (isset($params['shortanswercount']) && (int)$params['shortanswercount'] > 0) {
+    $rows[] = array(
+        get_string('shortanswercount', 'local_aiquizgen'),
+        (int)$params['shortanswercount'],
+    );
+}
+if (isset($params['essaycount']) && (int)$params['essaycount'] > 0) {
+    $rows[] = array(
+        get_string('essaycount', 'local_aiquizgen'),
+        (int)$params['essaycount'],
+    );
+}
 // Mode de variation.
 $variationmode = isset($params['variationmode'])
     ? (string)$params['variationmode'] : 'fixed';
