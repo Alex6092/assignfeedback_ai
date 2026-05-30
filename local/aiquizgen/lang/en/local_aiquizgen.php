@@ -13,11 +13,21 @@ $string['privacy:metadata']   = 'The local_aiquizgen plugin does not store perso
 // -----------------------------------------------------------
 //  Generation form
 // -----------------------------------------------------------
-$string['form_intro']       = 'Pick a content source and the number of questions you want generated. The LLM will produce the questions, they will be saved in a new question bank category for this course, and added to a ready-to-use quiz.';
+$string['form_intro']       = 'Pick a content source (a PDF you upload, or a Moodle lesson already in this course) and the number of questions you want generated. The LLM will produce the questions, they will be saved in a new question bank category for the quiz, and added to a ready-to-use quiz.';
 
-$string['source_heading']   = 'Source';
+$string['source_heading']      = 'Source';
+$string['source_type']         = 'Source type';
+$string['source_type_help']    = 'Where the content the LLM uses to write the questions comes from.';
+$string['source_type_pdf']     = 'PDF document (uploaded)';
+$string['source_type_lesson']  = 'Moodle lesson from the course';
+
 $string['source_pdf']       = 'PDF document';
-$string['source_pdf_help']  = 'PDF the LLM will mine for question material (course chapter, handout, lecture notes, etc.). A single file for now.';
+$string['source_pdf_help']  = 'PDF the LLM will mine for question material (course chapter, handout, lecture notes, etc.). A single file.';
+
+$string['source_lesson']        = 'Lesson';
+$string['source_lesson_help']   = 'Lesson from this course whose contents (page titles + texts, and significant illustrations if vision is enabled in global settings) will be forwarded to the LLM.';
+$string['source_lesson_choose'] = 'Choose a lesson';
+$string['source_lesson_none']   = 'No lesson is available in this course.';
 
 $string['counts_heading']   = 'Types and counts';
 $string['mcqcount']         = 'Standard Moodle multiple choice';
@@ -30,9 +40,11 @@ $string['quizname_help']    = 'The quiz will be created in the general section o
 $string['generate_button']  = 'Generate the test';
 
 // Validation errors
-$string['error_mcqcount_min']    = 'At least 1 question is required.';
-$string['error_mcqcount_max']    = 'Maximum 50 questions per generation.';
-$string['error_source_required'] = 'You must provide a source PDF file.';
+$string['error_mcqcount_min']           = 'At least 1 question is required.';
+$string['error_mcqcount_max']           = 'Maximum 50 questions per generation.';
+$string['error_source_required']        = 'You must provide a source PDF file.';
+$string['error_source_lesson_required'] = 'You must pick a lesson.';
+$string['error_source_lesson_invalid']  = 'The selected lesson does not belong to this course.';
 
 // -----------------------------------------------------------
 //  Status page
@@ -63,6 +75,8 @@ $string['back_to_form']          = '← Back to the generation form';
 // -----------------------------------------------------------
 $string['source_missing']        = 'The source PDF associated with this job cannot be found in Moodle storage.';
 $string['source_empty']          = 'No text could be extracted from the source PDF. The document is likely scanned/image-only, without a text layer.';
+$string['source_lesson_missing'] = 'The source lesson cannot be found (was it deleted from the course?).';
+$string['source_lesson_empty']   = 'The lesson contains no usable text.';
 $string['llm_no_questions']      = 'The LLM did not return any usable question.';
 $string['quiz_creation_failed']  = 'Quiz module creation failed.';
 $string['untitled_question']     = 'Untitled question';

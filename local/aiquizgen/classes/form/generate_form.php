@@ -8,10 +8,13 @@ require_once($CFG->libdir . '/formslib.php');
 /**
  * Formulaire de génération d'un test IA.
  *
- * Étape 2 (minimal) : source = un PDF, type généré = QCM core uniquement.
- * Les autres sources (leçon Moodle) et types (réponse courte IA, composition
- * IA, QCM à pool aléatoire) seront ajoutés aux étapes suivantes, en
- * étendant ce même formulaire — d'où le découpage en sections dès maintenant.
+ * Sources supportées :
+ *   - PDF uploadé (depuis l'étape 2)
+ *   - Leçon Moodle du cours (depuis l'étape 4)
+ *
+ * Types générés actuellement : QCM core. Les autres types (réponse courte
+ * IA, composition IA, QCM à pool aléatoire) seront ajoutés aux étapes
+ * suivantes.
  *
  * @package local_aiquizgen
  */
@@ -20,6 +23,7 @@ class generate_form extends \moodleform {
     public function definition() {
         $mform   = $this->_form;
         $custom  = $this->_customdata;
+        $lessons = isset($custom['lessons']) ? (array)$custom['lessons'] : array();
 
         // -----------------------------------------------------------
         //  SOURCE
@@ -28,6 +32,18 @@ class generate_form extends \moodleform {
             get_string('source_heading', 'local_aiquizgen'));
         $mform->setExpanded('sourceheader', true);
 
+        // Sélecteur du type de source.
+        $sourcetypes = array(
+            'pdf'    => get_string('source_type_pdf',    'local_aiquizgen'),
+            'lesson' => get_string('source_type_lesson', 'local_aiquizgen'),
+        );
+        $mform->addElement('select', 'sourcetype',
+            get_string('source_type', 'local_aiquizgen'),
+            $sourcetypes);
+        $mform->setDefault('sourcetype', 'pdf');
+        $mform->addHelpButton('sourcetype', 'source_type', 'local_aiquizgen');
+
+        // Champ PDF — visible uniquement si sourcetype = pdf.
         $mform->addElement('filepicker', 'sourcefile',
             get_string('source_pdf', 'local_aiquizgen'),
             null,
@@ -37,6 +53,28 @@ class generate_form extends \moodleform {
             )
         );
         $mform->addHelpButton('sourcefile', 'source_pdf', 'local_aiquizgen');
+        $mform->hideIf('sourcefile', 'sourcetype', 'neq', 'pdf');
+
+        // Dropdown leçon — visible uniquement si sourcetype = lesson.
+        if (!empty($lessons)) {
+            $lessonoptions = array('' => '-- ' . get_string('source_lesson_choose',
+                'local_aiquizgen') . ' --');
+            foreach ($lessons as $id => $name) {
+                $lessonoptions[(int)$id] = format_string($name);
+            }
+            $mform->addElement('select', 'sourcelessonid',
+                get_string('source_lesson', 'local_aiquizgen'), $lessonoptions);
+            $mform->setType('sourcelessonid', PARAM_INT);
+            $mform->addHelpButton('sourcelessonid', 'source_lesson', 'local_aiquizgen');
+            $mform->hideIf('sourcelessonid', 'sourcetype', 'neq', 'lesson');
+        } else {
+            // Pas de leçon dans le cours → message informatif visible quand on
+            // choisit « Leçon ».
+            $mform->addElement('static', 'sourcelessonid_none',
+                get_string('source_lesson', 'local_aiquizgen'),
+                get_string('source_lesson_none', 'local_aiquizgen'));
+            $mform->hideIf('sourcelessonid_none', 'sourcetype', 'neq', 'lesson');
+        }
 
         // -----------------------------------------------------------
         //  TYPES ET NOMBRES
@@ -78,13 +116,12 @@ class generate_form extends \moodleform {
     }
 
     /**
-     * Validation serveur :
-     *   - mcqcount entre 1 et 50,
-     *   - un fichier PDF effectivement fourni (le filepicker addRule
-     *     'required' ne vérifie pas toujours côté client).
+     * Validation serveur. Selon le type de source :
+     *   - pdf    : un fichier PDF effectivement uploadé dans le draft area
+     *   - lesson : une leçon choisie et appartenant au cours
      */
     public function validation($data, $files) {
-        global $USER;
+        global $DB, $USER;
 
         $errors = parent::validation($data, $files);
 
@@ -95,18 +132,37 @@ class generate_form extends \moodleform {
             $errors['mcqcount'] = get_string('error_mcqcount_max', 'local_aiquizgen');
         }
 
-        // Vérification serveur du PDF.
-        if (!empty($data['sourcefile'])) {
-            $fs        = get_file_storage();
-            $usercxt   = \context_user::instance($USER->id);
-            $draftfiles = $fs->get_area_files(
-                $usercxt->id, 'user', 'draft',
-                (int)$data['sourcefile'], 'id', false);
-            if (empty($draftfiles)) {
-                $errors['sourcefile'] = get_string('error_source_required', 'local_aiquizgen');
+        $sourcetype = isset($data['sourcetype']) ? (string)$data['sourcetype'] : 'pdf';
+        $courseid   = isset($this->_customdata['courseid'])
+            ? (int)$this->_customdata['courseid'] : 0;
+
+        if ($sourcetype === 'pdf') {
+            // Vérification serveur du PDF.
+            if (!empty($data['sourcefile'])) {
+                $fs        = get_file_storage();
+                $usercxt   = \context_user::instance($USER->id);
+                $draftfiles = $fs->get_area_files(
+                    $usercxt->id, 'user', 'draft',
+                    (int)$data['sourcefile'], 'id', false);
+                if (empty($draftfiles)) {
+                    $errors['sourcefile'] = get_string('error_source_required',
+                        'local_aiquizgen');
+                }
+            } else {
+                $errors['sourcefile'] = get_string('error_source_required',
+                    'local_aiquizgen');
             }
-        } else {
-            $errors['sourcefile'] = get_string('error_source_required', 'local_aiquizgen');
+        } else if ($sourcetype === 'lesson') {
+            $lessonid = isset($data['sourcelessonid'])
+                ? (int)$data['sourcelessonid'] : 0;
+            if ($lessonid <= 0) {
+                $errors['sourcelessonid'] = get_string(
+                    'error_source_lesson_required', 'local_aiquizgen');
+            } else if (!$DB->record_exists('lesson',
+                    array('id' => $lessonid, 'course' => $courseid))) {
+                $errors['sourcelessonid'] = get_string(
+                    'error_source_lesson_invalid', 'local_aiquizgen');
+            }
         }
 
         return $errors;

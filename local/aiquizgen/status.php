@@ -80,19 +80,41 @@ if (isset($params['mcqcount'])) {
         (int)$params['mcqcount'],
     );
 }
-// Liste les fichiers source associés.
-$fs    = get_file_storage();
-$files = $fs->get_area_files($context->id, 'local_aiquizgen', 'source',
-    $jobid, 'filename', false);
-if (!empty($files)) {
-    $names = array();
-    foreach ($files as $f) {
-        $names[] = s($f->get_filename());
-    }
+// Affichage de la source selon le type.
+$sourcetype = isset($params['sourcetype']) ? (string)$params['sourcetype'] : 'pdf';
+if ($sourcetype === 'lesson') {
     $rows[] = array(
-        get_string('source_pdf', 'local_aiquizgen'),
-        implode(', ', $names),
+        get_string('source_type', 'local_aiquizgen'),
+        get_string('source_type_lesson', 'local_aiquizgen'),
     );
+    if (!empty($params['sourcelessonid'])) {
+        $lessonname = (string)$DB->get_field('lesson', 'name',
+            array('id' => (int)$params['sourcelessonid']));
+        if ($lessonname !== '') {
+            $rows[] = array(
+                get_string('source_lesson', 'local_aiquizgen'),
+                s($lessonname),
+            );
+        }
+    }
+} else {
+    $rows[] = array(
+        get_string('source_type', 'local_aiquizgen'),
+        get_string('source_type_pdf', 'local_aiquizgen'),
+    );
+    $fs    = get_file_storage();
+    $files = $fs->get_area_files($context->id, 'local_aiquizgen', 'source',
+        $jobid, 'filename', false);
+    if (!empty($files)) {
+        $names = array();
+        foreach ($files as $f) {
+            $names[] = s($f->get_filename());
+        }
+        $rows[] = array(
+            get_string('source_pdf', 'local_aiquizgen'),
+            implode(', ', $names),
+        );
+    }
 }
 if ((int)$job->attempts > 0) {
     $rows[] = array(

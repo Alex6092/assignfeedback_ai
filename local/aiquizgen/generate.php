@@ -2,13 +2,15 @@
 /**
  * Point d'entrée du générateur de tests IA.
  *
- * Étape 2 : affiche le formulaire de génération. À la soumission :
- *   1. Crée une ligne pending dans {local_aiquizgen_jobs}
- *   2. Persiste le PDF dans la file area du job
+ * Affiche le formulaire de génération. À la soumission :
+ *   1. Crée une ligne pending dans {local_aiquizgen_jobs} avec
+ *      `params` JSON qui décrit le type de source (pdf|lesson) et ses infos
+ *   2. Si source=pdf : persiste le fichier dans la file area du job
  *      (component='local_aiquizgen', filearea='source', itemid=$jobid)
- *   3. Redirige vers status.php
- *
- * L'enqueue de la tâche ad-hoc et le job_handler arrivent à l'étape 3.
+ *      Si source=lesson : on ne touche pas au file storage, l'id de la
+ *      leçon suffit (la leçon est lue à la volée par le handler)
+ *   3. Met le job dans la file partagée local_aifeedback
+ *   4. Redirige vers status.php
  */
 
 require_once(__DIR__ . '/../../config.php');
@@ -28,8 +30,14 @@ $PAGE->set_pagelayout('incourse');
 $PAGE->set_title(get_string('pluginname', 'local_aiquizgen'));
 $PAGE->set_heading(format_string($course->fullname));
 
-$form = new \local_aiquizgen\form\generate_form(null,
-    array('courseid' => $courseid));
+// Récupère la liste des leçons du cours pour alimenter le dropdown du form.
+$lessons = $DB->get_records_menu('lesson',
+    array('course' => $courseid), 'name', 'id, name');
+
+$form = new \local_aiquizgen\form\generate_form(null, array(
+    'courseid' => $courseid,
+    'lessons'  => $lessons,
+));
 
 // -------------------------------------------------------------
 //  Annulation : retour à la page du cours
@@ -44,12 +52,17 @@ if ($form->is_cancelled()) {
 if ($data = $form->get_data()) {
     global $DB, $USER;
 
-    $now = time();
+    $now        = time();
+    $sourcetype = isset($data->sourcetype) ? (string)$data->sourcetype : 'pdf';
 
     $params = array(
-        'mcqcount' => (int)$data->mcqcount,
-        'quizname' => (string)$data->quizname,
+        'sourcetype' => $sourcetype,
+        'mcqcount'   => (int)$data->mcqcount,
+        'quizname'   => (string)$data->quizname,
     );
+    if ($sourcetype === 'lesson') {
+        $params['sourcelessonid'] = (int)$data->sourcelessonid;
+    }
 
     $job = new stdClass();
     $job->courseid     = $courseid;
@@ -62,14 +75,18 @@ if ($data = $form->get_data()) {
 
     $jobid = $DB->insert_record('local_aiquizgen_jobs', $job);
 
-    // Déplace le PDF du draft area vers la file area persistante du job.
-    file_save_draft_area_files(
-        (int)$data->sourcefile,
-        $context->id,
-        'local_aiquizgen',
-        'source',
-        $jobid
-    );
+    // Pour les sources PDF, on déplace le fichier du draft area vers la
+    // file area persistante du job. Pour les leçons, on n'a rien à stocker
+    // (on relit la leçon depuis Moodle à la volée).
+    if ($sourcetype === 'pdf' && !empty($data->sourcefile)) {
+        file_save_draft_area_files(
+            (int)$data->sourcefile,
+            $context->id,
+            'local_aiquizgen',
+            'source',
+            $jobid
+        );
+    }
 
     // Met le job dans la file partagée → traitement par le cron.
     \local_aiquizgen\job_handler::enqueue($jobid);

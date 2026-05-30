@@ -124,15 +124,18 @@ class job_handler implements \local_aifeedback\job_handler {
         // (stocké dans la file area du cours par generate.php).
         $coursecontext = \context_course::instance((int)$job->courseid);
 
-        // --- 1. Extraction du PDF ---
-        $this->log($job, 'Lecture du PDF source…');
-        $sourcetext = $this->extract_source($job, $coursecontext);
-        $DB->set_field(self::TABLE, 'sourcetext', $sourcetext, array('id' => $job->id));
-        $this->log($job, 'Texte extrait : ' . strlen($sourcetext) . ' caractères.');
+        // --- 1. Extraction de la source (PDF ou leçon) ---
+        $this->log($job, 'Lecture de la source…');
+        $source = $this->extract_source($job, $coursecontext);
+        $DB->set_field(self::TABLE, 'sourcetext', $source['text'],
+            array('id' => $job->id));
+        $imgcount = count($source['images']);
+        $this->log($job, 'Texte extrait : ' . strlen($source['text']) . ' caractères'
+            . ($imgcount > 0 ? ', ' . $imgcount . ' image(s)' : '') . '.');
 
         // --- 2. Génération des QCM via LLM ---
         $this->log($job, 'Appel LLM (génération de ' . $mcqcount . ' QCM)…');
-        $mcqs = $this->generate_mcqs($sourcetext, $mcqcount);
+        $mcqs = $this->generate_mcqs($source['text'], $mcqcount, $source['images']);
         $this->log($job, 'LLM a renvoyé ' . count($mcqs) . ' QCM valide(s).');
 
         // --- 3. Création du module quiz EN PREMIER ---
@@ -186,30 +189,121 @@ class job_handler implements \local_aifeedback\job_handler {
     // =====================================================================
 
     /**
-     * Lit le PDF stocké dans la file area du job, retourne son texte
-     * (tronqué à SOURCE_TEXT_CAP si besoin pour rentrer dans le contexte LLM).
+     * Dispatcher : lit la source du job (PDF ou leçon Moodle) et retourne
+     * un tableau {text, images}.
      *
-     * @throws \moodle_exception si fichier manquant ou texte vide
+     * - `text` est le texte brut envoyé au LLM (tronqué à SOURCE_TEXT_CAP).
+     * - `images` est un tableau d'images extraites (au format {source, data_url})
+     *   pour le mode multimodal, vide si vision désactivée globalement.
+     *
+     * @throws \moodle_exception si source introuvable ou vide
      */
-    private function extract_source(\stdClass $job, \context_course $context): string {
+    private function extract_source(\stdClass $job, \context_course $coursecontext): array {
+        $params     = json_decode((string)$job->params, true) ?: array();
+        $sourcetype = isset($params['sourcetype']) ? (string)$params['sourcetype'] : 'pdf';
+
+        if ($sourcetype === 'lesson') {
+            return $this->extract_lesson_source($job, $params);
+        }
+        // Défaut historique : PDF.
+        return $this->extract_pdf_source($job, $coursecontext);
+    }
+
+    /**
+     * Extraction PDF : lit le fichier stocké dans la file area du job
+     * (cours / local_aiquizgen / source / jobid).
+     */
+    private function extract_pdf_source(\stdClass $job, \context_course $coursecontext): array {
         $fs    = get_file_storage();
-        $files = $fs->get_area_files($context->id, 'local_aiquizgen', 'source',
+        $files = $fs->get_area_files($coursecontext->id, 'local_aiquizgen', 'source',
             (int)$job->id, 'id', false);
         if (empty($files)) {
             throw new \moodle_exception('source_missing', 'local_aiquizgen');
         }
         $file = reset($files);
 
-        $images = array(); // pas d'image en étape 3 (vision plus tard)
-        $text   = \local_aifeedback\content_extractor::read_pdf($file, $images, 0);
-        $text   = trim((string)$text);
+        $images    = array();
+        $maximages = $this->vision_image_budget();
+        $text      = \local_aifeedback\content_extractor::read_pdf($file, $images, $maximages);
+        $text      = trim((string)$text);
 
         if ($text === '') {
             throw new \moodle_exception('source_empty', 'local_aiquizgen');
         }
+        return array(
+            'text'   => $this->truncate_source_text($text),
+            'images' => $images,
+        );
+    }
 
+    /**
+     * Extraction leçon Moodle :
+     *   - concatène titre + contents de chaque page (HTML stripé, structure
+     *     paragraphée préservée par insertion de \n autour des blocs)
+     *   - extrait les images embarquées dans le filearea page_contents si
+     *     vision activée, filtre les images < imagemindimension
+     */
+    private function extract_lesson_source(\stdClass $job, array $params): array {
+        global $DB;
+
+        $lessonid = isset($params['sourcelessonid']) ? (int)$params['sourcelessonid'] : 0;
+        if ($lessonid <= 0) {
+            throw new \moodle_exception('source_lesson_missing', 'local_aiquizgen');
+        }
+
+        $lesson = $DB->get_record('lesson',
+            array('id' => $lessonid, 'course' => (int)$job->courseid));
+        if (!$lesson) {
+            throw new \moodle_exception('source_lesson_missing', 'local_aiquizgen');
+        }
+
+        // Contexte module de la leçon (pour récupérer ses fichiers).
+        list($lcourse, $lcm) = get_course_and_cm_from_instance($lessonid, 'lesson');
+        $lessoncontext = \context_module::instance($lcm->id);
+
+        // Toutes les pages, ordre stable (id ASC).
+        $pages = $DB->get_records('lesson_pages',
+            array('lessonid' => $lessonid), 'id ASC');
+
+        $parts     = array();
+        if (!empty($lesson->name)) {
+            $parts[] = '# ' . format_string($lesson->name);
+        }
+        $images    = array();
+        $maximages = $this->vision_image_budget();
+
+        foreach ($pages as $page) {
+            if (!empty($page->title)) {
+                $parts[] = "\n## " . strip_tags((string)$page->title);
+            }
+            if (!empty($page->contents)) {
+                $clean = $this->html_to_text((string)$page->contents);
+                if ($clean !== '') {
+                    $parts[] = $clean;
+                }
+            }
+            if ($maximages > 0 && count($images) < $maximages) {
+                $this->collect_lesson_page_images($lessoncontext, $page,
+                    $images, $maximages);
+            }
+        }
+
+        $text = trim(implode("\n\n", $parts));
+        if ($text === '') {
+            throw new \moodle_exception('source_lesson_empty', 'local_aiquizgen');
+        }
+        return array(
+            'text'   => $this->truncate_source_text($text),
+            'images' => $images,
+        );
+    }
+
+    /**
+     * Tronque le texte source pour rester dans le contexte du LLM.
+     */
+    private function truncate_source_text(string $text): string {
         if (strlen($text) > self::SOURCE_TEXT_CAP) {
-            $text = substr($text, 0, self::SOURCE_TEXT_CAP)
+            return substr($text, 0, self::SOURCE_TEXT_CAP)
                 . "\n\n[... source tronquée à " . self::SOURCE_TEXT_CAP
                 . " caractères pour rentrer dans le contexte du LLM ...]";
         }
@@ -217,19 +311,134 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
+     * Convertit un fragment HTML en texte brut en préservant la structure
+     * paragraphée (insertion de \n autour des blocs avant strip_tags).
+     */
+    private function html_to_text(string $html): string {
+        // Insère un retour ligne après les blocs courants pour préserver la
+        // structure (sinon strip_tags colle tout en une ligne).
+        $html = preg_replace('#</(p|h[1-6]|li|tr|div|br|blockquote|pre)>#i',
+            "</$1>\n", $html);
+        $text = strip_tags($html);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/[ \t]+/u', ' ', $text);
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
+        return trim($text);
+    }
+
+    /**
+     * Pousse dans $images les images significatives du filearea
+     * `page_contents` d'une page de leçon. Filtre par dimension min via
+     * le réglage global imagemindimension (200 par défaut).
+     */
+    private function collect_lesson_page_images(\context_module $lessoncontext,
+            \stdClass $page, array &$images, int $maximages): void {
+        $fs    = get_file_storage();
+        $files = $fs->get_area_files($lessoncontext->id, 'mod_lesson',
+            'page_contents', (int)$page->id, 'filename', false);
+        if (empty($files)) {
+            return;
+        }
+        $minsize = (int)get_config('local_aifeedback', 'imagemindimension');
+        if ($minsize <= 0) {
+            $minsize = 200;
+        }
+
+        foreach ($files as $file) {
+            if (count($images) >= $maximages) {
+                return;
+            }
+            $mime = (string)$file->get_mimetype();
+            if (!preg_match('#^image/(png|jpe?g|webp|gif)$#', $mime)) {
+                continue;
+            }
+            $bytes = $file->get_content();
+            if ($bytes === false || $bytes === '') {
+                continue;
+            }
+            $info = @getimagesizefromstring($bytes);
+            if (!$info) {
+                continue;
+            }
+            // Filtre des images décoratives (pictos, séparateurs, etc.).
+            if ((int)$info[0] < $minsize || (int)$info[1] < $minsize) {
+                continue;
+            }
+            $label = 'Leçon p.' . (int)$page->id;
+            if (!empty($page->title)) {
+                $label .= ' (' . strip_tags((string)$page->title) . ')';
+            }
+            $label .= ' : ' . $file->get_filename();
+            $images[] = array(
+                'source'   => $label,
+                'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
+            );
+        }
+    }
+
+    /**
+     * Plafond d'images envoyées au LLM. Retourne 0 si vision désactivée
+     * globalement (= jamais d'image).
+     */
+    private function vision_image_budget(): int {
+        $enabled = (int)get_config('local_aifeedback', 'vision_enabled');
+        if (!$enabled) {
+            return 0;
+        }
+        $max = (int)get_config('local_aifeedback', 'maximagespersubmission');
+        return ($max > 0) ? $max : 5;
+    }
+
+    /**
      * Appelle le LLM avec un JSON Schema strict et retourne un tableau
      * (filtré) de QCM valides. Throw si rien d'exploitable.
+     *
+     * Si $images est non vide, construit un message user multimodal
+     * (texte + blocs image_url) au format OpenAI. Sinon, message texte
+     * simple.
      */
-    private function generate_mcqs(string $sourcetext, int $count): array {
+    private function generate_mcqs(string $sourcetext, int $count,
+            array $images = array()): array {
         $system = $this->mcq_system_prompt();
         $user   = "SOURCE :\n" . $sourcetext . "\n\n"
                 . "Génère exactement " . $count
                 . " QCM standard Moodle à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= "\n\nLes images ci-dessous illustrent la source. "
+                  . "Utilise-les si elles apportent du contenu pertinent "
+                  . "(schémas, diagrammes, exemples de code, formules) ; "
+                  . "ignore-les si elles sont purement décoratives.";
+        }
 
-        $messages = array(
-            array('role' => 'system', 'content' => $system),
-            array('role' => 'user',   'content' => $user),
-        );
+        if (empty($images)) {
+            $messages = array(
+                array('role' => 'system', 'content' => $system),
+                array('role' => 'user',   'content' => $user),
+            );
+        } else {
+            $usercontent = array(
+                array('type' => 'text', 'text' => $user),
+            );
+            foreach ($images as $img) {
+                $src = isset($img['source'])   ? (string)$img['source']   : '';
+                $url = isset($img['data_url']) ? (string)$img['data_url'] : '';
+                if ($url === '') {
+                    continue;
+                }
+                if ($src !== '') {
+                    $usercontent[] = array('type' => 'text',
+                        'text' => 'Image : ' . $src);
+                }
+                $usercontent[] = array(
+                    'type'      => 'image_url',
+                    'image_url' => array('url' => $url),
+                );
+            }
+            $messages = array(
+                array('role' => 'system', 'content' => $system),
+                array('role' => 'user',   'content' => $usercontent),
+            );
+        }
 
         $options = array(
             'response_format' => array(
