@@ -33,6 +33,16 @@ $string['counts_heading']   = 'Types and counts';
 $string['mcqcount']         = 'Standard Moodle multiple choice';
 $string['mcqcount_help']    = 'Number of multiple-choice questions (standard Moodle qtype) to generate from the source. Between 1 and 50. Other types (AI short answer, AI essay, random-pool MCQ) will be added in upcoming development steps.';
 
+$string['variation_heading']         = 'Per-student variation';
+$string['variation_mode']            = 'Variation mode';
+$string['variation_mode_help']       = 'In <strong>fixed</strong> mode, every student sees the same questions in the same order. In <strong>random</strong> mode, each attempt draws a random subset of the generated questions (per-student variation). The random mode remains compatible with random-pool multiple-choice plugins on top.';
+$string['variation_mode_fixed']      = 'Fixed quiz (same questions for everyone)';
+$string['variation_mode_random']     = 'Random draw per attempt';
+$string['randomperattempt']          = 'Questions drawn per attempt';
+$string['randomperattempt_help']     = 'Number of questions drawn at random from the generated category for each attempt. Must be less than or equal to the total number of generated questions (a larger pool gives more variation).';
+$string['error_randomperattempt_min'] = 'At least 1 question per attempt.';
+$string['error_randomperattempt_max'] = 'The draw cannot exceed the total number of generated questions.';
+
 $string['dest_heading']     = 'Destination';
 $string['quizname']         = 'Title of the quiz to create';
 $string['quizname_help']    = 'The quiz will be created in the general section of the course with this title. You can move and adjust it afterwards.';

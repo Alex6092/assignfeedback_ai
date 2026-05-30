@@ -171,8 +171,19 @@ class job_handler implements \local_aifeedback\job_handler {
         $this->log($job, count($questionids) . ' question(s) ajoutée(s) à la banque.');
 
         // --- 6. Accrochage des questions au quiz ---
-        $this->log($job, 'Accrochage des questions au quiz…');
-        $this->add_questions_to_quiz($cm, $questionids);
+        $variationmode = isset($params['variationmode'])
+            ? (string)$params['variationmode'] : 'fixed';
+        if ($variationmode === 'random') {
+            $rpp = isset($params['randomperattempt'])
+                ? (int)$params['randomperattempt'] : count($questionids);
+            $rpp = max(1, min($rpp, count($questionids)));
+            $this->log($job, 'Mode aléatoire : ajout de ' . $rpp
+                . ' slot(s) tirant dans la catégorie…');
+            $this->add_random_slots_to_quiz($cm, $categoryid, $rpp, $modulecontext);
+        } else {
+            $this->log($job, 'Mode fixe : accrochage des questions au quiz…');
+            $this->add_questions_to_quiz($cm, $questionids);
+        }
 
         // --- 7. Finalisation du job ---
         $now = time();
@@ -849,7 +860,63 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Ajoute chaque question au quiz, puis recalcule le sumgrades.
+     * Ajoute N slots ALÉATOIRES au quiz, chacun piochant 1 question dans
+     * la catégorie passée. À chaque tentative, Moodle tire des questions
+     * différentes (variabilité étudiant/étudiant).
+     *
+     * On NE PASSE PAS par `\mod_quiz\structure::add_random_questions()` :
+     * cette méthode ne propage pas le `filtercondition` aux slots créés
+     * (le `slot_random` reçoit `null` au lieu de la condition de filtrage
+     * par catégorie). On instancie donc directement `slot_random` et on
+     * lui pose `set_filter_condition()` avant insertion.
+     */
+    private function add_random_slots_to_quiz(\stdClass $cm, int $categoryid,
+            int $number, \context_module $modulecontext): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $quizid = (int)$cm->instance;
+
+        // Catégorie de référence : on a besoin de son contextid pour
+        // questionscontextid (= le contexte où chercher les questions).
+        $category = $DB->get_record('question_categories',
+            array('id' => $categoryid), 'id, contextid', MUST_EXIST);
+
+        // filtercondition au format Moodle 5.x : un filtre par catégorie
+        // unique, sans inclusion des sous-catégories. jointype = 1 (ANY).
+        $filtercondition = array(
+            'filter' => array(
+                'category' => array(
+                    'jointype'      => 1, // JOINTYPE_ANY
+                    'values'        => array($categoryid),
+                    'filteroptions' => array('includesubcategories' => false),
+                ),
+            ),
+        );
+        $filterstr = json_encode($filtercondition);
+
+        for ($i = 0; $i < $number; $i++) {
+            $slotdata = (object)array(
+                'quizid'             => $quizid,
+                'questionscontextid' => (int)$category->contextid,
+                'usingcontextid'     => (int)$modulecontext->id,
+                'maxmark'            => 1.0,
+            );
+            $slot = new \mod_quiz\local\structure\slot_random($slotdata);
+            $slot->set_filter_condition($filterstr);
+            $slot->insert(0);
+        }
+
+        // Recompute sumgrades manuellement (cf. add_questions_to_quiz).
+        $sumgrades = (float)$DB->get_field_sql(
+            'SELECT COALESCE(SUM(maxmark), 0) FROM {quiz_slots} WHERE quizid = ?',
+            array($quizid)
+        );
+        $DB->set_field('quiz', 'sumgrades', $sumgrades, array('id' => $quizid));
+    }
+
+    /**
+     * Ajoute chaque question au quiz (mode FIXE), puis recalcule sumgrades.
      *
      * - `quiz_add_quiz_question` (legacy) tient toujours en Moodle 5.x
      *   et fait l'INSERT dans {quiz_slots}.

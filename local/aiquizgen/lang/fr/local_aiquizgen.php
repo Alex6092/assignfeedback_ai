@@ -33,6 +33,16 @@ $string['counts_heading']   = 'Types et nombres';
 $string['mcqcount']         = 'QCM standard Moodle';
 $string['mcqcount_help']    = 'Nombre de questions à choix multiple (type Moodle standard) à générer à partir de la source. Entre 1 et 50. Les autres types (réponse courte IA, composition IA, QCM à pool aléatoire) seront ajoutés dans les étapes suivantes de développement.';
 
+$string['variation_heading']         = 'Variation entre étudiants';
+$string['variation_mode']            = 'Mode de variation';
+$string['variation_mode_help']       = 'En mode <strong>fixe</strong>, tous les étudiants voient les mêmes questions dans le même ordre. En mode <strong>aléatoire</strong>, chaque tentative tire un sous-ensemble aléatoire des questions générées (variabilité étudiant/étudiant). Le mode aléatoire reste compatible avec d\'éventuels plugins de QCM à pool de réponses aléatoires.';
+$string['variation_mode_fixed']      = 'Quiz fixe (mêmes questions pour tous)';
+$string['variation_mode_random']     = 'Tirage aléatoire par tentative';
+$string['randomperattempt']          = 'Questions tirées par tentative';
+$string['randomperattempt_help']     = 'Nombre de questions tirées au hasard dans la catégorie générée à chaque tentative. Doit être inférieur ou égal au nombre total de questions générées (un pool plus grand que le tirage donne plus de variabilité).';
+$string['error_randomperattempt_min'] = 'Au moins 1 question par tentative.';
+$string['error_randomperattempt_max'] = 'Le tirage ne peut pas dépasser le nombre total de questions générées.';
+
 $string['dest_heading']     = 'Destination';
 $string['quizname']         = 'Titre du quiz à créer';
 $string['quizname_help']    = 'Le quiz sera créé dans la section générale du cours, avec ce titre. Vous pourrez le déplacer et l\'ajuster ensuite.';

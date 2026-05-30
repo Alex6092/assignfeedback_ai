@@ -80,6 +80,23 @@ if (isset($params['mcqcount'])) {
         (int)$params['mcqcount'],
     );
 }
+// Mode de variation.
+$variationmode = isset($params['variationmode'])
+    ? (string)$params['variationmode'] : 'fixed';
+if ($variationmode === 'random') {
+    $rpp = isset($params['randomperattempt'])
+        ? (int)$params['randomperattempt'] : 0;
+    $rows[] = array(
+        get_string('variation_mode', 'local_aiquizgen'),
+        get_string('variation_mode_random', 'local_aiquizgen')
+            . ($rpp > 0 ? ' (' . $rpp . ')' : ''),
+    );
+} else {
+    $rows[] = array(
+        get_string('variation_mode', 'local_aiquizgen'),
+        get_string('variation_mode_fixed', 'local_aiquizgen'),
+    );
+}
 // Affichage de la source selon le type.
 $sourcetype = isset($params['sourcetype']) ? (string)$params['sourcetype'] : 'pdf';
 if ($sourcetype === 'lesson') {

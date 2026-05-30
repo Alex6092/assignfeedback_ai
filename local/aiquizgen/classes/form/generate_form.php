@@ -92,6 +92,31 @@ class generate_form extends \moodleform {
         $mform->addRule('mcqcount', null, 'required', null, 'client');
 
         // -----------------------------------------------------------
+        //  VARIATION (fixe vs tirage aléatoire par tentative)
+        // -----------------------------------------------------------
+        $mform->addElement('header', 'variationheader',
+            get_string('variation_heading', 'local_aiquizgen'));
+        $mform->setExpanded('variationheader', true);
+
+        $modes = array(
+            'fixed'  => get_string('variation_mode_fixed',  'local_aiquizgen'),
+            'random' => get_string('variation_mode_random', 'local_aiquizgen'),
+        );
+        $mform->addElement('select', 'variationmode',
+            get_string('variation_mode', 'local_aiquizgen'), $modes);
+        $mform->setDefault('variationmode', 'fixed');
+        $mform->addHelpButton('variationmode', 'variation_mode', 'local_aiquizgen');
+
+        // Nombre de questions tirées par tentative (visible si random).
+        $mform->addElement('text', 'randomperattempt',
+            get_string('randomperattempt', 'local_aiquizgen'),
+            array('size' => 4));
+        $mform->setType('randomperattempt', PARAM_INT);
+        $mform->setDefault('randomperattempt', 10);
+        $mform->addHelpButton('randomperattempt', 'randomperattempt', 'local_aiquizgen');
+        $mform->hideIf('randomperattempt', 'variationmode', 'neq', 'random');
+
+        // -----------------------------------------------------------
         //  DESTINATION
         // -----------------------------------------------------------
         $mform->addElement('header', 'destheader',
@@ -130,6 +155,22 @@ class generate_form extends \moodleform {
             $errors['mcqcount'] = get_string('error_mcqcount_min', 'local_aiquizgen');
         } else if ($count > 50) {
             $errors['mcqcount'] = get_string('error_mcqcount_max', 'local_aiquizgen');
+        }
+
+        // Cohérence du tirage aléatoire.
+        $variationmode = isset($data['variationmode'])
+            ? (string)$data['variationmode'] : 'fixed';
+        if ($variationmode === 'random') {
+            $rpp = isset($data['randomperattempt'])
+                ? (int)$data['randomperattempt'] : 0;
+            if ($rpp < 1) {
+                $errors['randomperattempt'] = get_string(
+                    'error_randomperattempt_min', 'local_aiquizgen');
+            } else if ($count >= 1 && $rpp > $count) {
+                // On ne peut pas tirer plus de questions que ce qu'on génère.
+                $errors['randomperattempt'] = get_string(
+                    'error_randomperattempt_max', 'local_aiquizgen');
+            }
         }
 
         $sourcetype = isset($data['sourcetype']) ? (string)$data['sourcetype'] : 'pdf';

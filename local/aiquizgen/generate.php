@@ -63,6 +63,13 @@ if ($data = $form->get_data()) {
     if ($sourcetype === 'lesson') {
         $params['sourcelessonid'] = (int)$data->sourcelessonid;
     }
+    // Mode de variation : fixed (défaut) ou random.
+    $variationmode = isset($data->variationmode)
+        ? (string)$data->variationmode : 'fixed';
+    $params['variationmode'] = $variationmode;
+    if ($variationmode === 'random') {
+        $params['randomperattempt'] = (int)$data->randomperattempt;
+    }
 
     $job = new stdClass();
     $job->courseid     = $courseid;
