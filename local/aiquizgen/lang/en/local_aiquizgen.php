@@ -37,6 +37,20 @@ $string['shortanswercount_help'] = 'Number of short-answer questions (1–3 sent
 $string['essaycount']            = 'AI-graded essays';
 $string['essaycount_help']       = 'Number of essay prompts (1–2 pages written by the student) auto-graded by the LLM (qtype_aiessay). Between 0 and 10. Use VERY sparingly: grading an essay takes several seconds per submission, and long open-ended questions are harder to grade consistently by an LLM.';
 
+$string['answersselectcount']        = 'MCQ with random-answer pool';
+$string['answersselectcount_help']   = 'Number of pool-based MCQ (third-party qtype_answersselect plugin by Joseph Rézeau). Each question holds a large pool of correct answers and a large pool of distractors; every attempt draws X correct + Y incorrect at random. Between 0 and 50. Combined with the per-attempt random draw of questions, gives strong per-student variation.';
+$string['answersselect_plugin_missing'] = 'The third-party qtype_answersselect plugin is not installed on this site. To enable random-pool MCQ generation, install it from https://moodle.org/plugins/qtype_answersselect.';
+
+$string['coderunnercount']             = 'CodeRunner programming exercises';
+$string['coderunnercount_help']        = 'Number of programming exercises (third-party qtype_coderunner plugin by Richard Lobb). Each exercise contains a problem statement, a reference function and 3 to 5 automated tests. Student code is executed in a sandbox (Jobe) at submission time. Between 0 and 20 (token-hungry generation). <strong>Important:</strong> the LLM-generated solution may contain errors; click "Check" in each question editor to verify the tests pass against the reference solution before publishing.';
+$string['coderunnerlanguage']          = 'Target language';
+$string['coderunnerlanguage_help']     = 'Programming language used by ALL CodeRunner exercises in this generation. The "function / method" variants ask the student to write only a function (CodeRunner generates the driver/main), which is more pedagogical for foundation-year students than a full program.';
+$string['coderunnerlang_python3']      = 'Python 3 (function)';
+$string['coderunnerlang_c_function']   = 'C (function)';
+$string['coderunnerlang_cpp_function'] = 'C++ (function)';
+$string['coderunnerlang_java_method']  = 'Java (static method)';
+$string['coderunner_plugin_missing']   = 'The third-party qtype_coderunner plugin is not installed on this site. To enable auto-graded programming exercise generation, install it from https://moodle.org/plugins/qtype_coderunner. Note: this plugin also requires a sandbox server (Jobe) to execute student code.';
+
 $string['variation_heading']         = 'Per-student variation';
 $string['variation_mode']            = 'Variation mode';
 $string['variation_mode_help']       = 'In <strong>fixed</strong> mode, every student sees the same questions in the same order. In <strong>random</strong> mode, each attempt draws a random subset of the generated questions (per-student variation). The random mode remains compatible with random-pool multiple-choice plugins on top.';
@@ -62,6 +76,10 @@ $string['error_shortanswercount_negative'] = 'The short-answer count cannot be n
 $string['error_shortanswercount_max']      = 'Maximum 50 short answers per generation.';
 $string['error_essaycount_negative']       = 'The essay count cannot be negative.';
 $string['error_essaycount_max']            = 'Maximum 10 essays per generation (expensive to grade).';
+$string['error_answersselectcount_negative'] = 'The random-pool MCQ count cannot be negative.';
+$string['error_answersselectcount_max']      = 'Maximum 50 random-pool MCQ per generation.';
+$string['error_coderunnercount_negative']    = 'The CodeRunner count cannot be negative.';
+$string['error_coderunnercount_max']         = 'Maximum 20 CodeRunner exercises per generation (token-hungry).';
 $string['error_source_required']        = 'You must provide a source PDF file.';
 $string['error_source_lesson_required'] = 'You must pick a lesson.';
 $string['error_source_lesson_invalid']  = 'The selected lesson does not belong to this course.';

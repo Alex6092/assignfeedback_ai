@@ -37,6 +37,20 @@ $string['shortanswercount_help'] = 'Nombre de questions à réponse courte (1 à
 $string['essaycount']            = 'Compositions corrigées par IA';
 $string['essaycount_help']       = 'Nombre de sujets de composition (1 à 2 pages rédigées par l\'étudiant) corrigés automatiquement par le LLM (type qtype_aiessay). Entre 0 et 10. À utiliser TRÈS parcimonieusement : la correction d\'une composition est longue (plusieurs secondes par copie), et les questions ouvertes longues sont plus difficiles à noter de manière homogène par un LLM.';
 
+$string['answersselectcount']        = 'QCM à pool aléatoire';
+$string['answersselectcount_help']   = 'Nombre de questions à pool aléatoire (plugin tiers qtype_answersselect de Joseph Rézeau). Chaque question contient un grand pool de bonnes réponses et un grand pool de distracteurs ; à chaque tentative, le système en tire X et Y au hasard. Entre 0 et 50. Combiné au tirage aléatoire de questions (mode « Tirage aléatoire par tentative »), donne une très grande variabilité entre étudiants.';
+$string['answersselect_plugin_missing'] = 'Le plugin tiers qtype_answersselect n\'est pas installé sur ce site. Pour activer la génération de QCM à pool aléatoire, installe-le depuis https://moodle.org/plugins/qtype_answersselect.';
+
+$string['coderunnercount']           = 'Exercices CodeRunner';
+$string['coderunnercount_help']      = 'Nombre d\'exercices de programmation (plugin tiers qtype_coderunner de Richard Lobb). Chaque exercice contient un énoncé, une fonction de référence et 3 à 5 tests automatiques. Le code de l\'étudiant est exécuté dans un sandbox (Jobe) à la soumission. Entre 0 et 20 (génération gourmande en tokens). <strong>Important :</strong> la solution générée par le LLM peut comporter des erreurs ; pense à cliquer « Check » dans l\'éditeur de chaque question pour valider que les tests passent contre la solution de référence avant publication.';
+$string['coderunnerlanguage']        = 'Langage cible';
+$string['coderunnerlanguage_help']   = 'Langage de programmation pour TOUS les exercices CodeRunner de cette génération. Les variantes « function / method » impliquent que l\'étudiant écrit UNE FONCTION (le driver/main est généré par CodeRunner), ce qui est plus pédagogique pour des étudiants BTS qu\'un programme complet.';
+$string['coderunnerlang_python3']      = 'Python 3 (fonction)';
+$string['coderunnerlang_c_function']   = 'C (fonction)';
+$string['coderunnerlang_cpp_function'] = 'C++ (fonction)';
+$string['coderunnerlang_java_method']  = 'Java (méthode statique)';
+$string['coderunner_plugin_missing']   = 'Le plugin tiers qtype_coderunner n\'est pas installé sur ce site. Pour activer la génération d\'exercices de programmation auto-évalués, installe-le depuis https://moodle.org/plugins/qtype_coderunner. Note : ce plugin nécessite aussi un serveur de sandbox (Jobe) pour exécuter le code.';
+
 $string['variation_heading']         = 'Variation entre étudiants';
 $string['variation_mode']            = 'Mode de variation';
 $string['variation_mode_help']       = 'En mode <strong>fixe</strong>, tous les étudiants voient les mêmes questions dans le même ordre. En mode <strong>aléatoire</strong>, chaque tentative tire un sous-ensemble aléatoire des questions générées (variabilité étudiant/étudiant). Le mode aléatoire reste compatible avec d\'éventuels plugins de QCM à pool de réponses aléatoires.';
@@ -62,6 +76,10 @@ $string['error_shortanswercount_negative']  = 'Le nombre de réponses courtes ne
 $string['error_shortanswercount_max']       = 'Maximum 50 réponses courtes par génération.';
 $string['error_essaycount_negative']        = 'Le nombre de compositions ne peut pas être négatif.';
 $string['error_essaycount_max']             = 'Maximum 10 compositions par génération (coûteuses à corriger).';
+$string['error_answersselectcount_negative'] = 'Le nombre de QCM à pool aléatoire ne peut pas être négatif.';
+$string['error_answersselectcount_max']      = 'Maximum 50 QCM à pool aléatoire par génération.';
+$string['error_coderunnercount_negative']    = 'Le nombre d\'exercices CodeRunner ne peut pas être négatif.';
+$string['error_coderunnercount_max']         = 'Maximum 20 exercices CodeRunner par génération (gourmand en tokens).';
 $string['error_source_required']        = 'Vous devez fournir un fichier PDF source.';
 $string['error_source_lesson_required'] = 'Vous devez choisir une leçon.';
 $string['error_source_lesson_invalid']  = 'La leçon sélectionnée n\'appartient pas à ce cours.';

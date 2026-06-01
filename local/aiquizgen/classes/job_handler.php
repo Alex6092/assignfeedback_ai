@@ -34,7 +34,8 @@ class job_handler implements \local_aifeedback\job_handler {
     const TABLE = 'local_aiquizgen_jobs';
 
     /** Plafond du texte source envoyé au LLM (en caractères). ~6000 tokens. */
-    const SOURCE_TEXT_CAP = 20000;
+    //const SOURCE_TEXT_CAP = 20000;
+    const SOURCE_TEXT_CAP = 80000;
 
     // =====================================================================
     //  PLOMBERIE (file d'attente partagée)
@@ -120,12 +121,36 @@ class job_handler implements \local_aifeedback\job_handler {
             ? max(0, (int)$params['shortanswercount']) : 0;
         $essaycount       = isset($params['essaycount'])
             ? max(0, (int)$params['essaycount']) : 0;
+        $answersselectcount = isset($params['answersselectcount'])
+            ? max(0, (int)$params['answersselectcount']) : 0;
+        $coderunnercount    = isset($params['coderunnercount'])
+            ? max(0, (int)$params['coderunnercount']) : 0;
+        $coderunnerlang     = isset($params['coderunnerlanguage'])
+            ? (string)$params['coderunnerlanguage'] : 'python3';
+
+        // Plugins tiers optionnels : on désactive silencieusement les
+        // compteurs si le plugin correspondant n'est pas installé, pour ne
+        // pas brûler un appel LLM dans le vide.
+        if ($answersselectcount > 0
+                && !\core_component::get_plugin_directory('qtype', 'answersselect')) {
+            $this->log($job, 'qtype_answersselect non installé : '
+                . $answersselectcount . ' question(s) à pool aléatoire ignorée(s).');
+            $answersselectcount = 0;
+        }
+        if ($coderunnercount > 0
+                && !\core_component::get_plugin_directory('qtype', 'coderunner')) {
+            $this->log($job, 'qtype_coderunner non installé : '
+                . $coderunnercount . ' question(s) CodeRunner ignorée(s).');
+            $coderunnercount = 0;
+        }
+
         $quizname = isset($params['quizname'])
             ? trim((string)$params['quizname']) : 'Test IA';
         if ($quizname === '') {
             $quizname = 'Test IA';
         }
-        if ($mcqcount + $shortanswercount + $essaycount < 1) {
+        if ($mcqcount + $shortanswercount + $essaycount
+                + $answersselectcount + $coderunnercount < 1) {
             throw new \moodle_exception('error_total_min', 'local_aiquizgen');
         }
 
@@ -143,9 +168,10 @@ class job_handler implements \local_aifeedback\job_handler {
             . ($imgcount > 0 ? ', ' . $imgcount . ' image(s)' : '') . '.');
 
         // --- 2. Génération des questions via LLM (un appel par type) ---
-        $mcqs   = array();
-        $sas    = array();
-        $essays = array();
+        $mcqs    = array();
+        $sas     = array();
+        $essays  = array();
+        $ansels  = array();
         if ($mcqcount > 0) {
             $this->log($job, 'Appel LLM (génération de ' . $mcqcount . ' QCM)…');
             $mcqs = $this->generate_mcqs($source['text'], $mcqcount, $source['images']);
@@ -165,7 +191,25 @@ class job_handler implements \local_aifeedback\job_handler {
                 $source['images']);
             $this->log($job, 'LLM a renvoyé ' . count($essays) . ' composition(s) valide(s).');
         }
-        if (empty($mcqs) && empty($sas) && empty($essays)) {
+        if ($answersselectcount > 0) {
+            $this->log($job, 'Appel LLM (génération de ' . $answersselectcount
+                . ' question(s) à pool aléatoire)…');
+            $ansels = $this->generate_answersselects($source['text'], $answersselectcount,
+                $source['images']);
+            $this->log($job, 'LLM a renvoyé ' . count($ansels)
+                . ' question(s) à pool aléatoire valide(s).');
+        }
+        $coders = array();
+        if ($coderunnercount > 0) {
+            $this->log($job, 'Appel LLM (génération de ' . $coderunnercount
+                . ' exercice(s) CodeRunner en « ' . $coderunnerlang . ' »)…');
+            $coders = $this->generate_coderunners($source['text'], $coderunnercount,
+                $coderunnerlang, $source['images']);
+            $this->log($job, 'LLM a renvoyé ' . count($coders)
+                . ' exercice(s) CodeRunner valide(s).');
+        }
+        if (empty($mcqs) && empty($sas) && empty($essays)
+                && empty($ansels) && empty($coders)) {
             throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
         }
 
@@ -213,6 +257,26 @@ class job_handler implements \local_aifeedback\job_handler {
             } catch (\Throwable $e) {
                 $this->log($job, 'Composition #' . ($i + 1) . ' rejetée : '
                     . $e->getMessage());
+            }
+        }
+        foreach ($ansels as $i => $qa) {
+            try {
+                $qid = $this->create_answersselect_question($qa, $categoryid,
+                    $modulecontext, $job);
+                $questionids[] = $qid;
+            } catch (\Throwable $e) {
+                $this->log($job, 'Question à pool aléatoire #' . ($i + 1)
+                    . ' rejetée : ' . $e->getMessage());
+            }
+        }
+        foreach ($coders as $i => $qa) {
+            try {
+                $qid = $this->create_coderunner_question($qa, $coderunnerlang,
+                    $categoryid, $modulecontext, $job);
+                $questionids[] = $qid;
+            } catch (\Throwable $e) {
+                $this->log($job, 'Exercice CodeRunner #' . ($i + 1)
+                    . ' rejeté : ' . $e->getMessage());
             }
         }
         if (empty($questionids)) {
@@ -615,6 +679,52 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
+     * Génère N questions à POOL aléatoire (qtype_answersselect, plugin tiers
+     * de Joseph Rézeau). Chaque question contient un pool de bonnes réponses
+     * et un pool de distracteurs ; à chaque tentative Moodle tire X bonnes
+     * et Y mauvaises au hasard parmi ces pools.
+     */
+    private function generate_answersselects(string $sourcetext, int $count,
+            array $images = array()): array {
+        $user = "SOURCE :\n" . $sourcetext . "\n\n"
+              . "Génère exactement " . $count
+              . " questions à POOL aléatoire à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= $this->image_consigne();
+        }
+        return $this->call_llm_for_questions(
+            $this->answersselect_system_prompt(), $user, $images,
+            'local_aiquizgen_answersselect_response',
+            $this->answersselect_schema(), $count,
+            array($this, 'is_valid_answersselect'), 5000
+        );
+    }
+
+    /**
+     * Génère N questions CodeRunner (qtype_coderunner, plugin tiers de
+     * Richard Lobb). Plafond tokens élevé (~8000) car chaque question
+     * produit un énoncé + une fonction de référence + 3-5 tests.
+     *
+     * @param string $language coderunnertype cible (python3, c_function, etc.)
+     */
+    private function generate_coderunners(string $sourcetext, int $count,
+            string $language, array $images = array()): array {
+        $user = "SOURCE :\n" . $sourcetext . "\n\n"
+              . "Génère exactement " . $count
+              . " exercices de programmation pour le langage cible « " . $language . " » "
+              . "à partir de ce contenu.";
+        if (!empty($images)) {
+            $user .= $this->image_consigne();
+        }
+        return $this->call_llm_for_questions(
+            $this->coderunner_system_prompt($language), $user, $images,
+            'local_aiquizgen_coderunner_response',
+            $this->coderunner_schema(), $count,
+            array($this, 'is_valid_coderunner'), 8000
+        );
+    }
+
+    /**
      * Crée une catégorie dans la banque de questions, DANS LE CONTEXTE FOURNI
      * (en pratique : le contexte module du quiz généré — voir process_one).
      *
@@ -631,16 +741,55 @@ class job_handler implements \local_aifeedback\job_handler {
      * @param \context $context contexte (module) où ranger la catégorie
      */
     private function create_category(\stdClass $job, \context $context, string $quizname): int {
-        global $DB;
+        global $DB, $CFG;
+        require_once($CFG->libdir . '/questionlib.php');
 
-        // Cherche une catégorie top-level existante dans ce contexte.
-        // get_field retourne `false` si rien → cast (int) = 0 = top niveau.
-        $parentid = (int)$DB->get_field('question_categories', 'id',
-            array('contextid' => $context->id, 'parent' => 0),
-            IGNORE_MULTIPLE);
+        // ---------------------------------------------------------------
+        //  [Correctif crucial — root cause du crash « Invalid context id »
+        //   à l'édition d'une question CodeRunner générée]
+        //
+        //  En Moodle 4.x/5.x, chaque banque de questions (contexte MODULE)
+        //  possède une catégorie « top » pseudo-racine : parent = 0,
+        //  name = 'top', sortorder = 0. Les VRAIES catégories de questions
+        //  doivent être rattachées SOUS cette catégorie top, c.-à-d. avoir
+        //  parent = top.id (donc parent != 0).
+        //
+        //  Notre ancien code cherchait une catégorie parent=0 existante et,
+        //  si elle n'existait pas encore (cas d'un quiz fraîchement créé par
+        //  programme, dont la banque n'a jamais été ouverte via l'UI et n'a
+        //  donc pas encore de catégorie top), retombait sur parent = 0. Notre
+        //  catégorie devenait alors une 2ᵉ catégorie « top » bancale.
+        //
+        //  Conséquence : une catégorie parent=0 est interprétée par Moodle
+        //  comme une catégorie structurelle « top », et n'est PAS proposée
+        //  comme destination sélectionnable dans le sélecteur `questioncategory`
+        //  du formulaire d'édition de question. Le champ `category` du form,
+        //  qui est gelé (freeze + setPersistantFreeze(false)) en mode édition,
+        //  n'exporte sa valeur que si celle-ci correspond à une option valide
+        //  du sélecteur. Comme notre catégorie n'y figure pas, $data['category']
+        //  revient NULL à la validation :
+        //    - la plupart des qtypes échouent « gracieusement » (erreur de
+        //      validation « category required »),
+        //    - mais qtype_coderunner CRASHE dur : son make_question_from_form_data()
+        //      fait explode(',', $question->category) puis
+        //      context::instance_by_id() sur un contextid faux → exception.
+        //
+        //  Le fix : on délègue à question_get_top_category($contextid, true),
+        //  exactement ce que fait l'UI Moodle. Cette fonction crée la catégorie
+        //  top si elle manque, et on rattache notre catégorie SOUS elle.
+        // ---------------------------------------------------------------
+        $topcategory = question_get_top_category((int)$context->id, true);
+        if (empty($topcategory) || empty($topcategory->id)) {
+            // Ne devrait jamais arriver : on passe toujours le contexte MODULE
+            // du quiz fraîchement créé. Mais si la catégorie top ne peut être
+            // ni trouvée ni créée, mieux vaut échouer franchement que produire
+            // une catégorie bancale (parent=0) qui casserait l'édition.
+            throw new \moodle_exception('quiz_creation_failed', 'local_aiquizgen');
+        }
+        $parentid = (int)$topcategory->id; // toujours != 0 : la catégorie top
 
         $cat = new \stdClass();
-        $cat->parent       = $parentid; // jamais NULL : soit l'id parent, soit 0
+        $cat->parent       = $parentid; // SOUS la catégorie top, jamais 0
         $cat->contextid    = (int)$context->id;
         $cat->name         = '[IA] ' . $quizname . ' — ' . userdate(time(), '%Y-%m-%d %H:%M');
         $cat->info         = get_string('category_info', 'local_aiquizgen');
@@ -749,6 +898,306 @@ class job_handler implements \local_aifeedback\job_handler {
             $DB->insert_record('qtype_multichoice_options', $options);
 
             // --- 6. Event question_created (utile pour les observers) ---
+            $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
+            if ($eventcontext) {
+                $event = \core\event\question_created::create_from_question_instance(
+                    $qdata, $eventcontext);
+                $event->trigger();
+            }
+
+            $transaction->allow_commit();
+            return (int)$qdata->id;
+
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
+        }
+    }
+
+    /**
+     * Crée une question CodeRunner par INSERTs directs.
+     *
+     * Schéma DB (plugin tiers de Richard Lobb, vu sur la branche master du
+     * dépôt trampgeek/moodle-qtype_coderunner) :
+     *   - {question}                   : qtype='coderunner'
+     *   - {question_bank_entries}      : entry dans la banque
+     *   - {question_versions}          : version 1, status=ready
+     *   - {question_coderunner_options}: 1 ligne d'options (coderunnertype = langage, answer = code de réf, etc.)
+     *   - {question_coderunner_tests}  : N lignes (testcode + expected + useasexample + …)
+     *
+     * Important : `validateonsave=0` désactivé pour ne PAS bloquer la
+     * création si la solution LLM ne passe pas les tests (sandbox Jobe
+     * peut être absent ou la solution peut comporter des erreurs). C'est
+     * à l'enseignant de cliquer « Check » dans l'éditeur pour valider la
+     * solution une fois la question créée.
+     */
+    private function create_coderunner_question(array $qa, string $language,
+                                                int $categoryid, \context $context,
+                                                \stdClass $job): int {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $now    = time();
+            $userid = (int)$job->userid;
+
+            // --- 1. {question} : squelette commun à tous les qtypes -----
+            $qdata = new \stdClass();
+            $qdata->category              = $categoryid;
+            $qdata->parent                = 0;
+            $qdata->name                  = $this->truncate_name((string)$qa['name']);
+            $qdata->questiontext          = $this->ensure_html((string)$qa['questiontext']);
+            $qdata->questiontextformat    = FORMAT_HTML;
+            $qdata->generalfeedback       = '';
+            $qdata->generalfeedbackformat = FORMAT_HTML;
+            $qdata->defaultmark           = 1.0;
+            $qdata->penalty               = 0.0;
+            $qdata->qtype                 = 'coderunner';
+            $qdata->length                = 1;
+            $qdata->stamp                 = make_unique_id_code();
+            $qdata->timecreated           = $now;
+            $qdata->timemodified          = $now;
+            $qdata->createdby             = $userid;
+            $qdata->modifiedby            = $userid;
+            $qdata->idnumber              = null;
+
+            $qdata->id = $DB->insert_record('question', $qdata);
+
+            // --- 2. {question_bank_entries} ------------------------------
+            $entry = new \stdClass();
+            $entry->questioncategoryid = $categoryid;
+            $entry->idnumber           = null;
+            $entry->ownerid            = $userid;
+            $entry->id = $DB->insert_record('question_bank_entries', $entry);
+
+            // --- 3. {question_versions} ----------------------------------
+            $version = new \stdClass();
+            $version->questionbankentryid = $entry->id;
+            $version->questionid          = $qdata->id;
+            $version->version             = 1;
+            $version->status              = 'ready';
+            $version->id = $DB->insert_record('question_versions', $version);
+
+            // --- 4. {question_coderunner_options} ------------------------
+            // INSERTs directs, cohérents avec les 4 autres qtypes de ce
+            // plugin. Le crash « Invalid context id » à l'édition n'a JAMAIS
+            // été causé par ces lignes (un dump SQL field-par-field les a
+            // montrées identiques à une création manuelle) : la vraie cause
+            // était une catégorie créée avec parent=0 au lieu de parent=top.id
+            // — corrigée dans create_category(). On reste donc sur des INSERTs
+            // directs, qui évitent en prime le chemin get_prototype() /
+            // question_bank_helper (lequel émet des warnings formatted_bank
+            // ::$contextid sous Moodle 5.2).
+            //
+            // Sémantique CodeRunner des champs hérités : NULL = « hériter du
+            // prototype », '' = « valeur explicitement vide ». On respecte
+            // cette distinction.
+            $opts = new \stdClass();
+            $opts->questionid               = $qdata->id;
+            $opts->coderunnertype           = $language;
+            $opts->prototypetype            = 0;   // question normale, pas un prototype
+            $opts->allornothing             = 1;   // tous les tests passent ou rien
+            $opts->showsource               = 0;
+            $opts->precheck                 = 0;
+            $opts->hidecheck                = 0;
+            $opts->answerboxlines           = 18;
+            $opts->answerboxcolumns         = 100;
+            $opts->answerpreload            = '';  // chaîne vide, PAS null
+            $opts->globalextra              = '';  // idem
+            $opts->useace                   = null; // hérite du prototype (= 1 typiquement)
+            $opts->penaltyregime            = '10, 20, ...'; // régime de pénalité standard CodeRunner
+            $opts->answer                   = (string)$qa['answer']; // code de référence
+            $opts->validateonsave           = 0;   // ne pas exécuter à l'INSERT (Jobe peut être absent)
+            $opts->enablecombinator         = null; // hérite du prototype
+            $opts->resultcolumns            = null;
+            $opts->template                 = null; // hérite du prototype
+            $opts->iscombinatortemplate     = null;
+            $opts->combinatortemplate       = null;
+            $opts->allowmultiplestdins      = null;
+            $opts->testsplitterre           = null;
+            $opts->pertesttemplate          = null;
+            $opts->templateparams           = '';  // chaîne vide, PAS null
+            $opts->templateparamslang       = 'None'; // valeur moderne CodeRunner (pas 'twig' legacy)
+            $opts->templateparamsevalpertry = 0;
+            $opts->templateparamsevald      = '{}'; // JSON vide explicite, PAS null
+            $opts->hoisttemplateparams      = 1;   // pose les paramètres en namespace global Twig
+            $opts->extractcodefromjson      = 1;
+            $opts->twigall                  = 0;
+            $opts->uiparameters             = '';  // chaîne vide, PAS null
+            $opts->language                 = null; // hérite du prototype
+            $opts->acelang                  = null;
+            $opts->sandbox                  = null;
+            $opts->sandboxparams            = null;
+            $opts->grader                   = null;
+            $opts->cputimelimitsecs         = null;
+            $opts->memlimitmb               = null;
+            $opts->uiplugin                 = null;
+            $opts->attachments              = 0;
+            $opts->attachmentsrequired      = 0;
+            $opts->maxfilesize              = 10240; // défaut UI de Moodle (pas 0)
+            $opts->filenamesregex           = '';  // chaîne vide, PAS null
+            $opts->filenamesexplain         = '';  // idem
+            $opts->displayfeedback          = 1;
+            $opts->giveupallowed            = 0;
+            $opts->prototypeextra           = null;
+            $DB->insert_record('question_coderunner_options', $opts);
+
+            // --- 5. {question_coderunner_tests} : un par testcase --------
+            foreach ((array)$qa['tests'] as $t) {
+                if (!is_array($t)) {
+                    continue;
+                }
+                $test = new \stdClass();
+                $test->questionid     = $qdata->id;
+                $test->testtype       = 0; // Normal
+                $test->testcode       = (string)($t['testcode'] ?? '');
+                $test->stdin          = '';
+                $test->expected       = (string)($t['expected'] ?? '');
+                $test->extra          = '';
+                $test->useasexample   = !empty($t['useasexample']) ? 1 : 0;
+                $test->display        = 'SHOW';
+                $test->hiderestiffail = 0;
+                $test->mark           = 1.0;
+                $DB->insert_record('question_coderunner_tests', $test);
+            }
+
+            // --- 6. Event question_created -------------------------------
+            $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
+            if ($eventcontext) {
+                $event = \core\event\question_created::create_from_question_instance(
+                    $qdata, $eventcontext);
+                $event->trigger();
+            }
+
+            $transaction->allow_commit();
+            return (int)$qdata->id;
+
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+            throw $e;
+        }
+    }
+
+    /**
+     * Crée une question de type qtype_answersselect par INSERTs directs.
+     *
+     * Schéma DB (plugin tiers de Joseph Rézeau) :
+     *   - {question}                  : qtype='answersselect'
+     *   - {question_bank_entries}     : entry dans la banque
+     *   - {question_versions}         : version 1, status=ready
+     *   - {question_answers}          : N lignes, fraction=1 (bonne) ou 0 (mauvaise)
+     *   - {question_answersselect}    : 1 ligne d'options (mode, randomselect*, etc.)
+     *
+     * Mode d'affichage : `answersselectmode = 1` (manual). En mode 1, le
+     * plugin tire `count(pool) - randomselect*` réponses du pool. Sémantique
+     * inversée (on définit combien RETIRER, pas combien afficher) mais
+     * c'est le seul mode déterministe qui matche notre besoin « affiche
+     * exactement X bonnes + Y mauvaises par tentative ».
+     */
+    private function create_answersselect_question(array $qa, int $categoryid,
+                                                   \context $context, \stdClass $job): int {
+        global $DB;
+
+        // Re-filtrage des pools (sécurité : déjà passé is_valid_answersselect).
+        $correct   = array_values(array_unique(array_filter(
+            array_map('trim', (array)$qa['correct_pool']))));
+        $incorrect = array_values(array_unique(array_filter(
+            array_map('trim', (array)$qa['incorrect_pool']))));
+        $showcorr   = (int)$qa['show_correct_n'];
+        $showincorr = (int)$qa['show_incorrect_n'];
+        // Cap au cas où le LLM ait demandé plus que le pool ne permet.
+        $showcorr   = max(1, min($showcorr,   count($correct)));
+        $showincorr = max(0, min($showincorr, count($incorrect)));
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $now    = time();
+            $userid = (int)$job->userid;
+
+            // --- 1. {question} -------------------------------------------
+            $qdata = new \stdClass();
+            $qdata->category              = $categoryid;
+            $qdata->parent                = 0;
+            $qdata->name                  = $this->truncate_name((string)$qa['name']);
+            $qdata->questiontext          = $this->ensure_html((string)$qa['questiontext']);
+            $qdata->questiontextformat    = FORMAT_HTML;
+            $qdata->generalfeedback       = '';
+            $qdata->generalfeedbackformat = FORMAT_HTML;
+            $qdata->defaultmark           = 1.0;
+            $qdata->penalty               = 0.3333333;
+            $qdata->qtype                 = 'answersselect';
+            $qdata->length                = 1;
+            $qdata->stamp                 = make_unique_id_code();
+            $qdata->timecreated           = $now;
+            $qdata->timemodified          = $now;
+            $qdata->createdby             = $userid;
+            $qdata->modifiedby            = $userid;
+            $qdata->idnumber              = null;
+
+            $qdata->id = $DB->insert_record('question', $qdata);
+
+            // --- 2. {question_bank_entries} ------------------------------
+            $entry = new \stdClass();
+            $entry->questioncategoryid = $categoryid;
+            $entry->idnumber           = null;
+            $entry->ownerid            = $userid;
+            $entry->id = $DB->insert_record('question_bank_entries', $entry);
+
+            // --- 3. {question_versions} ----------------------------------
+            $version = new \stdClass();
+            $version->questionbankentryid = $entry->id;
+            $version->questionid          = $qdata->id;
+            $version->version             = 1;
+            $version->status              = 'ready';
+            $version->id = $DB->insert_record('question_versions', $version);
+
+            // --- 4. {question_answers} : pool complet -------------------
+            // Comme pour multichoice, on neutralise toute mise en forme du
+            // texte pour empêcher le LLM de trahir les bonnes réponses.
+            foreach ($correct as $text) {
+                $a = new \stdClass();
+                $a->question       = $qdata->id;
+                $a->answer         = $this->plain_text_to_html($text);
+                $a->answerformat   = FORMAT_HTML;
+                $a->fraction       = 1.0;
+                $a->feedback       = '';
+                $a->feedbackformat = FORMAT_HTML;
+                $DB->insert_record('question_answers', $a);
+            }
+            foreach ($incorrect as $text) {
+                $a = new \stdClass();
+                $a->question       = $qdata->id;
+                $a->answer         = $this->plain_text_to_html($text);
+                $a->answerformat   = FORMAT_HTML;
+                $a->fraction       = 0.0;
+                $a->feedback       = '';
+                $a->feedbackformat = FORMAT_HTML;
+                $DB->insert_record('question_answers', $a);
+            }
+
+            // --- 5. {question_answersselect} : options -------------------
+            // Mode 1 (manuel) : randomselect* = combien RETIRER du pool.
+            $opts = new \stdClass();
+            $opts->questionid                  = $qdata->id;
+            $opts->answernumbering             = 'abc';
+            $opts->shuffleanswers              = 1;
+            $opts->correctfeedback             = '';
+            $opts->correctfeedbackformat       = FORMAT_HTML;
+            $opts->partiallycorrectfeedback    = '';
+            $opts->partiallycorrectfeedbackformat = FORMAT_HTML;
+            $opts->incorrectfeedback           = '';
+            $opts->incorrectfeedbackformat     = FORMAT_HTML;
+            $opts->shownumcorrect              = 1;
+            $opts->showstandardinstruction     = 0;
+            $opts->answersselectmode           = 1; // manuel (déterministe)
+            $opts->randomselectcorrect         = count($correct)   - $showcorr;
+            $opts->randomselectincorrect       = count($incorrect) - $showincorr;
+            $opts->hardsetamountofanswers      = $showcorr + $showincorr; // (utilisé en mode 3 mais champ NOT NULL)
+            $opts->hastobeoneincorrectanswer   = 1; // garantit au moins 1 distracteur
+            $opts->correctchoicesseparator     = 0;
+            $DB->insert_record('question_answersselect', $opts);
+
+            // --- 6. Event question_created -------------------------------
             $eventcontext = \context::instance_by_id((int)$context->id, IGNORE_MISSING);
             if ($eventcontext) {
                 $event = \core\event\question_created::create_from_question_instance(
@@ -1445,6 +1894,206 @@ class job_handler implements \local_aifeedback\job_handler {
         );
     }
 
+    /**
+     * Prompt système pour qtype_answersselect — QCM à POOL aléatoire.
+     *
+     * Idée pédagogique : on génère un GRAND pool de bonnes réponses ET un
+     * grand pool de distracteurs. À chaque tentative, Moodle tire X bonnes
+     * et Y mauvaises au hasard parmi ces pools → grande variabilité entre
+     * étudiants sur UNE même question (vs étape 5 qui randomise au niveau
+     * des questions).
+     */
+    private function answersselect_system_prompt(): string {
+        $p  = "Tu es un concepteur de QCM À POOL ALÉATOIRE pour l'enseignement ";
+        $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
+        $p .= "Le principe : tu fournis pour chaque question un GRAND POOL de bonnes ";
+        $p .= "réponses ET un grand pool de distracteurs. À chaque tentative, le système ";
+        $p .= "affichera un sous-ensemble TIRÉ AU HASARD : par exemple 2 bonnes parmi 6 ";
+        $p .= "+ 2 mauvaises parmi 6 → différents étudiants voient des combinaisons ";
+        $p .= "différentes de la même question.\n\n";
+        $p .= "Règles strictes :\n";
+        $p .= "- correct_pool : 5 à 8 affirmations DISTINCTES et toutes factuellement ";
+        $p .= "correctes au regard de la source.\n";
+        $p .= "- incorrect_pool : 5 à 8 distracteurs DISTINCTS, plausibles (erreurs ";
+        $p .= "typiques, confusions courantes, paraphrases ambiguës), tous factuellement ";
+        $p .= "incorrects.\n";
+        $p .= "- show_correct_n : 1 à 3 (combien de bonnes à afficher par tentative).\n";
+        $p .= "- show_incorrect_n : 1 à 3 (combien de distracteurs à afficher par tentative).\n";
+        $p .= "- Total affiché par tentative (show_correct_n + show_incorrect_n) : 3 à 5 ";
+        $p .= "options, JAMAIS moins.\n\n";
+        $p .= "⚠️ NEUTRALITÉ DES RÉPONSES (très important) :\n";
+        $p .= "- Chaque élément des pools doit être en TEXTE BRUT, SANS mise en forme ";
+        $p .= "(pas de gras, italique, balises HTML, MAJUSCULES d'accentuation, emojis).\n";
+        $p .= "- Style et longueur COMPARABLES entre bonnes réponses et distracteurs : ";
+        $p .= "rien ne doit permettre de distinguer une bonne réponse d'un distracteur ";
+        $p .= "autrement que par son contenu factuel.\n";
+        $p .= "- Ne termine pas une bonne réponse par une justification ou un détail ";
+        $p .= "supplémentaire que les distracteurs n'auraient pas.\n\n";
+        $p .= "Format des champs question :\n";
+        $p .= "- \"name\" : titre court (max 80 caractères) identifiant la question.\n";
+        $p .= "- \"questiontext\" : énoncé en HTML simple. Formule l'énoncé pour que la ";
+        $p .= "réponse soit une SÉLECTION : \"Parmi les propositions suivantes, lesquelles ";
+        $p .= "sont vraies ?\", \"Cochez toutes les bonnes réponses concernant…\", etc.\n\n";
+        $p .= "Reste fidèle à la source : NE PAS inventer de faits non présents.\n\n";
+        $p .= "La structure JSON de ta réponse est imposée par le schéma fourni dans la requête.";
+        return $p;
+    }
+
+    private function answersselect_schema(): array {
+        return array(
+            'type'                 => 'object',
+            'additionalProperties' => false,
+            'properties' => array(
+                'questions' => array(
+                    'type'  => 'array',
+                    'items' => array(
+                        'type'                 => 'object',
+                        'additionalProperties' => false,
+                        'properties' => array(
+                            'name'             => array('type' => 'string'),
+                            'questiontext'     => array('type' => 'string'),
+                            'correct_pool'     => array(
+                                'type'  => 'array',
+                                'items' => array('type' => 'string'),
+                            ),
+                            'incorrect_pool'   => array(
+                                'type'  => 'array',
+                                'items' => array('type' => 'string'),
+                            ),
+                            'show_correct_n'   => array('type' => 'integer'),
+                            'show_incorrect_n' => array('type' => 'integer'),
+                        ),
+                        'required' => array('name', 'questiontext',
+                            'correct_pool', 'incorrect_pool',
+                            'show_correct_n', 'show_incorrect_n'),
+                    ),
+                ),
+            ),
+            'required' => array('questions'),
+        );
+    }
+
+    /**
+     * Prompt système pour qtype_coderunner (Richard Lobb), spécialisé selon
+     * le langage cible. Le LLM doit produire un exercice de programmation
+     * complet : énoncé + signature de fonction + solution + suite de tests.
+     *
+     * Note : on cible UNIQUEMENT les prototypes « *_function / *_method »
+     * (l'étudiant écrit la fonction, pas tout le main). Plus simple pour le
+     * LLM et plus pédagogique pour des étudiants BTS.
+     */
+    private function coderunner_system_prompt(string $language): string {
+        // Spécifications par langage : signature, format de testcode, exemples.
+        $specs = $this->coderunner_language_specs();
+        $spec  = isset($specs[$language]) ? $specs[$language] : $specs['python3'];
+
+        $p  = "Tu es un concepteur d'exercices de PROGRAMMATION pour l'enseignement ";
+        $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
+        $p .= "Tu génères des exercices destinés au plugin Moodle CodeRunner. ";
+        $p .= "L'étudiant écrira UNE FONCTION (le main / driver est généré ";
+        $p .= "automatiquement par CodeRunner), et son code sera exécuté contre une ";
+        $p .= "suite de tests dans un sandbox.\n\n";
+        $p .= "LANGAGE CIBLE : " . $spec['label'] . "\n";
+        $p .= "Type de prototype CodeRunner : " . $language . "\n\n";
+        $p .= "Pour CHAQUE exercice, tu produiras :\n\n";
+        $p .= "1. \"name\" : titre court (max 80 caractères) identifiant l'exercice.\n\n";
+        $p .= "2. \"questiontext\" : énoncé en HTML simple. Doit OBLIGATOIREMENT inclure :\n";
+        $p .= "   - une description du problème en langage naturel,\n";
+        $p .= "   - la SIGNATURE EXACTE de la fonction attendue (" . $spec['signature_format'] . "),\n";
+        $p .= "   - 1 ou 2 exemples d'appel avec le résultat attendu.\n";
+        $p .= "   Évite les énoncés ambigus : l'étudiant doit savoir précisément quel ";
+        $p .= "type d'entrée et de sortie sont attendus.\n\n";
+        $p .= "3. \"answer\" : code de la fonction de référence en TEXTE BRUT (pas de ";
+        $p .= "balises markdown ```). " . $spec['answer_rules'] . "\n";
+        $p .= "Cette solution sera utilisée par l'enseignant pour valider que les tests ";
+        $p .= "réussissent contre une implémentation correcte.\n\n";
+        $p .= "4. \"tests\" : 3 à 5 cas de test. Pour chaque test :\n";
+        $p .= "   - \"testcode\" : code APPELANT la fonction de l'étudiant et affichant ";
+        $p .= "le résultat sur stdout. " . $spec['testcode_format'] . "\n";
+        $p .= "   - \"expected\" : sortie EXACTE attendue sur stdout (ce que le testcode ";
+        $p .= "doit produire). Termine TOUJOURS par un saut de ligne final si la sortie ";
+        $p .= "contient des valeurs.\n";
+        $p .= "   - \"useasexample\" : true pour 1 ou 2 tests (les plus pédagogiques), ";
+        $p .= "false pour les autres. Les tests « useasexample=true » seront affichés ";
+        $p .= "comme illustration dans l'énoncé.\n\n";
+        $p .= "Couverture des tests : inclure au moins UN cas nominal, UN cas limite ";
+        $p .= "(valeur 0, chaîne vide, liste vide, etc. selon le domaine), et UN cas ";
+        $p .= "d'erreur typique (négatif, hors borne) si pertinent.\n\n";
+        $p .= "RESTE FIDÈLE AU CONTENU SOURCE : ne propose que des exercices alignés sur ";
+        $p .= "les concepts qui y sont traités. Ne pas inventer d'algorithmes non vus.\n\n";
+        $p .= "La structure JSON de ta réponse est imposée par le schéma fourni dans la requête.";
+        return $p;
+    }
+
+    /**
+     * Spécifications par langage cible. Sert au prompt système pour
+     * imposer les bons formats de signature et de testcode.
+     */
+    private function coderunner_language_specs(): array {
+        return array(
+            'python3' => array(
+                'label'            => 'Python 3',
+                'signature_format' => 'ex. : def somme(a, b):',
+                'answer_rules'     => 'Indentation Python standard (4 espaces). N\'ajoute PAS de bloc « if __name__ == \'__main__\' »: seule la fonction est attendue.',
+                'testcode_format'  => 'Pour Python 3 : ex. « print(somme(2, 3)) » → expected = "5\\n"',
+            ),
+            'c_function' => array(
+                'label'            => 'C (fonction)',
+                'signature_format' => 'ex. : int somme(int a, int b)',
+                'answer_rules'     => 'Écris la fonction complète en C, sans #include ni main (CodeRunner s\'en charge). Tu peux inclure des fonctions utilitaires au-dessus si nécessaire.',
+                'testcode_format'  => 'Pour C function : ex. « printf("%d\\n", somme(2, 3)); » → expected = "5\\n"',
+            ),
+            'cpp_function' => array(
+                'label'            => 'C++ (fonction)',
+                'signature_format' => 'ex. : int somme(int a, int b)',
+                'answer_rules'     => 'Écris la fonction complète en C++, sans #include ni main (CodeRunner s\'en charge). using namespace std est implicitement disponible.',
+                'testcode_format'  => 'Pour C++ function : ex. « cout << somme(2, 3) << endl; » → expected = "5\\n"',
+            ),
+            'java_method' => array(
+                'label'            => 'Java (méthode statique)',
+                'signature_format' => 'ex. : public static int somme(int a, int b)',
+                'answer_rules'     => 'Écris UNIQUEMENT la méthode statique. CodeRunner l\'embarquera dans une classe automatiquement. Pas d\'import implicite ; précise tes imports en tête si besoin.',
+                'testcode_format'  => 'Pour Java method : ex. « System.out.println(somme(2, 3)); » → expected = "5\\n"',
+            ),
+        );
+    }
+
+    private function coderunner_schema(): array {
+        return array(
+            'type'                 => 'object',
+            'additionalProperties' => false,
+            'properties' => array(
+                'questions' => array(
+                    'type'  => 'array',
+                    'items' => array(
+                        'type'                 => 'object',
+                        'additionalProperties' => false,
+                        'properties' => array(
+                            'name'         => array('type' => 'string'),
+                            'questiontext' => array('type' => 'string'),
+                            'answer'       => array('type' => 'string'),
+                            'tests'        => array(
+                                'type'  => 'array',
+                                'items' => array(
+                                    'type'                 => 'object',
+                                    'additionalProperties' => false,
+                                    'properties' => array(
+                                        'testcode'     => array('type' => 'string'),
+                                        'expected'     => array('type' => 'string'),
+                                        'useasexample' => array('type' => 'boolean'),
+                                    ),
+                                    'required' => array('testcode', 'expected', 'useasexample'),
+                                ),
+                            ),
+                        ),
+                        'required' => array('name', 'questiontext', 'answer', 'tests'),
+                    ),
+                ),
+            ),
+            'required' => array('questions'),
+        );
+    }
+
     // =====================================================================
     //  HELPERS
     // =====================================================================
@@ -1497,6 +2146,70 @@ class job_handler implements \local_aifeedback\job_handler {
         return !empty($essay['name'])
             && !empty($essay['questiontext'])
             && !empty($essay['expected_answer']);
+    }
+
+    /**
+     * Valide qu'une question CodeRunner est exploitable :
+     *   - name + questiontext + answer non vides
+     *   - >= 1 test avec testcode + expected non vides
+     */
+    private function is_valid_coderunner(array $qa): bool {
+        if (empty($qa['name']) || empty($qa['questiontext'])
+                || empty($qa['answer'])) {
+            return false;
+        }
+        if (!isset($qa['tests']) || !is_array($qa['tests'])
+                || count($qa['tests']) < 1) {
+            return false;
+        }
+        foreach ($qa['tests'] as $t) {
+            if (!is_array($t)) {
+                return false;
+            }
+            // expected peut techniquement être vide (programme silencieux),
+            // mais testcode doit appeler quelque chose.
+            if (!isset($t['testcode']) || trim((string)$t['testcode']) === '') {
+                return false;
+            }
+            if (!isset($t['expected'])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Valide qu'une question answersselect est exploitable :
+     *   - name + questiontext non vides
+     *   - pools >= 2 chacun (sinon pas de variabilité)
+     *   - show_n cohérents (1..taille du pool ; au moins 1 bonne affichée ;
+     *     total affiché >= 2)
+     */
+    private function is_valid_answersselect(array $qa): bool {
+        if (empty($qa['name']) || empty($qa['questiontext'])) {
+            return false;
+        }
+        if (!isset($qa['correct_pool']) || !is_array($qa['correct_pool'])
+                || !isset($qa['incorrect_pool']) || !is_array($qa['incorrect_pool'])) {
+            return false;
+        }
+        // Filtre les doublons et items vides côté pools.
+        $correct   = array_values(array_unique(array_filter(
+            array_map('trim', $qa['correct_pool']))));
+        $incorrect = array_values(array_unique(array_filter(
+            array_map('trim', $qa['incorrect_pool']))));
+        if (count($correct) < 2 || count($incorrect) < 2) {
+            return false;
+        }
+        $showcorr   = isset($qa['show_correct_n'])   ? (int)$qa['show_correct_n']   : 0;
+        $showincorr = isset($qa['show_incorrect_n']) ? (int)$qa['show_incorrect_n'] : 0;
+        if ($showcorr < 1 || $showincorr < 0) {
+            return false;
+        }
+        if ($showcorr > count($correct) || $showincorr > count($incorrect)) {
+            return false;
+        }
+        return ($showcorr + $showincorr) >= 2;
     }
 
     /**

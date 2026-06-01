@@ -105,6 +105,54 @@ class generate_form extends \moodleform {
         $mform->setDefault('essaycount', 0);
         $mform->addHelpButton('essaycount', 'essaycount', 'local_aiquizgen');
 
+        // qtype_answersselect (Joseph Rézeau) — dépendance OPTIONNELLE.
+        // Le champ n'apparaît que si le plugin tiers est installé.
+        if (\core_component::get_plugin_directory('qtype', 'answersselect')) {
+            $mform->addElement('text', 'answersselectcount',
+                get_string('answersselectcount', 'local_aiquizgen'),
+                array('size' => 4));
+            $mform->setType('answersselectcount', PARAM_INT);
+            $mform->setDefault('answersselectcount', 0);
+            $mform->addHelpButton('answersselectcount', 'answersselectcount',
+                'local_aiquizgen');
+        } else {
+            $mform->addElement('static', 'answersselectcount_missing',
+                get_string('answersselectcount', 'local_aiquizgen'),
+                get_string('answersselect_plugin_missing', 'local_aiquizgen'));
+        }
+
+        // qtype_coderunner (Richard Lobb) — dépendance OPTIONNELLE.
+        // Le champ + le sélecteur de langage n'apparaissent que si le plugin
+        // tiers est installé.
+        if (\core_component::get_plugin_directory('qtype', 'coderunner')) {
+            $mform->addElement('text', 'coderunnercount',
+                get_string('coderunnercount', 'local_aiquizgen'),
+                array('size' => 4));
+            $mform->setType('coderunnercount', PARAM_INT);
+            $mform->setDefault('coderunnercount', 0);
+            $mform->addHelpButton('coderunnercount', 'coderunnercount',
+                'local_aiquizgen');
+
+            // Langage cible (= coderunnertype). Liste des prototypes built-in
+            // les plus courants en BTS Info / CIEL.
+            $langs = array(
+                'python3'       => get_string('coderunnerlang_python3',       'local_aiquizgen'),
+                'c_function'    => get_string('coderunnerlang_c_function',    'local_aiquizgen'),
+                'cpp_function'  => get_string('coderunnerlang_cpp_function',  'local_aiquizgen'),
+                'java_method'   => get_string('coderunnerlang_java_method',   'local_aiquizgen'),
+            );
+            $mform->addElement('select', 'coderunnerlanguage',
+                get_string('coderunnerlanguage', 'local_aiquizgen'), $langs);
+            $mform->setDefault('coderunnerlanguage', 'python3');
+            $mform->addHelpButton('coderunnerlanguage', 'coderunnerlanguage',
+                'local_aiquizgen');
+            $mform->hideIf('coderunnerlanguage', 'coderunnercount', 'eq', '0');
+        } else {
+            $mform->addElement('static', 'coderunnercount_missing',
+                get_string('coderunnercount', 'local_aiquizgen'),
+                get_string('coderunner_plugin_missing', 'local_aiquizgen'));
+        }
+
         // -----------------------------------------------------------
         //  VARIATION (fixe vs tirage aléatoire par tentative)
         // -----------------------------------------------------------
@@ -170,6 +218,10 @@ class generate_form extends \moodleform {
             ? (int)$data['shortanswercount'] : 0;
         $essay  = isset($data['essaycount'])
             ? (int)$data['essaycount'] : 0;
+        $ansel  = isset($data['answersselectcount'])
+            ? (int)$data['answersselectcount'] : 0;
+        $coder  = isset($data['coderunnercount'])
+            ? (int)$data['coderunnercount'] : 0;
 
         if ($mcq < 0) {
             $errors['mcqcount'] = get_string('error_mcqcount_negative',
@@ -193,10 +245,29 @@ class generate_form extends \moodleform {
             $errors['essaycount'] = get_string(
                 'error_essaycount_max', 'local_aiquizgen');
         }
-        $totalcount = max(0, $mcq) + max(0, $sa) + max(0, $essay);
+        if ($ansel < 0) {
+            $errors['answersselectcount'] = get_string(
+                'error_answersselectcount_negative', 'local_aiquizgen');
+        } else if ($ansel > 50) {
+            $errors['answersselectcount'] = get_string(
+                'error_answersselectcount_max', 'local_aiquizgen');
+        }
+        if ($coder < 0) {
+            $errors['coderunnercount'] = get_string(
+                'error_coderunnercount_negative', 'local_aiquizgen');
+        } else if ($coder > 20) {
+            // Plafond plus strict : la génération coderunner (énoncé +
+            // solution complète + 3-5 tests) est gourmande en tokens.
+            $errors['coderunnercount'] = get_string(
+                'error_coderunnercount_max', 'local_aiquizgen');
+        }
+        $totalcount = max(0, $mcq) + max(0, $sa) + max(0, $essay)
+                    + max(0, $ansel) + max(0, $coder);
         if ($totalcount < 1 && empty($errors['mcqcount'])
                             && empty($errors['shortanswercount'])
-                            && empty($errors['essaycount'])) {
+                            && empty($errors['essaycount'])
+                            && empty($errors['answersselectcount'])
+                            && empty($errors['coderunnercount'])) {
             $errors['mcqcount'] = get_string('error_total_min', 'local_aiquizgen');
         }
 

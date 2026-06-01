@@ -92,6 +92,24 @@ if (isset($params['essaycount']) && (int)$params['essaycount'] > 0) {
         (int)$params['essaycount'],
     );
 }
+if (isset($params['answersselectcount'])
+        && (int)$params['answersselectcount'] > 0) {
+    $rows[] = array(
+        get_string('answersselectcount', 'local_aiquizgen'),
+        (int)$params['answersselectcount'],
+    );
+}
+if (isset($params['coderunnercount'])
+        && (int)$params['coderunnercount'] > 0) {
+    $value = (int)$params['coderunnercount'];
+    if (!empty($params['coderunnerlanguage'])) {
+        $value .= ' (' . s((string)$params['coderunnerlanguage']) . ')';
+    }
+    $rows[] = array(
+        get_string('coderunnercount', 'local_aiquizgen'),
+        $value,
+    );
+}
 // Mode de variation.
 $variationmode = isset($params['variationmode'])
     ? (string)$params['variationmode'] : 'fixed';

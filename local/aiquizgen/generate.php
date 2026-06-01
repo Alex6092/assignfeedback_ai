@@ -56,13 +56,19 @@ if ($data = $form->get_data()) {
     $sourcetype = isset($data->sourcetype) ? (string)$data->sourcetype : 'pdf';
 
     $params = array(
-        'sourcetype'       => $sourcetype,
-        'mcqcount'         => (int)$data->mcqcount,
-        'shortanswercount' => isset($data->shortanswercount)
+        'sourcetype'         => $sourcetype,
+        'mcqcount'           => (int)$data->mcqcount,
+        'shortanswercount'   => isset($data->shortanswercount)
             ? (int)$data->shortanswercount : 0,
-        'essaycount'       => isset($data->essaycount)
+        'essaycount'         => isset($data->essaycount)
             ? (int)$data->essaycount : 0,
-        'quizname'         => (string)$data->quizname,
+        'answersselectcount' => isset($data->answersselectcount)
+            ? (int)$data->answersselectcount : 0,
+        'coderunnercount'    => isset($data->coderunnercount)
+            ? (int)$data->coderunnercount : 0,
+        'coderunnerlanguage' => isset($data->coderunnerlanguage)
+            ? (string)$data->coderunnerlanguage : 'python3',
+        'quizname'           => (string)$data->quizname,
     );
     if ($sourcetype === 'lesson') {
         $params['sourcelessonid'] = (int)$data->sourcelessonid;
