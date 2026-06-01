@@ -42,13 +42,16 @@ $string['answersselectcount_help']   = 'Number of pool-based MCQ (third-party qt
 $string['answersselect_plugin_missing'] = 'The third-party qtype_answersselect plugin is not installed on this site. To enable random-pool MCQ generation, install it from https://moodle.org/plugins/qtype_answersselect.';
 
 $string['coderunnercount']             = 'CodeRunner programming exercises';
-$string['coderunnercount_help']        = 'Number of programming exercises (third-party qtype_coderunner plugin by Richard Lobb). Each exercise contains a problem statement, a reference function and 3 to 5 automated tests. Student code is executed in a sandbox (Jobe) at submission time. Between 0 and 20 (token-hungry generation). <strong>Important:</strong> the LLM-generated solution may contain errors; click "Check" in each question editor to verify the tests pass against the reference solution before publishing.';
+$string['coderunnercount_help']        = 'Number of programming exercises (third-party qtype_coderunner plugin by Richard Lobb). Each exercise contains a problem statement, a reference solution and 3 to 5 automated tests. Student code is executed in a sandbox (Jobe) at submission time. Between 0 and 20 (token-hungry generation). <strong>Important:</strong> the LLM-generated solution may contain errors; click "Check" in each question editor to verify the tests pass against the reference solution before publishing.';
 $string['coderunnerlanguage']          = 'Target language';
-$string['coderunnerlanguage_help']     = 'Programming language used by ALL CodeRunner exercises in this generation. The "function / method" variants ask the student to write only a function (CodeRunner generates the driver/main), which is more pedagogical for foundation-year students than a full program.';
+$string['coderunnerlanguage_help']     = 'Programming language used by ALL CodeRunner exercises in this generation. The "function / method" variants ask the student to write only a function (CodeRunner generates the driver/main), which is more pedagogical for foundation-year students. The "full program" variants ask the student to write a complete program that reads from standard input and writes to standard output (each test feeds a stdin and checks the produced stdout).';
 $string['coderunnerlang_python3']      = 'Python 3 (function)';
+$string['coderunnerlang_nodejs']       = 'JavaScript / Node.js (function)';
 $string['coderunnerlang_c_function']   = 'C (function)';
 $string['coderunnerlang_cpp_function'] = 'C++ (function)';
 $string['coderunnerlang_java_method']  = 'Java (static method)';
+$string['coderunnerlang_c_program']    = 'C (full program, stdin → stdout)';
+$string['coderunnerlang_cpp_program']  = 'C++ (full program, stdin → stdout)';
 $string['coderunner_plugin_missing']   = 'The third-party qtype_coderunner plugin is not installed on this site. To enable auto-graded programming exercise generation, install it from https://moodle.org/plugins/qtype_coderunner. Note: this plugin also requires a sandbox server (Jobe) to execute student code.';
 
 $string['variation_heading']         = 'Per-student variation';

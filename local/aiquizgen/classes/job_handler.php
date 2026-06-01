@@ -709,6 +709,10 @@ class job_handler implements \local_aifeedback\job_handler {
      */
     private function generate_coderunners(string $sourcetext, int $count,
             string $language, array $images = array()): array {
+        $specs    = $this->coderunner_language_specs();
+        $paradigm = isset($specs[$language]['paradigm'])
+            ? $specs[$language]['paradigm'] : 'function';
+
         $user = "SOURCE :\n" . $sourcetext . "\n\n"
               . "Génère exactement " . $count
               . " exercices de programmation pour le langage cible « " . $language . " » "
@@ -716,11 +720,16 @@ class job_handler implements \local_aifeedback\job_handler {
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
+        // Le validateur dépend du paradigme (testcode vs stdin) : on le lie
+        // via une closure (call_llm_for_questions attend un callable(array)).
+        $validator = function(array $q) use ($paradigm): bool {
+            return $this->is_valid_coderunner($q, $paradigm);
+        };
         return $this->call_llm_for_questions(
             $this->coderunner_system_prompt($language), $user, $images,
             'local_aiquizgen_coderunner_response',
-            $this->coderunner_schema(), $count,
-            array($this, 'is_valid_coderunner'), 8000
+            $this->coderunner_schema($paradigm), $count,
+            $validator, 8000
         );
     }
 
@@ -728,15 +737,18 @@ class job_handler implements \local_aifeedback\job_handler {
      * Crée une catégorie dans la banque de questions, DANS LE CONTEXTE FOURNI
      * (en pratique : le contexte module du quiz généré — voir process_one).
      *
-     * Logique :
-     *   - Si une catégorie top-level (parent=0) existe déjà dans ce contexte,
-     *     on s'y attache comme sous-catégorie.
-     *   - Sinon (cas normal d'un contexte module tout neuf), on crée notre
-     *     catégorie directement au top niveau (parent=0).
+     * Logique (Moodle 4.x/5.x) :
+     *   - On récupère (ou crée) la catégorie « top » pseudo-racine du contexte
+     *     module via question_get_top_category($contextid, true).
+     *   - On crée NOTRE catégorie SOUS cette « top » (parent = top.id, != 0).
      *
-     * On NE PASSE PAS par `question_make_default_categories()` : cette
-     * fonction core a un défaut sur Moodle 5.2 (elle insère parent=NULL
-     * dans un champ NOT NULL DEFAULT 0, ce qui fait casser MySQL).
+     * IMPORTANT : ne jamais créer la catégorie avec parent=0. Une catégorie
+     * parent=0 est interprétée par Moodle comme une catégorie structurelle
+     * « top » et est exclue du sélecteur de catégorie des formulaires
+     * d'édition (clause SQL `AND c.parent <> 0`). Les questions de cette
+     * catégorie deviennent alors non-éditables (« category required », voire
+     * crash « Invalid context id » pour qtype_coderunner). Voir le détail dans
+     * le corps de la méthode.
      *
      * @param \context $context contexte (module) où ranger la catégorie
      */
@@ -998,7 +1010,13 @@ class job_handler implements \local_aifeedback\job_handler {
             $opts->prototypetype            = 0;   // question normale, pas un prototype
             $opts->allornothing             = 1;   // tous les tests passent ou rien
             $opts->showsource               = 0;
-            $opts->precheck                 = 0;
+            // Bouton « Precheck » disponible pour l'étudiant, exécuté
+            // UNIQUEMENT sur les tests marqués « exemple » (PRECHECK_EXAMPLES=2
+            // de qtype_coderunner\constants). Permet à l'étudiant de tester son
+            // code sur les cas d'exemple sans pénalité avant la soumission
+            // définitive. Nécessite >= 1 testcase useasexample=1 (garanti
+            // plus bas, sinon CodeRunner refuse l'édition « precheckingemptyset »).
+            $opts->precheck                 = 2;
             $opts->hidecheck                = 0;
             $opts->answerboxlines           = 18;
             $opts->answerboxcolumns         = 100;
@@ -1043,18 +1061,45 @@ class job_handler implements \local_aifeedback\job_handler {
             $DB->insert_record('question_coderunner_options', $opts);
 
             // --- 5. {question_coderunner_tests} : un par testcase --------
-            foreach ((array)$qa['tests'] as $t) {
-                if (!is_array($t)) {
-                    continue;
+            // Le champ d'entrée du test dépend du paradigme du prototype :
+            //   - 'function' : `testcode` appelle la fonction étudiante, stdin vide.
+            //   - 'program'  : `stdin` alimente le programme complet, testcode vide.
+            $specs    = $this->coderunner_language_specs();
+            $paradigm = isset($specs[$language]['paradigm'])
+                ? $specs[$language]['paradigm'] : 'function';
+
+            $tests = array_values(array_filter((array)$qa['tests'], 'is_array'));
+
+            // Garde-fou pour le precheck « Examples » : il faut AU MOINS un
+            // testcase marqué useasexample, sinon CodeRunner refuse l'édition
+            // (« precheckingemptyset »). Si le LLM n'en a marqué aucun, on
+            // promeut le premier test en exemple.
+            $hasexample = false;
+            foreach ($tests as $t) {
+                if (!empty($t['useasexample'])) {
+                    $hasexample = true;
+                    break;
                 }
+            }
+
+            foreach ($tests as $i => $t) {
                 $test = new \stdClass();
                 $test->questionid     = $qdata->id;
                 $test->testtype       = 0; // Normal
-                $test->testcode       = (string)($t['testcode'] ?? '');
-                $test->stdin          = '';
+                if ($paradigm === 'program') {
+                    $test->testcode = '';
+                    $test->stdin    = (string)($t['stdin'] ?? '');
+                } else {
+                    $test->testcode = (string)($t['testcode'] ?? '');
+                    $test->stdin    = '';
+                }
                 $test->expected       = (string)($t['expected'] ?? '');
                 $test->extra          = '';
-                $test->useasexample   = !empty($t['useasexample']) ? 1 : 0;
+                $isexample            = !empty($t['useasexample']);
+                if (!$hasexample && $i === 0) {
+                    $isexample = true; // promotion du 1er test faute d'exemple
+                }
+                $test->useasexample   = $isexample ? 1 : 0;
                 $test->display        = 'SHOW';
                 $test->hiderestiffail = 0;
                 $test->mark           = 1.0;
@@ -1975,18 +2020,36 @@ class job_handler implements \local_aifeedback\job_handler {
 
     /**
      * Prompt système pour qtype_coderunner (Richard Lobb), spécialisé selon
-     * le langage cible. Le LLM doit produire un exercice de programmation
-     * complet : énoncé + signature de fonction + solution + suite de tests.
-     *
-     * Note : on cible UNIQUEMENT les prototypes « *_function / *_method »
-     * (l'étudiant écrit la fonction, pas tout le main). Plus simple pour le
-     * LLM et plus pédagogique pour des étudiants BTS.
+     * le langage cible. Aiguille vers l'un des deux paradigmes :
+     *   - 'function' : l'étudiant écrit UNE fonction (python3, nodejs,
+     *     c_function, cpp_function, java_method) ; chaque test fournit un
+     *     `testcode` qui l'appelle.
+     *   - 'program'  : l'étudiant écrit un PROGRAMME complet (c_program,
+     *     cpp_program) lisant stdin / écrivant stdout ; chaque test fournit
+     *     une entrée `stdin` et la sortie `expected`.
      */
     private function coderunner_system_prompt(string $language): string {
         // Spécifications par langage : signature, format de testcode, exemples.
         $specs = $this->coderunner_language_specs();
         $spec  = isset($specs[$language]) ? $specs[$language] : $specs['python3'];
 
+        // Deux paradigmes radicalement différents :
+        //   - 'function' : l'étudiant écrit une fonction, testcode l'appelle.
+        //   - 'program'  : l'étudiant écrit un programme complet lisant stdin.
+        $paradigm = isset($spec['paradigm']) ? $spec['paradigm'] : 'function';
+        if ($paradigm === 'program') {
+            return $this->coderunner_program_prompt($language, $spec);
+        }
+        return $this->coderunner_function_prompt($language, $spec);
+    }
+
+    /**
+     * Prompt « paradigme fonction » (python3, nodejs, c_function, cpp_function,
+     * java_method) : l'étudiant écrit UNE fonction, le driver/main est généré
+     * par CodeRunner, et chaque test fournit un `testcode` qui appelle la
+     * fonction et affiche le résultat sur stdout.
+     */
+    private function coderunner_function_prompt(string $language, array $spec): string {
         $p  = "Tu es un concepteur d'exercices de PROGRAMMATION pour l'enseignement ";
         $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
         $p .= "Tu génères des exercices destinés au plugin Moodle CodeRunner. ";
@@ -2026,39 +2089,144 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
+     * Prompt « paradigme programme complet » (c_program, cpp_program) :
+     * l'étudiant écrit un PROGRAMME ENTIER (avec main) qui lit ses données sur
+     * l'entrée standard et écrit le résultat sur la sortie standard. Il n'y a
+     * PAS de testcode : chaque test fournit une entrée `stdin` et la sortie
+     * `expected` attendue sur stdout.
+     */
+    private function coderunner_program_prompt(string $language, array $spec): string {
+        $p  = "Tu es un concepteur d'exercices de PROGRAMMATION pour l'enseignement ";
+        $p .= "supérieur technologique français (BTS Informatique / BTS CIEL).\n\n";
+        $p .= "Tu génères des exercices destinés au plugin Moodle CodeRunner. ";
+        $p .= "L'étudiant écrira un PROGRAMME COMPLET (avec une fonction main), qui ";
+        $p .= "LIT ses données sur l'entrée standard (stdin) et ÉCRIT son résultat ";
+        $p .= "sur la sortie standard (stdout). Son programme sera compilé puis ";
+        $p .= "exécuté dans un sandbox, une fois par cas de test, avec une entrée ";
+        $p .= "stdin donnée ; la sortie stdout produite sera comparée à la sortie ";
+        $p .= "attendue.\n\n";
+        $p .= "LANGAGE CIBLE : " . $spec['label'] . "\n";
+        $p .= "Type de prototype CodeRunner : " . $language . "\n";
+        $p .= "Entrées/sorties : " . $spec['io_format'] . "\n\n";
+        $p .= "Pour CHAQUE exercice, tu produiras :\n\n";
+        $p .= "1. \"name\" : titre court (max 80 caractères) identifiant l'exercice.\n\n";
+        $p .= "2. \"questiontext\" : énoncé en HTML simple. Doit OBLIGATOIREMENT inclure :\n";
+        $p .= "   - une description du problème en langage naturel,\n";
+        $p .= "   - le FORMAT EXACT de l'entrée (ce que le programme lira sur stdin : ";
+        $p .= "nombre de valeurs, ordre, types, séparateurs),\n";
+        $p .= "   - le FORMAT EXACT de la sortie attendue sur stdout,\n";
+        $p .= "   - 1 ou 2 exemples « entrée → sortie » (" . $spec['example_format'] . ").\n";
+        $p .= "   L'étudiant doit pouvoir écrire son programme sans ambiguïté sur le ";
+        $p .= "format d'E/S.\n\n";
+        $p .= "3. \"answer\" : le programme de référence COMPLET en TEXTE BRUT (pas de ";
+        $p .= "balises markdown ```). " . $spec['answer_rules'] . "\n";
+        $p .= "Ce programme sera utilisé par l'enseignant pour valider que les tests ";
+        $p .= "réussissent contre une implémentation correcte.\n\n";
+        $p .= "4. \"tests\" : 3 à 5 cas de test. Pour chaque test :\n";
+        $p .= "   - \"stdin\" : le contenu EXACT fourni sur l'entrée standard pour ce ";
+        $p .= "test (peut contenir plusieurs lignes ; termine chaque ligne par \\n). ";
+        $p .= "Si l'exercice ne lit rien, mets une chaîne vide.\n";
+        $p .= "   - \"expected\" : la sortie EXACTE attendue sur stdout pour cette entrée. ";
+        $p .= "Termine TOUJOURS par un saut de ligne final si le programme affiche une ";
+        $p .= "valeur (printf/cout sont rarement sans \\n final).\n";
+        $p .= "   - \"useasexample\" : true pour 1 ou 2 tests (les plus pédagogiques), ";
+        $p .= "false pour les autres. Les tests « useasexample=true » seront affichés ";
+        $p .= "comme illustration dans l'énoncé.\n\n";
+        $p .= "Couverture des tests : inclure au moins UN cas nominal, UN cas limite ";
+        $p .= "(valeur 0, entrée minimale, etc. selon le domaine), et UN cas d'erreur ";
+        $p .= "typique (négatif, hors borne) si pertinent.\n\n";
+        $p .= "RESTE FIDÈLE AU CONTENU SOURCE : ne propose que des exercices alignés sur ";
+        $p .= "les concepts qui y sont traités. Ne pas inventer d'algorithmes non vus.\n\n";
+        $p .= "La structure JSON de ta réponse est imposée par le schéma fourni dans la requête.";
+        return $p;
+    }
+
+    /**
      * Spécifications par langage cible. Sert au prompt système pour
      * imposer les bons formats de signature et de testcode.
      */
     private function coderunner_language_specs(): array {
         return array(
+            // ----- Prototypes « fonction » : l'étudiant écrit UNE fonction,
+            //        CodeRunner génère le driver et le testcode l'appelle. -----
             'python3' => array(
                 'label'            => 'Python 3',
+                'paradigm'         => 'function',
                 'signature_format' => 'ex. : def somme(a, b):',
                 'answer_rules'     => 'Indentation Python standard (4 espaces). N\'ajoute PAS de bloc « if __name__ == \'__main__\' »: seule la fonction est attendue.',
                 'testcode_format'  => 'Pour Python 3 : ex. « print(somme(2, 3)) » → expected = "5\\n"',
             ),
+            'nodejs' => array(
+                'label'            => 'JavaScript (Node.js)',
+                'paradigm'         => 'function',
+                'signature_format' => 'ex. : function somme(a, b) { ... }',
+                'answer_rules'     => 'Écris la ou les fonctions en JavaScript moderne (ES2015+). N\'ajoute NI appel de test, NI console.log de démonstration, NI module.exports : seules les fonctions sont attendues. CodeRunner exécute ton code puis le testcode via Node.js dans le même contexte.',
+                'testcode_format'  => 'Pour Node.js : ex. « console.log(somme(2, 3)); » → expected = "5\\n"',
+            ),
             'c_function' => array(
                 'label'            => 'C (fonction)',
+                'paradigm'         => 'function',
                 'signature_format' => 'ex. : int somme(int a, int b)',
                 'answer_rules'     => 'Écris la fonction complète en C, sans #include ni main (CodeRunner s\'en charge). Tu peux inclure des fonctions utilitaires au-dessus si nécessaire.',
                 'testcode_format'  => 'Pour C function : ex. « printf("%d\\n", somme(2, 3)); » → expected = "5\\n"',
             ),
             'cpp_function' => array(
                 'label'            => 'C++ (fonction)',
+                'paradigm'         => 'function',
                 'signature_format' => 'ex. : int somme(int a, int b)',
                 'answer_rules'     => 'Écris la fonction complète en C++, sans #include ni main (CodeRunner s\'en charge). using namespace std est implicitement disponible.',
                 'testcode_format'  => 'Pour C++ function : ex. « cout << somme(2, 3) << endl; » → expected = "5\\n"',
             ),
             'java_method' => array(
                 'label'            => 'Java (méthode statique)',
+                'paradigm'         => 'function',
                 'signature_format' => 'ex. : public static int somme(int a, int b)',
                 'answer_rules'     => 'Écris UNIQUEMENT la méthode statique. CodeRunner l\'embarquera dans une classe automatiquement. Pas d\'import implicite ; précise tes imports en tête si besoin.',
                 'testcode_format'  => 'Pour Java method : ex. « System.out.println(somme(2, 3)); » → expected = "5\\n"',
             ),
+            // ----- Prototypes « programme complet » : l'étudiant écrit un
+            //        programme entier (avec main) qui LIT sur stdin et ÉCRIT sur
+            //        stdout. Pas de testcode : chaque test fournit une entrée
+            //        stdin et la sortie stdout attendue. -----
+            'c_program' => array(
+                'label'        => 'C (programme complet)',
+                'paradigm'     => 'program',
+                'answer_rules' => 'Écris un programme C COMPLET et autonome : les #include nécessaires, puis une fonction main() qui lit ses données sur l\'entrée standard (scanf / fgets) et écrit le résultat sur la sortie standard (printf). Le programme doit compiler tel quel avec gcc.',
+                'io_format'    => 'Lecture via scanf("%d", ...) / fgets(...) sur stdin ; écriture via printf(...) sur stdout.',
+                'example_format' => 'ex. : si stdin contient « 2 3 », le programme lit les deux entiers et affiche « 5\\n » sur stdout.',
+            ),
+            'cpp_program' => array(
+                'label'        => 'C++ (programme complet)',
+                'paradigm'     => 'program',
+                'answer_rules' => 'Écris un programme C++ COMPLET et autonome : les #include nécessaires (iostream, etc.), puis une fonction main() qui lit ses données sur std::cin et écrit le résultat sur std::cout. Le programme doit compiler tel quel avec g++.',
+                'io_format'    => 'Lecture via std::cin >> ... sur stdin ; écriture via std::cout << ... sur stdout.',
+                'example_format' => 'ex. : si stdin contient « 2 3 », le programme lit les deux entiers et affiche « 5\\n » sur stdout.',
+            ),
         );
     }
 
-    private function coderunner_schema(): array {
+    private function coderunner_schema(string $paradigm = 'function'): array {
+        // Le champ d'entrée d'un test diffère selon le paradigme :
+        //   - 'function' : `testcode` (code qui appelle la fonction étudiante)
+        //   - 'program'  : `stdin`    (entrée standard fournie au programme)
+        // Mode strict OpenAI : additionalProperties=false + tous les champs
+        // listés dans `required`, donc on construit la liste adéquate.
+        if ($paradigm === 'program') {
+            $testprops = array(
+                'stdin'        => array('type' => 'string'),
+                'expected'     => array('type' => 'string'),
+                'useasexample' => array('type' => 'boolean'),
+            );
+            $testreq = array('stdin', 'expected', 'useasexample');
+        } else {
+            $testprops = array(
+                'testcode'     => array('type' => 'string'),
+                'expected'     => array('type' => 'string'),
+                'useasexample' => array('type' => 'boolean'),
+            );
+            $testreq = array('testcode', 'expected', 'useasexample');
+        }
+
         return array(
             'type'                 => 'object',
             'additionalProperties' => false,
@@ -2077,12 +2245,8 @@ class job_handler implements \local_aifeedback\job_handler {
                                 'items' => array(
                                     'type'                 => 'object',
                                     'additionalProperties' => false,
-                                    'properties' => array(
-                                        'testcode'     => array('type' => 'string'),
-                                        'expected'     => array('type' => 'string'),
-                                        'useasexample' => array('type' => 'boolean'),
-                                    ),
-                                    'required' => array('testcode', 'expected', 'useasexample'),
+                                    'properties' => $testprops,
+                                    'required'   => $testreq,
                                 ),
                             ),
                         ),
@@ -2151,9 +2315,14 @@ class job_handler implements \local_aifeedback\job_handler {
     /**
      * Valide qu'une question CodeRunner est exploitable :
      *   - name + questiontext + answer non vides
-     *   - >= 1 test avec testcode + expected non vides
+     *   - >= 1 test, dont le champ d'entrée dépend du paradigme :
+     *       - 'function' : testcode non vide (appelle la fonction) + expected défini
+     *       - 'program'  : stdin défini (peut être vide) + expected non vide
+     *
+     * @param array  $qa       la question candidate renvoyée par le LLM
+     * @param string $paradigm 'function' (défaut) ou 'program'
      */
-    private function is_valid_coderunner(array $qa): bool {
+    private function is_valid_coderunner(array $qa, string $paradigm = 'function'): bool {
         if (empty($qa['name']) || empty($qa['questiontext'])
                 || empty($qa['answer'])) {
             return false;
@@ -2166,13 +2335,25 @@ class job_handler implements \local_aifeedback\job_handler {
             if (!is_array($t)) {
                 return false;
             }
-            // expected peut techniquement être vide (programme silencieux),
-            // mais testcode doit appeler quelque chose.
-            if (!isset($t['testcode']) || trim((string)$t['testcode']) === '') {
-                return false;
-            }
-            if (!isset($t['expected'])) {
-                return false;
+            if ($paradigm === 'program') {
+                // Programme complet : l'entrée stdin peut être vide (programme
+                // sans entrée), mais la sortie attendue doit être renseignée,
+                // sinon le test ne vérifie rien.
+                if (!isset($t['stdin'])) {
+                    return false;
+                }
+                if (!isset($t['expected']) || trim((string)$t['expected']) === '') {
+                    return false;
+                }
+            } else {
+                // Fonction : expected peut être vide (fonction silencieuse),
+                // mais testcode doit appeler quelque chose.
+                if (!isset($t['testcode']) || trim((string)$t['testcode']) === '') {
+                    return false;
+                }
+                if (!isset($t['expected'])) {
+                    return false;
+                }
             }
         }
         return true;

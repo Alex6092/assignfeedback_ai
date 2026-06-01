@@ -137,9 +137,12 @@ class generate_form extends \moodleform {
             // les plus courants en BTS Info / CIEL.
             $langs = array(
                 'python3'       => get_string('coderunnerlang_python3',       'local_aiquizgen'),
+                'nodejs'        => get_string('coderunnerlang_nodejs',        'local_aiquizgen'),
                 'c_function'    => get_string('coderunnerlang_c_function',    'local_aiquizgen'),
                 'cpp_function'  => get_string('coderunnerlang_cpp_function',  'local_aiquizgen'),
                 'java_method'   => get_string('coderunnerlang_java_method',   'local_aiquizgen'),
+                'c_program'     => get_string('coderunnerlang_c_program',     'local_aiquizgen'),
+                'cpp_program'   => get_string('coderunnerlang_cpp_program',   'local_aiquizgen'),
             );
             $mform->addElement('select', 'coderunnerlanguage',
                 get_string('coderunnerlanguage', 'local_aiquizgen'), $langs);

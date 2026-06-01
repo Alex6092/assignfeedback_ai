@@ -42,13 +42,16 @@ $string['answersselectcount_help']   = 'Nombre de questions à pool aléatoire (
 $string['answersselect_plugin_missing'] = 'Le plugin tiers qtype_answersselect n\'est pas installé sur ce site. Pour activer la génération de QCM à pool aléatoire, installe-le depuis https://moodle.org/plugins/qtype_answersselect.';
 
 $string['coderunnercount']           = 'Exercices CodeRunner';
-$string['coderunnercount_help']      = 'Nombre d\'exercices de programmation (plugin tiers qtype_coderunner de Richard Lobb). Chaque exercice contient un énoncé, une fonction de référence et 3 à 5 tests automatiques. Le code de l\'étudiant est exécuté dans un sandbox (Jobe) à la soumission. Entre 0 et 20 (génération gourmande en tokens). <strong>Important :</strong> la solution générée par le LLM peut comporter des erreurs ; pense à cliquer « Check » dans l\'éditeur de chaque question pour valider que les tests passent contre la solution de référence avant publication.';
+$string['coderunnercount_help']      = 'Nombre d\'exercices de programmation (plugin tiers qtype_coderunner de Richard Lobb). Chaque exercice contient un énoncé, une solution de référence et 3 à 5 tests automatiques. Le code de l\'étudiant est exécuté dans un sandbox (Jobe) à la soumission. Entre 0 et 20 (génération gourmande en tokens). <strong>Important :</strong> la solution générée par le LLM peut comporter des erreurs ; pense à cliquer « Check » dans l\'éditeur de chaque question pour valider que les tests passent contre la solution de référence avant publication.';
 $string['coderunnerlanguage']        = 'Langage cible';
-$string['coderunnerlanguage_help']   = 'Langage de programmation pour TOUS les exercices CodeRunner de cette génération. Les variantes « function / method » impliquent que l\'étudiant écrit UNE FONCTION (le driver/main est généré par CodeRunner), ce qui est plus pédagogique pour des étudiants BTS qu\'un programme complet.';
+$string['coderunnerlanguage_help']   = 'Langage de programmation pour TOUS les exercices CodeRunner de cette génération. Les variantes « fonction / méthode » impliquent que l\'étudiant écrit UNE FONCTION (le driver/main est généré par CodeRunner), ce qui est plus pédagogique pour des étudiants BTS. Les variantes « programme complet » demandent à l\'étudiant d\'écrire un programme entier qui lit sur l\'entrée standard et écrit sur la sortie standard (chaque test fournit une entrée stdin et vérifie la sortie stdout produite).';
 $string['coderunnerlang_python3']      = 'Python 3 (fonction)';
+$string['coderunnerlang_nodejs']       = 'JavaScript / Node.js (fonction)';
 $string['coderunnerlang_c_function']   = 'C (fonction)';
 $string['coderunnerlang_cpp_function'] = 'C++ (fonction)';
 $string['coderunnerlang_java_method']  = 'Java (méthode statique)';
+$string['coderunnerlang_c_program']    = 'C (programme complet, stdin → stdout)';
+$string['coderunnerlang_cpp_program']  = 'C++ (programme complet, stdin → stdout)';
 $string['coderunner_plugin_missing']   = 'Le plugin tiers qtype_coderunner n\'est pas installé sur ce site. Pour activer la génération d\'exercices de programmation auto-évalués, installe-le depuis https://moodle.org/plugins/qtype_coderunner. Note : ce plugin nécessite aussi un serveur de sandbox (Jobe) pour exécuter le code.';
 
 $string['variation_heading']         = 'Variation entre étudiants';
