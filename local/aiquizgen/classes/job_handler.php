@@ -1775,7 +1775,7 @@ class job_handler implements \local_aifeedback\job_handler {
         $p .= "⚠️ NEUTRALITÉ DES RÉPONSES (très important) :\n";
         $p .= "- Le texte des 4 réponses (\"text\") doit être en TEXTE BRUT, SANS aucune ";
         $p .= "mise en forme : pas de gras, pas d'italique, pas de balises HTML, pas de ";
-        $p .= "MAJUSCULES d'accentuation, pas d'emojis, pas de marqueurs comme \"(correct)\".\n";
+        $p .= "MAJUSCULES d'exagération, pas d'emojis, pas de marqueurs comme \"(correct)\".\n";
         $p .= "- Toutes les réponses doivent avoir un STYLE et une LONGUEUR comparables ";
         $p .= "(à ±20% près). La bonne réponse ne doit JAMAIS se distinguer visuellement ";
         $p .= "ou stylistiquement des distracteurs.\n";
@@ -1968,7 +1968,7 @@ class job_handler implements \local_aifeedback\job_handler {
         $p .= "options, JAMAIS moins.\n\n";
         $p .= "⚠️ NEUTRALITÉ DES RÉPONSES (très important) :\n";
         $p .= "- Chaque élément des pools doit être en TEXTE BRUT, SANS mise en forme ";
-        $p .= "(pas de gras, italique, balises HTML, MAJUSCULES d'accentuation, emojis).\n";
+        $p .= "(pas de gras, italique, balises HTML, MAJUSCULES d'exagération, emojis).\n";
         $p .= "- Style et longueur COMPARABLES entre bonnes réponses et distracteurs : ";
         $p .= "rien ne doit permettre de distinguer une bonne réponse d'un distracteur ";
         $p .= "autrement que par son contenu factuel.\n";

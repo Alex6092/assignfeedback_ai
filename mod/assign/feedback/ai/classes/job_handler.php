@@ -48,7 +48,13 @@ class job_handler implements \local_aifeedback\job_handler {
             $plugin  = new \assign_feedback_ai($assign, 'ai');
             $plugin->process_feedback_row($rowid);
         } catch (\Throwable $e) {
-            $this->record_failure($rowid, $e->getMessage());
+            // Compose un message exploitable : message + debuginfo éventuel
+            // (le détail technique — code HTTP, erreur API — y est attaché).
+            $errmsg = $e->getMessage();
+            if ($e instanceof \moodle_exception && !empty($e->debuginfo)) {
+                $errmsg .= ' — ' . $e->debuginfo;
+            }
+            $this->record_failure($rowid, $errmsg);
             $current = $DB->get_record(\assign_feedback_ai::TABLE_GRADE, array('id' => $rowid));
             if ($current && (int)$current->attempts < self::MAX_ATTEMPTS) {
                 self::enqueue($rowid);

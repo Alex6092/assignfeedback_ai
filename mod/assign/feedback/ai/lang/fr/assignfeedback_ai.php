@@ -62,7 +62,8 @@ $string['score']                 = 'Score';
 
 $string['nosubmissiontext']      = '(Aucun texte de soumission trouvé)';
 $string['noconfiguration']       = 'La Correction IA n\'est pas configurée pour ce devoir.';
-$string['generationerror']       = 'Erreur lors de l\'appel à l\'IA. Vérifiez la connexion LM Studio.';
+$string['generationerror']       = 'Erreur lors de l\'appel à l\'IA. Vérifiez la connexion au service (URL, clé, modèle).';
+$string['apicalldetail']         = 'Échec de l\'appel à l\'IA : {$a}';
 $string['generationsuccess']     = 'Feedback IA généré avec succès.';
 $string['generationpending']     = 'Génération du feedback IA en cours…';
 $string['generationfailed']      = 'Échec de la génération';

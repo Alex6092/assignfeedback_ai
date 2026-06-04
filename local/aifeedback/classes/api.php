@@ -65,6 +65,62 @@ class api {
             $payload['extra_body'] = $options['extra_body'];
         }
 
+        // -------------------------------------------------------------
+        //  Adaptation au « dialecte » de l'API cible.
+        //
+        //  Beaucoup de backends se disent « compatibles OpenAI » mais
+        //  divergent sur quelques champs. L'API REST officielle d'OpenAI,
+        //  en particulier, diffère de LM Studio / vLLM sur 3 points qui
+        //  provoquent des HTTP 400 :
+        //    1. `extra_body` n'existe pas (c'est une notion du SDK Python).
+        //    2. `max_tokens` est remplacé par `max_completion_tokens` et est
+        //       carrément refusé par les modèles récents (gpt-5, o1, o3…).
+        //    3. les modèles « raisonneurs » (gpt-5*, o1*, o3*, o4*) n'acceptent
+        //       QUE la température par défaut (1) : tout autre valeur → 400.
+        //
+        //  $options['apiflavor'] : 'auto' (défaut), 'openai' ou 'generic'.
+        //  En 'auto', on devine d'après l'URL (présence de « openai.com »).
+        //  LM Studio et les autres backends restent en 'generic' → payload
+        //  inchangé, aucune régression.
+        // -------------------------------------------------------------
+        $flavor = isset($options['apiflavor']) ? (string)$options['apiflavor'] : 'auto';
+        if ($flavor === 'auto') {
+            $flavor = (stripos($url, 'openai.com') !== false) ? 'openai' : 'generic';
+        }
+        if ($flavor === 'openai') {
+            // 1. extra_body inexistant côté OpenAI.
+            unset($payload['extra_body']);
+            // 2. max_tokens → max_completion_tokens.
+            if (isset($payload['max_tokens'])) {
+                $payload['max_completion_tokens'] = (int)$payload['max_tokens'];
+                unset($payload['max_tokens']);
+            }
+            // 3. température non personnalisable sur les modèles raisonneurs :
+            //    on retire le paramètre pour laisser le défaut (1).
+            if (preg_match('/^(gpt-5|o[1-9])/i', $model)) {
+                unset($payload['temperature']);
+
+                // 4. Modèles raisonneurs : les « reasoning tokens » sont
+                //    décomptés DE max_completion_tokens. Avec un budget serré,
+                //    le raisonnement consomme tout et le contenu revient vide
+                //    ou tronqué (finish_reason='length') → JSON invalide.
+                //    On limite donc l'effort de raisonnement (tâche de sortie
+                //    structurée, peu de raisonnement nécessaire) ET on garantit
+                //    un plancher de budget généreux pour laisser de la place à
+                //    la réponse JSON elle-même.
+                if (!isset($options['reasoning_effort'])) {
+                    $payload['reasoning_effort'] = 'low';
+                } else {
+                    $payload['reasoning_effort'] = (string)$options['reasoning_effort'];
+                }
+                $floor = 8192;
+                if (!isset($payload['max_completion_tokens'])
+                        || (int)$payload['max_completion_tokens'] < $floor) {
+                    $payload['max_completion_tokens'] = $floor;
+                }
+            }
+        }
+
         $headers = array(
             'Content-Type: application/json',
             'Accept: application/json',
@@ -84,14 +140,34 @@ class api {
         $raw = $curl->post($url, json_encode($payload, JSON_UNESCAPED_UNICODE));
 
         if ($curl->get_errno()) {
+            // Erreur réseau / TLS / DNS / timeout — typiquement backend injoignable.
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'curl error: ' . $curl->error);
+                'curl error (' . $curl->get_errno() . '): ' . $curl->error
+                . ' [url=' . $url . ']');
         }
+
+        // Code HTTP de la réponse (présent dans curl->info après la requête).
+        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : 0;
 
         $data = json_decode($raw, true);
         if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'bad response: ' . substr((string)$raw, 0, 300));
+            // Réponse inexploitable : on remonte le code HTTP + le corps brut.
+            // Les API compatibles OpenAI renvoient en cas d'erreur un objet
+            // {"error":{"message":"...","type":"...","code":"..."}} : ce message
+            // est la clé pour diagnostiquer (modèle inconnu, paramètre non
+            // supporté, clé invalide, quota dépassé, etc.).
+            $detail = 'HTTP ' . $httpcode . ' — ';
+            if (is_array($data) && isset($data['error'])) {
+                $err = $data['error'];
+                $detail .= 'API error: '
+                    . (isset($err['message']) ? $err['message'] : json_encode($err))
+                    . (isset($err['type']) ? ' (type=' . $err['type'] . ')' : '')
+                    . (isset($err['code']) && $err['code'] !== null ? ' (code=' . $err['code'] . ')' : '');
+            } else {
+                $detail .= 'bad response: ' . substr((string)$raw, 0, 500);
+            }
+            $detail .= ' [model=' . $model . ', url=' . $url . ']';
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
         $content = trim((string)$data['choices'][0]['message']['content']);
@@ -118,8 +194,35 @@ class api {
 
         $result = json_decode($content, true);
         if (!is_array($result)) {
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'json parse error: ' . json_last_error_msg());
+            // Diagnostic enrichi : la cause la plus fréquente avec les modèles
+            // « raisonneurs » (gpt-5, o1…) est un `content` VIDE ou TRONQUÉ
+            // parce que les reasoning tokens ont épuisé max_completion_tokens
+            // (finish_reason='length'). On remonte donc finish_reason, la
+            // longueur du contenu, l'usage des tokens et un extrait.
+            $finish = isset($data['choices'][0]['finish_reason'])
+                ? $data['choices'][0]['finish_reason'] : '?';
+            $usage = '';
+            if (isset($data['usage']) && is_array($data['usage'])) {
+                $u = $data['usage'];
+                $usage = ' tokens(prompt=' . (isset($u['prompt_tokens']) ? $u['prompt_tokens'] : '?')
+                    . ', completion=' . (isset($u['completion_tokens']) ? $u['completion_tokens'] : '?');
+                if (isset($u['completion_tokens_details']['reasoning_tokens'])) {
+                    $usage .= ', reasoning=' . $u['completion_tokens_details']['reasoning_tokens'];
+                }
+                $usage .= ')';
+            }
+            $detail = 'json parse error: ' . json_last_error_msg()
+                . ' [finish_reason=' . $finish
+                . ', content_len=' . strlen($content) . $usage;
+            if ($content === '') {
+                $detail .= ', contenu VIDE → probablement max_tokens trop bas '
+                        .  'pour un modèle raisonneur (reasoning tokens). '
+                        .  'Augmentez max_tokens ou réduisez reasoning_effort';
+            } else {
+                $detail .= ', extrait=' . substr($content, 0, 200);
+            }
+            $detail .= ']';
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
         return $result;
     }

@@ -62,7 +62,8 @@ $string['score']                 = 'Score';
 
 $string['nosubmissiontext']      = '(No submission text found)';
 $string['noconfiguration']       = 'AI Feedback is not configured for this assignment.';
-$string['generationerror']       = 'Error calling the AI. Check your LM Studio connection.';
+$string['generationerror']       = 'Error calling the AI. Check the service connection (URL, key, model).';
+$string['apicalldetail']         = 'AI call failed: {$a}';
 $string['generationsuccess']     = 'AI feedback generated successfully.';
 $string['generationpending']     = 'AI feedback generation in progress…';
 $string['generationfailed']      = 'Generation failed';

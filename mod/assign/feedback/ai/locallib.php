@@ -945,8 +945,17 @@ class assign_feedback_ai extends assign_feedback_plugin {
         try {
             return \local_aifeedback\api::call($messages, $options);
         } catch (\Throwable $e) {
-            debugging('assignfeedback_ai: API call failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            return false;
+            // On NE masque PLUS l'erreur : on compose un message détaillé
+            // (message + debuginfo, qui contient le code HTTP et le message
+            // d'erreur exact renvoyé par l'API) puis on relance. Ce détail
+            // remontera jusqu'à error_message (visible sur la carte et dans
+            // l'écran de gestion), et dans les logs en mode débogage.
+            $detail = $e->getMessage();
+            if ($e instanceof \moodle_exception && !empty($e->debuginfo)) {
+                $detail .= ' — ' . $e->debuginfo;
+            }
+            debugging('assignfeedback_ai: API call failed: ' . $detail, DEBUG_DEVELOPER);
+            throw new \moodle_exception('apicalldetail', 'assignfeedback_ai', '', $detail);
         }
     }
 
