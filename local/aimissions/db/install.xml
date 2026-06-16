@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aimissions/db" VERSION="20260605" COMMENT="Schéma de local_aimissions (missions client génératives et suivies)">
+  <TABLES>
+
+    <TABLE NAME="local_aimissions_project" COMMENT="Le « dossier permanent » d'un groupe : une entreprise fictive persistante par groupe.">
+      <FIELDS>
+        <FIELD NAME="id"                TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="courseid"          TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="groupid"           TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Groupe Moodle propriétaire du projet (0 = projet de cours sans groupe)."/>
+        <FIELD NAME="companyname"       TYPE="char" LENGTH="255" NOTNULL="true"  SEQUENCE="false" COMMENT="Nom de l'entreprise fictive cliente."/>
+        <FIELD NAME="sector"            TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Secteur d'activité."/>
+        <FIELD NAME="persona"           TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Description du client (nom du contact, contexte)."/>
+        <FIELD NAME="personaprofile"    TYPE="char" LENGTH="32"  NOTNULL="false" SEQUENCE="false" COMMENT="Profil psychologique : exigeant|imprecis|versatile|lent|nontechnique|neutre."/>
+        <FIELD NAME="competencytargets" TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Compétences globales visées par le projet (JSON ou texte)."/>
+        <FIELD NAME="dossier"           TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Mémoire du projet (JSON) : historique résumé des sprints, technos choisies, contraintes, erreurs connues."/>
+        <FIELD NAME="currentsprint"     TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Numéro du dernier sprint généré."/>
+        <FIELD NAME="timecreated"       TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timemodified"      TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course_group" UNIQUE="true"  FIELDS="courseid, groupid" COMMENT="Un seul projet par (cours, groupe) : le groupe garde son entreprise."/>
+        <INDEX NAME="courseid"     UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aimissions_mission" COMMENT="Un sprint : une demande client déposée comme devoir Moodle.">
+      <FIELDS>
+        <FIELD NAME="id"                TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="projectid"         TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="sprint"            TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="1" COMMENT="Numéro de sprint dans le projet."/>
+        <FIELD NAME="title"             TYPE="char" LENGTH="255" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="clientrequest"     TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Énoncé de la demande client (HTML), recopié dans assignfeedback_ai.exercise."/>
+        <FIELD NAME="rubric"            TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Critères/corrigé de référence, recopiés dans assignfeedback_ai.expectedanswer."/>
+        <FIELD NAME="competencies"      TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Compétences travaillées (feedback IA), recopiées dans assignfeedback_ai.competencies."/>
+        <FIELD NAME="efe_competence_n1" TYPE="char" LENGTH="32"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N1 (primaire) positionnée sur le devoir."/>
+        <FIELD NAME="efe_competence_n2" TYPE="char" LENGTH="32"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N2 (optionnel, plus précis)."/>
+        <FIELD NAME="efe_competence_n3" TYPE="char" LENGTH="64"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N3 (optionnel, le plus précis)."/>
+        <FIELD NAME="assigncmid"        TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="course_modules.id du devoir généré (0 tant que non créé)."/>
+        <FIELD NAME="status"            TYPE="char" LENGTH="20"  NOTNULL="true"  SEQUENCE="false" DEFAULT="draft" COMMENT="draft|published|archived."/>
+        <FIELD NAME="timecreated"       TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="projectid"  UNIQUE="false" FIELDS="projectid"/>
+        <INDEX NAME="assigncmid" UNIQUE="false" FIELDS="assigncmid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aimissions_ticket" COMMENT="Questions des étudiants au client IA et réponses (Agent 2).">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="projectid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="missionid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" COMMENT="Étudiant qui pose la question."/>
+        <FIELD NAME="question"     TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="answer"       TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Réponse du client IA."/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="pending" COMMENT="pending|answered|failed."/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timeanswered" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="projectid" UNIQUE="false" FIELDS="projectid"/>
+        <INDEX NAME="status"    UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aimissions_event" COMMENT="Événements aléatoires injectés dans un projet (changement de besoin, bug, RGPD, budget).">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="projectid"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="missionid"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="type"        TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" COMMENT="besoin|bug|rgpd|budget."/>
+        <FIELD NAME="body"        TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Communication client générée."/>
+        <FIELD NAME="applied"     TYPE="int"  LENGTH="2"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="projectid" UNIQUE="false" FIELDS="projectid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aimissions_job" COMMENT="Suivi des jobs de génération asynchrone (calqué sur local_aiquizgen_jobs).">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="courseid"     TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="projectid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Projet ciblé (0 si à créer pendant le job)."/>
+        <FIELD NAME="kind"         TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="mission" COMMENT="mission|event."/>
+        <FIELD NAME="params"       TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Paramètres du job (JSON)."/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="pending" COMMENT="pending|running|done|failed."/>
+        <FIELD NAME="log"          TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="lasterror"    TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="resultmissionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Mission créée par le job."/>
+        <FIELD NAME="attempts"     TYPE="int"  LENGTH="4"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course_status" UNIQUE="false" FIELDS="courseid, status"/>
+        <INDEX NAME="userid"        UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="status"        UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>
