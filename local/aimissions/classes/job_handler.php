@@ -26,6 +26,8 @@ class job_handler implements \local_aifeedback\job_handler {
     const TABLE_PROJECT = 'local_aimissions_project';
     /** @var string */
     const TABLE_MISSION = 'local_aimissions_mission';
+    /** @var string */
+    const TABLE_EVENT   = 'local_aimissions_event';
     /** @var int Tentatives avant de basculer un job en failed. */
     const MAX_ATTEMPTS  = 3;
 
@@ -62,7 +64,11 @@ class job_handler implements \local_aifeedback\job_handler {
         $DB->update_record(self::TABLE_JOB, $job);
 
         try {
-            $this->process_one($job);
+            if ($job->kind === 'event') {
+                $this->process_event($job);
+            } else {
+                $this->process_one($job);
+            }
 
             $job = $DB->get_record(self::TABLE_JOB, array('id' => $rowid));
             if ($job) {
@@ -203,6 +209,123 @@ class job_handler implements \local_aifeedback\job_handler {
         $project->id = $DB->insert_record(self::TABLE_PROJECT, $project);
         $DB->set_field(self::TABLE_JOB, 'projectid', $project->id, array('id' => $job->id));
         return $project;
+    }
+
+    // =====================================================================
+    //  ÉVÉNEMENTS (le client se manifeste : besoin / bug / RGPD / budget)
+    // =====================================================================
+
+    /**
+     * Génère une communication client (événement) pour un projet existant.
+     * Stockée en attente de publication (revue enseignant), comme une mission.
+     */
+    private function process_event(\stdClass $job): void {
+        global $DB;
+
+        $params    = json_decode((string)$job->params, true) ?: array();
+        $projectid = (int)($params['projectid'] ?? $job->projectid);
+        $project   = $DB->get_record(self::TABLE_PROJECT, array('id' => $projectid));
+        if (!$project) {
+            throw new \moodle_exception('error_event_noproject', 'local_aimissions');
+        }
+        $type = (string)($params['eventtype'] ?? 'besoin');
+        $hint = (string)($params['hint'] ?? '');
+
+        $this->log($job, 'Génération d\'un événement « ' . $type . ' » pour « '
+            . $project->companyname . ' »…');
+
+        $missions = $DB->get_records(self::TABLE_MISSION,
+            array('projectid' => $projectid, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
+        $mission = $missions ? reset($missions) : null;
+
+        $body = $this->generate_event_body($project, $mission, $type, $hint);
+
+        $ev = new \stdClass();
+        $ev->projectid   = $projectid;
+        $ev->missionid   = $mission ? (int)$mission->id : 0;
+        $ev->type        = $type;
+        $ev->body        = $body;
+        $ev->applied     = 0; // en attente de publication
+        $ev->timecreated = time();
+        $evid = (int)$DB->insert_record(self::TABLE_EVENT, $ev);
+
+        $this->log($job, 'Événement #' . $evid . ' généré (en attente de publication).');
+    }
+
+    /**
+     * Appel LLM produisant le corps du message client (texte brut).
+     */
+    private function generate_event_body(\stdClass $project, ?\stdClass $mission,
+                                         string $type, string $hint): string {
+        $messages = array(
+            array('role' => 'system', 'content' => $this->event_system_prompt($project, $mission)),
+            array('role' => 'user',   'content' => $this->event_user_prompt($type, $hint)),
+        );
+        $options = array('temperature' => 0.6, 'max_tokens' => 700);
+        $model = (string)get_config('local_aimissions', 'model');
+        if ($model !== '') {
+            $options['model'] = $model;
+        }
+        $result = \local_aifeedback\api::call($messages, $options);
+        $text = is_array($result) ? trim((string)($result['__text__'] ?? '')) : '';
+        if ($text === '') {
+            throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
+        }
+        return $text;
+    }
+
+    private function event_system_prompt(\stdClass $project, ?\stdClass $mission): string {
+        $contact = trim((string)$project->persona);
+        $p  = "Tu ES le client de l'entreprise « " . $project->companyname . " »";
+        if ($contact !== '') {
+            $p .= ' (contact : ' . $contact . ')';
+        }
+        $p .= '. ' . personas::instruction((string)$project->personaprofile) . "\n\n";
+        $p .= "Tu écris SPONTANÉMENT un court message (courriel) à ton prestataire (une équipe ";
+        $p .= "d'étudiants BTS CIEL) pour l'informer d'un changement. Reste dans ton rôle : parle ";
+        $p .= "MÉTIER, n'impose aucune solution technique ni techno. 3 à 6 phrases.\n";
+        if (!empty($project->sector)) {
+            $p .= 'Secteur : ' . $project->sector . "\n";
+        }
+        $dossier = json_decode((string)$project->dossier, true) ?: array();
+        if (!empty($dossier['history']) && is_array($dossier['history'])) {
+            $p .= "Historique du projet :\n";
+            foreach ($dossier['history'] as $i => $h) {
+                $p .= '  - Sprint ' . ($i + 1) . ' : ' . $h . "\n";
+            }
+        }
+        if ($mission) {
+            $p .= 'Travail en cours (sprint ' . (int)$mission->sprint . ') : '
+                . \core_text::substr(trim(strip_tags((string)$mission->clientrequest)), 0, 800) . "\n";
+        }
+        return $p;
+    }
+
+    private function event_user_prompt(string $type, string $hint): string {
+        $u = 'Situation à communiquer : ' . $this->event_type_instruction($type) . "\n";
+        if (trim($hint) !== '') {
+            $u .= 'Élément précis à intégrer : ' . trim($hint) . "\n";
+        }
+        $u .= "Rédige le message du client (juste le corps, sans objet d'en-tête).";
+        return $u;
+    }
+
+    private function event_type_instruction(string $type): string {
+        switch ($type) {
+            case 'bug':
+                return "des utilisateurs signalent un PROBLÈME CRITIQUE ; décris le SYMPTÔME constaté "
+                     . "(pas la cause technique), avec l'inquiétude d'un client.";
+            case 'rgpd':
+                return "une nouvelle RÉGLEMENTATION (type RGPD) s'applique désormais ; explique la "
+                     . "nouvelle contrainte en termes métier (consentement, anonymisation, conservation…).";
+            case 'budget':
+                return "le BUDGET du projet vient d'être RÉDUIT ; annonce la contrainte et demande de "
+                     . "prioriser l'essentiel.";
+            case 'besoin':
+            default:
+                return "tes BESOINS ont évolué ; annonce un changement concret de besoin qui impacte "
+                     . "le travail en cours.";
+        }
     }
 
     // =====================================================================

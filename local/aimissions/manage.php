@@ -16,6 +16,7 @@ use local_aimissions\mission_manager;
 $courseid  = required_param('courseid', PARAM_INT);
 $action    = optional_param('action', '', PARAM_ALPHA);
 $missionid = optional_param('missionid', 0, PARAM_INT);
+$eventid   = optional_param('eventid', 0, PARAM_INT);
 $confirm   = optional_param('confirm', 0, PARAM_BOOL);
 
 $course  = get_course($courseid);
@@ -62,6 +63,25 @@ if (($action === 'publish' || $action === 'hide') && $missionid > 0 && confirm_s
     redirect($baseurl);
 }
 
+// --- Actions sur un événement (publier / masquer / supprimer) ------------
+if (($action === 'eventpublish' || $action === 'eventhide' || $action === 'eventdelete')
+        && $eventid > 0 && confirm_sesskey()) {
+    $ev = $DB->get_record('local_aimissions_event', array('id' => $eventid));
+    if ($ev) {
+        $proj = $DB->get_record('local_aimissions_project', array('id' => $ev->projectid));
+        if ($proj && (int)$proj->courseid === $courseid) {
+            if ($action === 'eventpublish') {
+                $DB->set_field('local_aimissions_event', 'applied', 1, array('id' => $eventid));
+            } else if ($action === 'eventhide') {
+                $DB->set_field('local_aimissions_event', 'applied', 0, array('id' => $eventid));
+            } else {
+                $DB->delete_records('local_aimissions_event', array('id' => $eventid));
+            }
+        }
+    }
+    redirect($baseurl);
+}
+
 // --- Action supprimer (destructive → confirmation) -----------------------
 if ($action === 'delete' && $missionid > 0) {
     $mission = $load_mission_in_course($missionid);
@@ -91,6 +111,13 @@ if ($action === 'delete' && $missionid > 0) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('manage_title', 'local_aimissions'));
+
+echo html_writer::div(
+    html_writer::link(
+        new moodle_url('/local/aimissions/event.php', array('courseid' => $courseid)),
+        get_string('manage_injectevent', 'local_aimissions'),
+        array('class' => 'btn btn-outline-primary')),
+    'mb-3');
 
 $projects = $DB->get_records('local_aimissions_project', array('courseid' => $courseid), 'companyname ASC');
 
@@ -181,6 +208,50 @@ foreach ($projects as $project) {
         $table->data[] = array((int)$m->sprint, $title, $statuscell, implode(' ', $actions));
     }
     echo html_writer::table($table);
+
+    // Événements générés pour ce projet (communications client).
+    $events = $DB->get_records('local_aimissions_event',
+        array('projectid' => $project->id), 'timecreated ASC');
+    if ($events) {
+        $etypes = array(
+            'besoin' => get_string('event_besoin', 'local_aimissions'),
+            'bug'    => get_string('event_bug', 'local_aimissions'),
+            'rgpd'   => get_string('event_rgpd', 'local_aimissions'),
+            'budget' => get_string('event_budget', 'local_aimissions'),
+        );
+        echo html_writer::tag('div', get_string('manage_events', 'local_aimissions'),
+            array('class' => 'fw-bold mt-2 mb-1'));
+        foreach ($events as $ev) {
+            $typelabel = $etypes[$ev->type] ?? $ev->type;
+            $statusbadge = $ev->applied
+                ? html_writer::span(get_string('event_published', 'local_aimissions'), 'badge bg-success')
+                : html_writer::span(get_string('event_pending', 'local_aimissions'), 'badge bg-secondary text-white');
+
+            $evactions = array();
+            if ($ev->applied) {
+                $evactions[] = html_writer::link(new moodle_url($baseurl,
+                    array('action' => 'eventhide', 'eventid' => $ev->id, 'sesskey' => sesskey())),
+                    get_string('manage_hide', 'local_aimissions'),
+                    array('class' => 'btn btn-sm btn-outline-secondary'));
+            } else {
+                $evactions[] = html_writer::link(new moodle_url($baseurl,
+                    array('action' => 'eventpublish', 'eventid' => $ev->id, 'sesskey' => sesskey())),
+                    get_string('manage_publish', 'local_aimissions'),
+                    array('class' => 'btn btn-sm btn-primary'));
+            }
+            $evactions[] = html_writer::link(new moodle_url($baseurl,
+                array('action' => 'eventdelete', 'eventid' => $ev->id, 'sesskey' => sesskey())),
+                get_string('manage_delete', 'local_aimissions'),
+                array('class' => 'btn btn-sm btn-outline-danger'));
+
+            echo html_writer::div(
+                html_writer::tag('span', '[' . s($typelabel) . '] ', array('class' => 'fw-bold'))
+                . $statusbadge
+                . html_writer::div(format_text((string)$ev->body, FORMAT_PLAIN), 'mt-1')
+                . html_writer::div(implode(' ', $evactions), 'mt-1'),
+                'border rounded p-2 mb-2');
+        }
+    }
 }
 
 echo $OUTPUT->footer();

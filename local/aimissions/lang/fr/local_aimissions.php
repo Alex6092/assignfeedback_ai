@@ -133,3 +133,20 @@ $string['privacy:metadata:job:userid']  = 'L\'enseignant ayant lancé la génér
 $string['privacy:metadata:job:timecreated'] = 'La date de lancement de la génération.';
 $string['privacy:path:tickets']  = 'Questions au client IA';
 $string['privacy:path:jobs']     = 'Générations de missions';
+
+// Événements (le client se manifeste).
+$string['error_event_noproject'] = 'Le projet ciblé par l\'événement est introuvable.';
+$string['event_title']           = 'Injecter un événement client';
+$string['event_intro']           = 'Le client se manifeste spontanément avec un imprévu. Une communication cohérente avec le projet sera générée pour chaque cible, en attente de votre publication.';
+$string['event_noprojects']      = 'Aucun projet dans ce cours. Générez d\'abord au moins une mission.';
+$string['event_type']            = 'Type d\'événement';
+$string['event_target']          = 'Cible';
+$string['event_target_all']      = 'Tous les groupes / projets';
+$string['event_hint']            = 'Précision (optionnel)';
+$string['event_hint_ph']         = 'Ex. : « la nouvelle contrainte concerne les données des mineurs »';
+$string['event_submit']          = 'Générer l\'événement';
+$string['status_eventjob']       = 'Événement';
+$string['manage_injectevent']    = '+ Injecter un événement';
+$string['manage_events']         = 'Événements client';
+$string['event_published']       = 'Publié';
+$string['event_pending']         = 'En attente';

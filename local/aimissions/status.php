@@ -96,7 +96,10 @@ foreach ($jobs as $j) {
     }
 
     $result = '—';
-    if ((int)$j->resultmissionid > 0) {
+    if ($j->kind === 'event') {
+        $result = html_writer::span(get_string('status_eventjob', 'local_aimissions'),
+            'badge bg-info text-white');
+    } else if ((int)$j->resultmissionid > 0) {
         $mission = $DB->get_record('local_aimissions_mission', array('id' => (int)$j->resultmissionid));
         if ($mission && (int)$mission->assigncmid > 0) {
             $result = html_writer::link(

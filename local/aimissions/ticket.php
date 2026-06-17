@@ -148,18 +148,63 @@ echo html_writer::div(
     . ($contact !== '' ? ' — ' . s($contact) : ''),
     'alert alert-secondary');
 
-// Fil de discussion.
+// Fil de discussion : tickets (question/réponse) + événements (communications
+// spontanées du client), fusionnés chronologiquement.
 $tickets = $DB->get_records('local_aimissions_ticket',
     array('projectid' => $project->id), 'timecreated ASC');
 
-if (empty($tickets)) {
+$eventparams = array('projectid' => $project->id);
+if (!$readonly) {
+    $eventparams['applied'] = 1; // l'étudiant ne voit que les événements publiés
+}
+$events = $DB->get_records('local_aimissions_event', $eventparams, 'timecreated ASC');
+
+$timeline = array();
+foreach ($tickets as $t) {
+    $timeline[] = array('time' => (int)$t->timecreated, 'kind' => 'ticket', 'data' => $t);
+}
+foreach ($events as $ev) {
+    $timeline[] = array('time' => (int)$ev->timecreated, 'kind' => 'event', 'data' => $ev);
+}
+usort($timeline, function($a, $b) {
+    return $a['time'] <=> $b['time'];
+});
+
+if (empty($timeline)) {
     echo html_writer::div(get_string('ticket_empty', 'local_aimissions'), 'text-muted mb-3');
 } else {
-    foreach ($tickets as $t) {
+    $etypes = array(
+        'besoin' => get_string('event_besoin', 'local_aimissions'),
+        'bug'    => get_string('event_bug', 'local_aimissions'),
+        'rgpd'   => get_string('event_rgpd', 'local_aimissions'),
+        'budget' => get_string('event_budget', 'local_aimissions'),
+    );
+    foreach ($timeline as $item) {
+        if ($item['kind'] === 'event') {
+            // Communication spontanée du client (événement).
+            $ev = $item['data'];
+            $typelabel = $etypes[$ev->type] ?? $ev->type;
+            $draft = (!$ev->applied && $readonly)
+                ? ' ' . html_writer::span(get_string('event_pending', 'local_aimissions'),
+                    'badge bg-secondary text-white')
+                : '';
+            echo html_writer::div(
+                html_writer::tag('div',
+                    html_writer::tag('strong', s($project->companyname))
+                    . ' · ' . html_writer::span(s($typelabel), 'badge bg-info text-white')
+                    . $draft
+                    . ' · ' . userdate((int)$ev->timecreated,
+                        get_string('strftimedatetimeshort', 'langconfig')),
+                    array('class' => 'small'))
+                . html_writer::div(format_text((string)$ev->body, FORMAT_PLAIN), 'mt-1'),
+                'border rounded p-2 mb-3 border-info');
+            continue;
+        }
+
+        // Ticket : question (étudiant) + réponse (client).
+        $t = $item['data'];
         $asker = \core_user::get_user((int)$t->userid);
         $askername = $asker ? fullname($asker) : '?';
-
-        // Question (étudiant).
         echo html_writer::div(
             html_writer::tag('div', s($askername) . ' · '
                 . userdate((int)$t->timecreated, get_string('strftimedatetimeshort', 'langconfig')),
@@ -167,7 +212,6 @@ if (empty($tickets)) {
             . html_writer::div(s($t->question), 'mt-1'),
             'border rounded p-2 mb-1 bg-light');
 
-        // Réponse (client).
         if ($t->status === 'pending') {
             echo html_writer::div(get_string('ticket_pending', 'local_aimissions'),
                 'text-muted fst-italic ms-4 mb-3');

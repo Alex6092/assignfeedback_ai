@@ -133,3 +133,20 @@ $string['privacy:metadata:job:userid']  = 'The teacher who started the generatio
 $string['privacy:metadata:job:timecreated'] = 'The date the generation was started.';
 $string['privacy:path:tickets']  = 'Questions to the AI client';
 $string['privacy:path:jobs']     = 'Mission generations';
+
+// Events (the client reaches out).
+$string['error_event_noproject'] = 'The project targeted by the event could not be found.';
+$string['event_title']           = 'Inject a client event';
+$string['event_intro']           = 'The client reaches out with an unexpected situation. A communication consistent with the project is generated for each target, pending your publication.';
+$string['event_noprojects']      = 'No project in this course. Generate at least one mission first.';
+$string['event_type']            = 'Event type';
+$string['event_target']          = 'Target';
+$string['event_target_all']      = 'All groups / projects';
+$string['event_hint']            = 'Detail (optional)';
+$string['event_hint_ph']         = 'E.g. "the new constraint concerns minors\' data"';
+$string['event_submit']          = 'Generate the event';
+$string['status_eventjob']       = 'Event';
+$string['manage_injectevent']    = '+ Inject an event';
+$string['manage_events']         = 'Client events';
+$string['event_published']       = 'Published';
+$string['event_pending']         = 'Pending';
