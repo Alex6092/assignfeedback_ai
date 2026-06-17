@@ -104,3 +104,11 @@ $string['manage_col_status']     = 'Status';
 $string['manage_col_actions']    = 'Actions';
 $string['manage_publish']        = 'Publish';
 $string['manage_hide']           = 'Hide';
+$string['manage_delete']         = 'Delete';
+$string['manage_delete_confirm'] = 'Delete the mission "{$a}"? The associated assignment will be removed from the course, along with any student submissions and grades. The group project will roll back to the previous sprint (you can regenerate it). This action cannot be undone.';
+$string['manage_deleted']        = 'Mission deleted.';
+$string['manage_orphan']         = 'Assignment deleted (orphan)';
+
+// Job deletion on the status page.
+$string['status_col_actions']    = 'Actions';
+$string['status_deletejob']      = 'Remove';

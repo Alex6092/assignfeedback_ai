@@ -7,6 +7,8 @@
 require_once(__DIR__ . '/../../config.php');
 
 $courseid = required_param('courseid', PARAM_INT);
+$action   = optional_param('action', '', PARAM_ALPHA);
+$jobid    = optional_param('jobid', 0, PARAM_INT);
 
 $course  = get_course($courseid);
 require_login($course);
@@ -19,6 +21,17 @@ $PAGE->set_context($context);
 $PAGE->set_pagelayout('incourse');
 $PAGE->set_title(get_string('status_title', 'local_aimissions'));
 $PAGE->set_heading(format_string($course->fullname));
+
+// Suppression d'un job de la liste (un échec ne reste pas affiché à vie).
+// On ne supprime jamais un job en cours d'exécution.
+if ($action === 'deletejob' && $jobid > 0 && confirm_sesskey()) {
+    $job = $DB->get_record('local_aimissions_job',
+        array('id' => $jobid, 'courseid' => $courseid, 'userid' => $USER->id));
+    if ($job && $job->status !== 'running') {
+        $DB->delete_records('local_aimissions_job', array('id' => $jobid));
+    }
+    redirect($PAGE->url);
+}
 
 // Les 30 derniers jobs de l'enseignant courant sur ce cours.
 $jobs = $DB->get_records_select('local_aimissions_job',
@@ -70,6 +83,7 @@ $table->head = array(
     get_string('status_col_status', 'local_aimissions'),
     get_string('status_col_result', 'local_aimissions'),
     get_string('status_col_log', 'local_aimissions'),
+    get_string('status_col_actions', 'local_aimissions'),
 );
 $table->attributes['class'] = 'generaltable';
 
@@ -99,11 +113,21 @@ foreach ($jobs as $j) {
                           . 'border-radius:.25rem;white-space:pre-wrap;margin:0;'));
     }
 
+    $deletecell = '';
+    if ($j->status !== 'running') {
+        $deletecell = html_writer::link(
+            new moodle_url($PAGE->url, array('action' => 'deletejob', 'jobid' => (int)$j->id,
+                'sesskey' => sesskey())),
+            get_string('status_deletejob', 'local_aimissions'),
+            array('class' => 'btn btn-sm btn-outline-danger'));
+    }
+
     $table->data[] = array(
         userdate((int)$j->timecreated, get_string('strftimedatetimeshort', 'langconfig')),
         $statuscell,
         $result,
         $log,
+        $deletecell,
     );
 }
 

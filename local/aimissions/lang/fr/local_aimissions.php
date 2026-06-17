@@ -104,3 +104,11 @@ $string['manage_col_status']     = 'Statut';
 $string['manage_col_actions']    = 'Actions';
 $string['manage_publish']        = 'Publier';
 $string['manage_hide']           = 'Masquer';
+$string['manage_delete']         = 'Supprimer';
+$string['manage_delete_confirm'] = 'Supprimer la mission « {$a} » ? Le devoir associé sera supprimé du cours, ainsi que les éventuelles remises et notes des étudiants. Le projet du groupe reviendra au sprint précédent (vous pourrez le régénérer). Cette action est irréversible.';
+$string['manage_deleted']        = 'Mission supprimée.';
+$string['manage_orphan']         = 'Devoir supprimé (orpheline)';
+
+// Suppression d'un job sur la page de statut.
+$string['status_col_actions']    = 'Actions';
+$string['status_deletejob']      = 'Retirer';

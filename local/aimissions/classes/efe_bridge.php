@@ -102,4 +102,17 @@ class efe_bridge {
         \local_efenotes\activity_config::upsert($cmid, $courseid, $data);
         return true;
     }
+
+    /**
+     * Retire la config de report EFE d'un devoir (à sa suppression).
+     * No-op si local_efenotes est absent. Idempotent.
+     *
+     * @param int $cmid course_modules.id du devoir.
+     */
+    public static function detach(int $cmid): void {
+        if (!self::is_available() || $cmid <= 0) {
+            return;
+        }
+        \local_efenotes\activity_config::delete_for_cmid($cmid);
+    }
 }

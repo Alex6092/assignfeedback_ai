@@ -1,18 +1,22 @@
 <?php
 /**
- * Revue et publication des missions générées d'un cours.
+ * Revue, publication et suppression des missions générées d'un cours.
  *
  * Les missions sont créées en devoirs CACHÉS (visible=0). L'enseignant les
- * relit (lien vers le devoir) puis les publie (rend le module visible). Il
- * peut aussi re-masquer une mission publiée.
+ * relit (lien vers le devoir), les publie (rend le module visible), peut les
+ * re-masquer, et peut SUPPRIMER le dernier sprint d'un groupe (ou une mission
+ * orpheline dont le devoir a déjà été supprimé) pour le régénérer.
  */
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/course/lib.php');
 
-$courseid = required_param('courseid', PARAM_INT);
-$action   = optional_param('action', '', PARAM_ALPHA);
+use local_aimissions\mission_manager;
+
+$courseid  = required_param('courseid', PARAM_INT);
+$action    = optional_param('action', '', PARAM_ALPHA);
 $missionid = optional_param('missionid', 0, PARAM_INT);
+$confirm   = optional_param('confirm', 0, PARAM_BOOL);
 
 $course  = get_course($courseid);
 require_login($course);
@@ -27,15 +31,29 @@ $PAGE->set_pagelayout('incourse');
 $PAGE->set_title(get_string('manage_title', 'local_aimissions'));
 $PAGE->set_heading(format_string($course->fullname));
 
-// --- Action publier / masquer --------------------------------------------
-if ($action !== '' && $missionid > 0 && confirm_sesskey()) {
-    $mission = $DB->get_record('local_aimissions_mission', array('id' => $missionid), '*', MUST_EXIST);
-    $project = $DB->get_record('local_aimissions_project', array('id' => $mission->projectid), '*', MUST_EXIST);
-    if ((int)$project->courseid === $courseid && (int)$mission->assigncmid > 0) {
+/**
+ * Vérifie que la mission appartient bien au cours courant.
+ */
+$load_mission_in_course = function(int $mid) use ($DB, $courseid) {
+    $mission = $DB->get_record('local_aimissions_mission', array('id' => $mid));
+    if (!$mission) {
+        return null;
+    }
+    $project = $DB->get_record('local_aimissions_project', array('id' => $mission->projectid));
+    if (!$project || (int)$project->courseid !== $courseid) {
+        return null;
+    }
+    return $mission;
+};
+
+// --- Actions publier / masquer (idempotentes, redirigent) ----------------
+if (($action === 'publish' || $action === 'hide') && $missionid > 0 && confirm_sesskey()) {
+    $mission = $load_mission_in_course($missionid);
+    if ($mission && (int)$mission->assigncmid > 0) {
         if ($action === 'publish') {
             set_coursemodule_visible($mission->assigncmid, 1);
             $DB->set_field('local_aimissions_mission', 'status', 'published', array('id' => $missionid));
-        } else if ($action === 'hide') {
+        } else {
             set_coursemodule_visible($mission->assigncmid, 0);
             $DB->set_field('local_aimissions_mission', 'status', 'draft', array('id' => $missionid));
         }
@@ -44,10 +62,36 @@ if ($action !== '' && $missionid > 0 && confirm_sesskey()) {
     redirect($baseurl);
 }
 
+// --- Action supprimer (destructive → confirmation) -----------------------
+if ($action === 'delete' && $missionid > 0) {
+    $mission = $load_mission_in_course($missionid);
+    if (!$mission) {
+        redirect($baseurl);
+    }
+
+    if ($confirm && confirm_sesskey()) {
+        mission_manager::delete_mission_full($missionid);
+        redirect($baseurl, get_string('manage_deleted', 'local_aimissions'), null,
+            \core\output\notification::NOTIFY_SUCCESS);
+    }
+
+    // Page de confirmation.
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('manage_title', 'local_aimissions'));
+    $confirmurl = new moodle_url($baseurl, array('action' => 'delete', 'missionid' => $missionid,
+        'confirm' => 1, 'sesskey' => sesskey()));
+    echo $OUTPUT->confirm(
+        get_string('manage_delete_confirm', 'local_aimissions', s($mission->title)),
+        $confirmurl,
+        $baseurl
+    );
+    echo $OUTPUT->footer();
+    exit;
+}
+
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('manage_title', 'local_aimissions'));
 
-// Projets du cours + missions, regroupés par projet (= par groupe/entreprise).
 $projects = $DB->get_records('local_aimissions_project', array('courseid' => $courseid), 'companyname ASC');
 
 if (empty($projects)) {
@@ -69,6 +113,12 @@ foreach ($projects as $project) {
         continue;
     }
 
+    // Sprint max du projet : seul le dernier sprint (ou une orpheline) est supprimable.
+    $maxsprint = 0;
+    foreach ($missions as $m) {
+        $maxsprint = max($maxsprint, (int)$m->sprint);
+    }
+
     $table = new html_table();
     $table->head = array(
         get_string('manage_col_sprint', 'local_aimissions'),
@@ -79,30 +129,47 @@ foreach ($projects as $project) {
     $table->attributes['class'] = 'generaltable';
 
     foreach ($missions as $m) {
+        $cmexists = (int)$m->assigncmid > 0
+            && $DB->record_exists('course_modules', array('id' => (int)$m->assigncmid));
+
         $title = s($m->title);
-        if ((int)$m->assigncmid > 0) {
+        if ($cmexists) {
             $title = html_writer::link(
                 new moodle_url('/mod/assign/view.php', array('id' => (int)$m->assigncmid)), $title);
         }
 
-        $statusstr = get_string('mission_' . $m->status, 'local_aimissions');
-
-        $actions = '';
-        if ($m->status === 'published') {
-            $actions = html_writer::link(
-                new moodle_url($baseurl, array('action' => 'hide', 'missionid' => $m->id,
-                    'sesskey' => sesskey())),
-                get_string('manage_hide', 'local_aimissions'),
-                array('class' => 'btn btn-sm btn-outline-secondary'));
+        if (!$cmexists) {
+            $statuscell = html_writer::span(
+                get_string('manage_orphan', 'local_aimissions'), 'badge bg-warning text-dark');
         } else {
-            $actions = html_writer::link(
-                new moodle_url($baseurl, array('action' => 'publish', 'missionid' => $m->id,
-                    'sesskey' => sesskey())),
-                get_string('manage_publish', 'local_aimissions'),
-                array('class' => 'btn btn-sm btn-primary'));
+            $statuscell = s(get_string('mission_' . $m->status, 'local_aimissions'));
         }
 
-        $table->data[] = array((int)$m->sprint, $title, s($statusstr), $actions);
+        $actions = array();
+        if ($cmexists) {
+            if ($m->status === 'published') {
+                $actions[] = html_writer::link(
+                    new moodle_url($baseurl, array('action' => 'hide', 'missionid' => $m->id,
+                        'sesskey' => sesskey())),
+                    get_string('manage_hide', 'local_aimissions'),
+                    array('class' => 'btn btn-sm btn-outline-secondary'));
+            } else {
+                $actions[] = html_writer::link(
+                    new moodle_url($baseurl, array('action' => 'publish', 'missionid' => $m->id,
+                        'sesskey' => sesskey())),
+                    get_string('manage_publish', 'local_aimissions'),
+                    array('class' => 'btn btn-sm btn-primary'));
+            }
+        }
+        // Suppression : seulement le dernier sprint, ou une orpheline.
+        if ((int)$m->sprint === $maxsprint || !$cmexists) {
+            $actions[] = html_writer::link(
+                new moodle_url($baseurl, array('action' => 'delete', 'missionid' => $m->id)),
+                get_string('manage_delete', 'local_aimissions'),
+                array('class' => 'btn btn-sm btn-outline-danger'));
+        }
+
+        $table->data[] = array((int)$m->sprint, $title, $statuscell, implode(' ', $actions));
     }
     echo html_writer::table($table);
 }
