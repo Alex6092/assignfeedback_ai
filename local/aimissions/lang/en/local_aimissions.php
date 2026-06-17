@@ -112,3 +112,24 @@ $string['manage_orphan']         = 'Assignment deleted (orphan)';
 // Job deletion on the status page.
 $string['status_col_actions']    = 'Actions';
 $string['status_deletejob']      = 'Remove';
+
+// Tickets — questions to the AI client.
+$string['ticket_title']          = 'Questions to the client';
+$string['ticket_navlabel']       = 'Contact the client';
+$string['ticket_noproject']      = 'No project is associated with your group yet. The client will appear once a first mission has been published.';
+$string['ticket_chooseproject']  = 'You belong to several projects. Choose the one to view:';
+$string['ticket_empty']          = 'No question yet. Ask the client the first one!';
+$string['ticket_pending']        = 'The client is thinking…';
+$string['ticket_failed']         = 'The client could not answer right now. Please try again later.';
+$string['ticket_yourquestion']   = 'Your question to the client';
+$string['ticket_send']           = 'Send to the client';
+$string['ticket_readonly']       = 'Read-only view (teacher).';
+$string['manage_viewtickets']    = 'Client questions ({$a})';
+
+// Privacy (additional fields).
+$string['privacy:metadata:ticket:timecreated'] = 'The date of the question.';
+$string['privacy:metadata:job']         = 'Mission generation jobs started by a teacher.';
+$string['privacy:metadata:job:userid']  = 'The teacher who started the generation.';
+$string['privacy:metadata:job:timecreated'] = 'The date the generation was started.';
+$string['privacy:path:tickets']  = 'Questions to the AI client';
+$string['privacy:path:jobs']     = 'Mission generations';

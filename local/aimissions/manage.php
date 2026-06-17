@@ -107,6 +107,15 @@ foreach ($projects as $project) {
 
     echo $OUTPUT->heading(s($project->companyname) . ' — ' . $groupname, 4);
 
+    // Lien vers le fil de questions du groupe (lecture seule pour l'enseignant).
+    $nbtickets = $DB->count_records('local_aimissions_ticket', array('projectid' => $project->id));
+    echo html_writer::div(
+        html_writer::link(
+            new moodle_url('/local/aimissions/ticket.php',
+                array('courseid' => $courseid, 'projectid' => (int)$project->id)),
+            get_string('manage_viewtickets', 'local_aimissions', $nbtickets)),
+        'mb-2');
+
     $missions = $DB->get_records('local_aimissions_mission',
         array('projectid' => $project->id), 'sprint ASC');
     if (empty($missions)) {

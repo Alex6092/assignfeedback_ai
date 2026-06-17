@@ -329,23 +329,7 @@ class job_handler implements \local_aifeedback\job_handler {
      * Traduction du profil psychologique en consigne de ton.
      */
     private function persona_instruction(string $code): string {
-        switch ($code) {
-            case 'exigeant':
-                return "client EXIGEANT : attentes élevées, ton ferme, insiste sur la qualité et les délais.";
-            case 'imprecis':
-                return "client IMPRÉCIS : besoin formulé de façon floue, quelques ambiguïtés volontaires "
-                     . "que l'étudiant devra lever (sans rendre la demande incompréhensible).";
-            case 'versatile':
-                return "client VERSATILE : mentionne qu'il a déjà changé d'avis par le passé, ton hésitant.";
-            case 'lent':
-                return "client peu disponible : ton bref, peu de détails, comme quelqu'un de pressé.";
-            case 'nontechnique':
-                return "client NON TECHNIQUE : vocabulaire courant uniquement, analogies du quotidien, "
-                     . "aucune notion informatique.";
-            case 'neutre':
-            default:
-                return "client coopératif et clair, ton professionnel et bienveillant.";
-        }
+        return personas::instruction($code);
     }
 
     /**

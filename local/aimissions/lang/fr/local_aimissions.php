@@ -112,3 +112,24 @@ $string['manage_orphan']         = 'Devoir supprimé (orpheline)';
 // Suppression d'un job sur la page de statut.
 $string['status_col_actions']    = 'Actions';
 $string['status_deletejob']      = 'Retirer';
+
+// Tickets — questions au client IA.
+$string['ticket_title']          = 'Questions au client';
+$string['ticket_navlabel']       = 'Contacter le client';
+$string['ticket_noproject']      = 'Aucun projet n\'est encore associé à votre groupe. Le client se manifestera dès qu\'une première mission aura été publiée.';
+$string['ticket_chooseproject']  = 'Vous appartenez à plusieurs projets. Choisissez celui à consulter :';
+$string['ticket_empty']          = 'Aucune question pour l\'instant. Posez la première au client !';
+$string['ticket_pending']        = 'Le client réfléchit…';
+$string['ticket_failed']         = 'Le client n\'a pas pu répondre pour le moment. Réessayez un peu plus tard.';
+$string['ticket_yourquestion']   = 'Votre question au client';
+$string['ticket_send']           = 'Envoyer au client';
+$string['ticket_readonly']       = 'Consultation en lecture seule (enseignant).';
+$string['manage_viewtickets']    = 'Questions au client ({$a})';
+
+// Confidentialité (champs additionnels).
+$string['privacy:metadata:ticket:timecreated'] = 'La date de la question.';
+$string['privacy:metadata:job']         = 'Jobs de génération de missions lancés par un enseignant.';
+$string['privacy:metadata:job:userid']  = 'L\'enseignant ayant lancé la génération.';
+$string['privacy:metadata:job:timecreated'] = 'La date de lancement de la génération.';
+$string['privacy:path:tickets']  = 'Questions au client IA';
+$string['privacy:path:jobs']     = 'Générations de missions';
