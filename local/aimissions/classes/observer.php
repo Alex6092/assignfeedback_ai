@@ -54,8 +54,9 @@ class observer {
         if (!empty($projectids)) {
             list($insql, $params) = $DB->get_in_or_equal($projectids);
             $DB->delete_records_select(job_handler::TABLE_MISSION, "projectid $insql", $params);
-            $DB->delete_records_select('local_aimissions_ticket', "projectid $insql", $params);
-            $DB->delete_records_select('local_aimissions_event',  "projectid $insql", $params);
+            $DB->delete_records_select('local_aimissions_ticket',   "projectid $insql", $params);
+            $DB->delete_records_select('local_aimissions_event',    "projectid $insql", $params);
+            $DB->delete_records_select('local_aimissions_commeval', "projectid $insql", $params);
         }
         $DB->delete_records(job_handler::TABLE_PROJECT, array('courseid' => $courseid));
         $DB->delete_records(job_handler::TABLE_JOB,     array('courseid' => $courseid));

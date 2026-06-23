@@ -39,5 +39,15 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Code de la compétence EFE « Communiquer » (ex. C01) pour l'évaluation de
+    // la communication client. Laisser vide pour désactiver cette évaluation.
+    $settings->add(new admin_setting_configtext(
+        'local_aimissions/communication_competency',
+        get_string('setting_commcomp', 'local_aimissions'),
+        get_string('setting_commcomp_desc', 'local_aimissions'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

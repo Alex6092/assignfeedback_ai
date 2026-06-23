@@ -150,3 +150,41 @@ $string['manage_injectevent']    = '+ Inject an event';
 $string['manage_events']         = 'Client events';
 $string['event_published']       = 'Published';
 $string['event_pending']         = 'Pending';
+
+// Setting: "Communicate" competency.
+$string['setting_commcomp']      = '"Communicate" competency code (EFE)';
+$string['setting_commcomp_desc'] = 'EFE code of the communication competency (e.g. C01) reported when assessing client communication. Leave empty to disable this assessment.';
+
+// Client communication assessment.
+$string['manage_evalcomm']       = 'Assess communication';
+$string['comm_title']            = 'Client communication assessment';
+$string['comm_intro']            = 'Assess each student\'s communication from the messages they sent to the client. Review the proposed levels, then send them to EFE (the "Communicate" competency).';
+$string['comm_nocode']           = 'The "Communicate" competency code is not configured. Set it in the plugin settings (Administration → Local plugins → AI client missions) to enable this assessment.';
+$string['comm_nostudents']       = 'No student in this project\'s group.';
+$string['comm_col_student']      = 'Student';
+$string['comm_col_tickets']      = 'Messages';
+$string['comm_col_level']        = 'Level';
+$string['comm_col_comment']      = 'Comment';
+$string['comm_col_status']       = 'Status';
+$string['comm_evaluate']         = 'Assess communication';
+$string['comm_send']             = 'Send to EFE';
+$string['comm_evaluated']        = '{$a} student(s) assessed.';
+$string['comm_sent']             = '{$a} competency position(s) sent to EFE.';
+$string['comm_sendfailed']       = '{$a} send(s) failed (see logs).';
+$string['comm_status_draft']     = 'To send';
+$string['comm_status_sent']      = 'Sent';
+$string['comm_notickets']        = 'No usable message for this student.';
+$string['comm_efelabel']         = 'Client communication — {$a}';
+$string['colour_vert']           = 'Green';
+$string['colour_bleu']           = 'Blue';
+$string['colour_jaune']          = 'Yellow';
+$string['colour_rouge']          = 'Red';
+
+// Privacy (communication assessment).
+$string['privacy:metadata:commeval']             = 'Assessments of a student\'s client communication (transversal competency).';
+$string['privacy:metadata:commeval:userid']      = 'The assessed student.';
+$string['privacy:metadata:commeval:colour']      = 'The level (colour) awarded.';
+$string['privacy:metadata:commeval:score']       = 'The estimated score (0-100).';
+$string['privacy:metadata:commeval:comment']     = 'The assessment comment.';
+$string['privacy:metadata:commeval:timecreated'] = 'The date of the assessment.';
+$string['privacy:path:commeval'] = 'Client communication assessments';

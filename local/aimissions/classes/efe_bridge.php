@@ -115,4 +115,31 @@ class efe_bridge {
         }
         \local_efenotes\activity_config::delete_for_cmid($cmid);
     }
+
+    /**
+     * Reporte DIRECTEMENT une note de compétence vers EFE, sans passer par un
+     * devoir Moodle (utilisé pour l'évaluation transversale de la communication
+     * client, qui n'est pas une activité notée). Wrappe api_client::envoyer_note.
+     *
+     * @param int         $userid  élève (id Moodle)
+     * @param string      $code    code compétence EFE (ex. C01)
+     * @param string      $colour  vert|bleu|jaune|rouge|gris
+     * @param string      $key     identifiant stable du « devoir » côté EFE
+     * @param string      $label   libellé lisible
+     * @param int|null    $profid  enseignant (id Moodle) ou null
+     * @param string|null $comment commentaire (ou null)
+     * @return array{status:int, body:array} réponse EFE ; status=0 si non envoyé
+     */
+    public static function report_competency(int $userid, string $code, string $colour,
+            string $key, string $label, ?int $profid = null, ?string $comment = null): array {
+        if (!self::is_configured() || $code === '') {
+            return array('status' => 0, 'body' => array('error' => 'efe_unavailable_or_no_code'));
+        }
+        $client = new \local_efenotes\api_client();
+        return $client->envoyer_note(
+            $userid, $code, $colour, $key, $label, date('c'),
+            ($profid && $profid > 0) ? $profid : null,
+            ($comment !== null && trim($comment) !== '') ? $comment : null
+        );
+    }
 }

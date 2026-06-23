@@ -150,3 +150,41 @@ $string['manage_injectevent']    = '+ Injecter un événement';
 $string['manage_events']         = 'Événements client';
 $string['event_published']       = 'Publié';
 $string['event_pending']         = 'En attente';
+
+// Réglage : compétence « Communiquer ».
+$string['setting_commcomp']      = 'Code compétence « Communiquer » (EFE)';
+$string['setting_commcomp_desc'] = 'Code EFE de la compétence de communication (ex. C01) reportée lors de l\'évaluation de la communication client. Laisser vide pour désactiver cette évaluation.';
+
+// Évaluation de la communication client.
+$string['manage_evalcomm']       = 'Évaluer la communication';
+$string['comm_title']            = 'Évaluation de la communication client';
+$string['comm_intro']            = 'Évalue la communication de chaque étudiant à partir des messages qu\'il a adressés au client. Relis les niveaux proposés, puis envoie-les vers EFE (compétence « Communiquer »).';
+$string['comm_nocode']           = 'Le code de la compétence « Communiquer » n\'est pas configuré. Renseigne-le dans les réglages du plugin (Administration → Plugins locaux → Missions client IA) pour activer cette évaluation.';
+$string['comm_nostudents']       = 'Aucun étudiant dans le groupe de ce projet.';
+$string['comm_col_student']      = 'Étudiant';
+$string['comm_col_tickets']      = 'Messages';
+$string['comm_col_level']        = 'Niveau';
+$string['comm_col_comment']      = 'Commentaire';
+$string['comm_col_status']       = 'Statut';
+$string['comm_evaluate']         = 'Évaluer la communication';
+$string['comm_send']             = 'Envoyer vers EFE';
+$string['comm_evaluated']        = '{$a} étudiant(s) évalué(s).';
+$string['comm_sent']             = '{$a} positionnement(s) envoyé(s) vers EFE.';
+$string['comm_sendfailed']       = '{$a} envoi(s) en échec (voir les logs).';
+$string['comm_status_draft']     = 'À envoyer';
+$string['comm_status_sent']      = 'Envoyé';
+$string['comm_notickets']        = 'Aucun message exploitable pour cet étudiant.';
+$string['comm_efelabel']         = 'Communication client — {$a}';
+$string['colour_vert']           = 'Vert';
+$string['colour_bleu']           = 'Bleu';
+$string['colour_jaune']          = 'Jaune';
+$string['colour_rouge']          = 'Rouge';
+
+// Confidentialité (évaluation communication).
+$string['privacy:metadata:commeval']             = 'Évaluations de la communication client d\'un étudiant (compétence transversale).';
+$string['privacy:metadata:commeval:userid']      = 'L\'étudiant évalué.';
+$string['privacy:metadata:commeval:colour']      = 'Le niveau (couleur) attribué.';
+$string['privacy:metadata:commeval:score']       = 'Le score estimé (0-100).';
+$string['privacy:metadata:commeval:comment']     = 'Le commentaire d\'évaluation.';
+$string['privacy:metadata:commeval:timecreated'] = 'La date de l\'évaluation.';
+$string['privacy:path:commeval'] = 'Évaluations de communication client';

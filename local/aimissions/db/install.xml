@@ -116,5 +116,27 @@
       </INDEXES>
     </TABLE>
 
+    <TABLE NAME="local_aimissions_commeval" COMMENT="Évaluation de la communication client d'un étudiant (compétence type C01), reportée vers EFE.">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="projectid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" COMMENT="Étudiant évalué."/>
+        <FIELD NAME="efecode"      TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE utilisé (ex. C01)."/>
+        <FIELD NAME="colour"       TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="vert|bleu|jaune|rouge."/>
+        <FIELD NAME="score"        TYPE="int"  LENGTH="4"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Score 0-100 estimé."/>
+        <FIELD NAME="comment"      TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Commentaire d'évaluation (IA)."/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="draft" COMMENT="draft|sent."/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="project_user" UNIQUE="true"  FIELDS="projectid, userid" COMMENT="Une évaluation par étudiant et par projet."/>
+        <INDEX NAME="projectid"    UNIQUE="false" FIELDS="projectid"/>
+      </INDEXES>
+    </TABLE>
+
   </TABLES>
 </XMLDB>

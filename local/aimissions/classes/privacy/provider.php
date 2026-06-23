@@ -39,6 +39,14 @@ class provider implements
             'timecreated' => 'privacy:metadata:job:timecreated',
         ), 'privacy:metadata:job');
 
+        $collection->add_database_table('local_aimissions_commeval', array(
+            'userid'      => 'privacy:metadata:commeval:userid',
+            'colour'      => 'privacy:metadata:commeval:colour',
+            'score'       => 'privacy:metadata:commeval:score',
+            'comment'     => 'privacy:metadata:commeval:comment',
+            'timecreated' => 'privacy:metadata:commeval:timecreated',
+        ), 'privacy:metadata:commeval');
+
         $collection->add_external_location_link('llm', array(
             'dossier'  => 'privacy:metadata:llm:dossier',
             'question' => 'privacy:metadata:llm:question',
@@ -67,6 +75,15 @@ class provider implements
               WHERE j.userid = :userid2",
             array('clcourse2' => CONTEXT_COURSE, 'userid2' => $userid));
 
+        $contextlist->add_from_sql(
+            "SELECT ctx.id
+               FROM {context} ctx
+               JOIN {local_aimissions_project} p
+                 ON p.courseid = ctx.instanceid AND ctx.contextlevel = :clcourse3
+               JOIN {local_aimissions_commeval} ce ON ce.projectid = p.id
+              WHERE ce.userid = :userid3",
+            array('clcourse3' => CONTEXT_COURSE, 'userid3' => $userid));
+
         return $contextlist;
     }
 
@@ -87,6 +104,12 @@ class provider implements
             "SELECT j.userid
                FROM {local_aimissions_job} j
               WHERE j.courseid = :courseid", $params);
+
+        $userlist->add_from_sql('userid',
+            "SELECT ce.userid
+               FROM {local_aimissions_commeval} ce
+               JOIN {local_aimissions_project} p ON p.id = ce.projectid
+              WHERE p.courseid = :courseid", $params);
     }
 
     public static function export_user_data(approved_contextlist $contextlist): void {
@@ -138,6 +161,29 @@ class provider implements
                     array_merge($root, array(get_string('privacy:path:jobs', 'local_aimissions'))),
                     (object)array('jobs' => $rows));
             }
+
+            $commevals = $DB->get_records_sql(
+                "SELECT ce.*
+                   FROM {local_aimissions_commeval} ce
+                   JOIN {local_aimissions_project} p ON p.id = ce.projectid
+                  WHERE p.courseid = :courseid AND ce.userid = :userid
+               ORDER BY ce.timecreated ASC",
+                array('courseid' => $courseid, 'userid' => $userid));
+            if ($commevals) {
+                $rows = array();
+                foreach ($commevals as $ce) {
+                    $rows[] = array(
+                        'colour'      => $ce->colour,
+                        'score'       => $ce->score,
+                        'comment'     => $ce->comment,
+                        'status'      => $ce->status,
+                        'timecreated' => transform::datetime($ce->timecreated),
+                    );
+                }
+                writer::with_context($context)->export_data(
+                    array_merge($root, array(get_string('privacy:path:commeval', 'local_aimissions'))),
+                    (object)array('commeval' => $rows));
+            }
         }
     }
 
@@ -151,6 +197,7 @@ class provider implements
         if (!empty($projectids)) {
             list($insql, $params) = $DB->get_in_or_equal($projectids);
             $DB->delete_records_select('local_aimissions_ticket', "projectid $insql", $params);
+            $DB->delete_records_select('local_aimissions_commeval', "projectid $insql", $params);
         }
         $DB->delete_records('local_aimissions_job', array('courseid' => $courseid));
     }
@@ -165,10 +212,11 @@ class provider implements
             $courseid = $context->instanceid;
             $projectids = $DB->get_fieldset_select('local_aimissions_project', 'id', 'courseid = ?', array($courseid));
             if (!empty($projectids)) {
-                list($insql, $params) = $DB->get_in_or_equal($projectids);
-                $params[] = $userid;
+                list($insql, $inparams) = $DB->get_in_or_equal($projectids);
                 $DB->delete_records_select('local_aimissions_ticket',
-                    "projectid $insql AND userid = ?", $params);
+                    "projectid $insql AND userid = ?", array_merge($inparams, array($userid)));
+                $DB->delete_records_select('local_aimissions_commeval',
+                    "projectid $insql AND userid = ?", array_merge($inparams, array($userid)));
             }
             $DB->delete_records('local_aimissions_job', array('courseid' => $courseid, 'userid' => $userid));
         }
@@ -190,9 +238,10 @@ class provider implements
         $projectids = $DB->get_fieldset_select('local_aimissions_project', 'id', 'courseid = ?', array($courseid));
         if (!empty($projectids)) {
             list($pinsql, $pparams) = $DB->get_in_or_equal($projectids);
-            $params = array_merge($pparams, $uparams);
             $DB->delete_records_select('local_aimissions_ticket',
-                "projectid $pinsql AND userid $uinsql", $params);
+                "projectid $pinsql AND userid $uinsql", array_merge($pparams, $uparams));
+            $DB->delete_records_select('local_aimissions_commeval',
+                "projectid $pinsql AND userid $uinsql", array_merge($pparams, $uparams));
         }
         $params2 = array_merge(array($courseid), $uparams);
         $DB->delete_records_select('local_aimissions_job',

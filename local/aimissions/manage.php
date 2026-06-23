@@ -77,6 +77,11 @@ if (($action === 'eventpublish' || $action === 'eventhide' || $action === 'event
             } else {
                 $DB->delete_records('local_aimissions_event', array('id' => $eventid));
             }
+            // L'ensemble des consignes publiées a changé : on resynchronise
+            // la grille de correction du devoir concerné.
+            if ((int)$ev->missionid > 0) {
+                \local_aimissions\correction_sync::sync_for_mission((int)$ev->missionid);
+            }
         }
     }
     redirect($baseurl);
@@ -140,7 +145,12 @@ foreach ($projects as $project) {
         html_writer::link(
             new moodle_url('/local/aimissions/ticket.php',
                 array('courseid' => $courseid, 'projectid' => (int)$project->id)),
-            get_string('manage_viewtickets', 'local_aimissions', $nbtickets)),
+            get_string('manage_viewtickets', 'local_aimissions', $nbtickets))
+        . ' · ' .
+        html_writer::link(
+            new moodle_url('/local/aimissions/comm.php',
+                array('courseid' => $courseid, 'projectid' => (int)$project->id)),
+            get_string('manage_evalcomm', 'local_aimissions')),
         'mb-2');
 
     $missions = $DB->get_records('local_aimissions_mission',

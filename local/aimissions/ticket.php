@@ -107,6 +107,11 @@ if ($project && !$readonly && ($data = data_submitted()) && confirm_sesskey()
             $ticket->status = 'failed';
         }
         $DB->update_record('local_aimissions_ticket', $ticket);
+
+        // Les précisions données par le client comptent dans la correction.
+        if ($ticket->status === 'answered' && (int)$ticket->missionid > 0) {
+            \local_aimissions\correction_sync::sync_for_mission((int)$ticket->missionid);
+        }
     }
 
     redirect(new moodle_url('/local/aimissions/ticket.php',
