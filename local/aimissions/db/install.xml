@@ -14,6 +14,8 @@
         <FIELD NAME="competencytargets" TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Compétences globales visées par le projet (JSON ou texte)."/>
         <FIELD NAME="dossier"           TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Mémoire du projet (JSON) : historique résumé des sprints, technos choisies, contraintes, erreurs connues."/>
         <FIELD NAME="currentsprint"     TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Numéro du dernier sprint généré."/>
+        <FIELD NAME="clientstatus"      TYPE="char" LENGTH="16"  NOTNULL="true"  SEQUENCE="false" DEFAULT="active" COMMENT="État de la relation client : active|warned|ended."/>
+        <FIELD NAME="clientwarnings"    TYPE="int"  LENGTH="4"   NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Nombre de recadrages émis par le client."/>
         <FIELD NAME="timecreated"       TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified"      TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>
@@ -60,6 +62,7 @@
         <FIELD NAME="question"     TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="answer"       TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Réponse du client IA."/>
         <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="pending" COMMENT="pending|answered|failed."/>
+        <FIELD NAME="reaction"     TYPE="char" LENGTH="16" NOTNULL="false" SEQUENCE="false" COMMENT="Réaction du client sur ce message : null|warning|ended (recadrage / rupture)."/>
         <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timeanswered" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>
@@ -96,9 +99,10 @@
         <FIELD NAME="courseid"     TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
         <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
         <FIELD NAME="projectid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Projet ciblé (0 si à créer pendant le job)."/>
-        <FIELD NAME="kind"         TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="mission" COMMENT="mission|event."/>
+        <FIELD NAME="kind"         TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="mission" COMMENT="mission|event|ticket."/>
         <FIELD NAME="params"       TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Paramètres du job (JSON)."/>
         <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="pending" COMMENT="pending|running|done|failed."/>
+        <FIELD NAME="notbefore"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Ne pas exécuter avant ce timestamp (réponses client différées)."/>
         <FIELD NAME="log"          TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="lasterror"    TYPE="text"             NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="resultmissionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Mission créée par le job."/>

@@ -10,14 +10,15 @@ defined('MOODLE_INTERNAL') || die();
  *   - assignfeedback_ai (runtime) : correction automatique des devoirs générés.
  *   - local_efenotes  (runtime, OPTIONNEL) : report des compétences vers EFE.
  */
-$plugin->version   = 2026060505;       // YYYYMMDDXX
+$plugin->version   = 2026060506;       // YYYYMMDDXX
 $plugin->requires  = 2023042400;       // Moodle 4.2
 $plugin->component = 'local_aimissions';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.6.0';
+$plugin->release   = '0.7.0';
 $plugin->dependencies = array(
-    // Dépendance DURE : couche LLM partagée + file de jobs asynchrones.
-    'local_aifeedback' => 2026052908,
+    // Dépendance DURE : couche LLM partagée + file de jobs asynchrones
+    // (>= 1.7.0 pour run_job::enqueue avec délai).
+    'local_aifeedback' => 2026052909,
     // Dépendances OPTIONNELLES (détectées au runtime, PAS listées ici) :
     //   - assignfeedback_ai : correction IA des devoirs générés.
     //   - local_efenotes    : report des compétences évaluées vers EFE.

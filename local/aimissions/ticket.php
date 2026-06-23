@@ -3,14 +3,15 @@
  * Fil de discussion « questions au client IA » (Agent 2).
  *
  *   - Étudiant (capacité askclient) : voit le fil de SON groupe (entreprise) et
- *     pose des questions ; le client IA répond en synchrone.
+ *     pose des questions ; le client répond en DIFFÉRÉ (délai selon le persona),
+ *     et peut recadrer voire rompre la collaboration.
  *   - Enseignant (capacité review) : consulte en lecture seule le fil d'un
  *     projet donné (paramètre projectid).
  */
 
 require_once(__DIR__ . '/../../config.php');
 
-use local_aimissions\client;
+use local_aimissions\job_handler;
 
 $courseid  = required_param('courseid', PARAM_INT);
 $projectid = optional_param('projectid', 0, PARAM_INT);
@@ -77,7 +78,11 @@ if ($project) {
 // -------------------------------------------------------------------------
 //  Traitement d'une nouvelle question (étudiant propriétaire uniquement)
 // -------------------------------------------------------------------------
-if ($project && !$readonly && ($data = data_submitted()) && confirm_sesskey()
+// Si le client a rompu la collaboration, l'envoi est bloqué (jusqu'à reprise
+// forcée par l'enseignant).
+$ended = $project && (string)$project->clientstatus === 'ended';
+
+if ($project && !$readonly && !$ended && ($data = data_submitted()) && confirm_sesskey()
         && isset($data->question)) {
 
     $question = trim(clean_param($data->question, PARAM_TEXT));
@@ -91,27 +96,14 @@ if ($project && !$readonly && ($data = data_submitted()) && confirm_sesskey()
         $ticket->question     = $question;
         $ticket->answer       = null;
         $ticket->status       = 'pending';
+        $ticket->reaction     = null;
         $ticket->timecreated  = time();
         $ticket->timeanswered = 0;
-        $ticket->id = $DB->insert_record('local_aimissions_ticket', $ticket);
+        $DB->insert_record('local_aimissions_ticket', $ticket);
 
-        try {
-            $answer = client::answer($project, $currentmission, $question);
-            $ticket->answer       = $answer;
-            $ticket->status       = 'answered';
-            $ticket->timeanswered = time();
-        } catch (\Throwable $e) {
-            // On ne montre pas l'erreur brute à l'étudiant ; on la journalise.
-            debugging('[local_aimissions] client answer failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            $ticket->answer = get_string('ticket_failed', 'local_aimissions');
-            $ticket->status = 'failed';
-        }
-        $DB->update_record('local_aimissions_ticket', $ticket);
-
-        // Les précisions données par le client comptent dans la correction.
-        if ($ticket->status === 'answered' && (int)$ticket->missionid > 0) {
-            \local_aimissions\correction_sync::sync_for_mission((int)$ticket->missionid);
-        }
+        // Réponse DIFFÉRÉE : le client prend son temps. On planifie (ou rejoint)
+        // un job de réponse pour le projet ; il traitera le lot de messages.
+        job_handler::schedule_reply($project);
     }
 
     redirect(new moodle_url('/local/aimissions/ticket.php',
@@ -183,12 +175,18 @@ if (empty($timeline)) {
         'bug'    => get_string('event_bug', 'local_aimissions'),
         'rgpd'   => get_string('event_rgpd', 'local_aimissions'),
         'budget' => get_string('event_budget', 'local_aimissions'),
+        'resume' => get_string('event_resume', 'local_aimissions'),
     );
+    $now = time();
     foreach ($timeline as $item) {
         if ($item['kind'] === 'event') {
-            // Communication spontanée du client (événement).
+            // Communication du client (événement ou reprise).
             $ev = $item['data'];
+            $isresume  = ((string)$ev->type === 'resume');
             $typelabel = $etypes[$ev->type] ?? $ev->type;
+            $badgecls  = $isresume ? 'badge bg-success' : 'badge bg-info text-white';
+            $boxcls    = $isresume ? 'border rounded p-2 mb-3 border-success'
+                                   : 'border rounded p-2 mb-3 border-info';
             $draft = (!$ev->applied && $readonly)
                 ? ' ' . html_writer::span(get_string('event_pending', 'local_aimissions'),
                     'badge bg-secondary text-white')
@@ -196,17 +194,17 @@ if (empty($timeline)) {
             echo html_writer::div(
                 html_writer::tag('div',
                     html_writer::tag('strong', s($project->companyname))
-                    . ' · ' . html_writer::span(s($typelabel), 'badge bg-info text-white')
+                    . ' · ' . html_writer::span(s($typelabel), $badgecls)
                     . $draft
                     . ' · ' . userdate((int)$ev->timecreated,
                         get_string('strftimedatetimeshort', 'langconfig')),
                     array('class' => 'small'))
                 . html_writer::div(format_text((string)$ev->body, FORMAT_PLAIN), 'mt-1'),
-                'border rounded p-2 mb-3 border-info');
+                $boxcls);
             continue;
         }
 
-        // Ticket : question (étudiant) + réponse (client).
+        // Ticket : message étudiant + éventuelle réponse du client.
         $t = $item['data'];
         $asker = \core_user::get_user((int)$t->userid);
         $askername = $asker ? fullname($asker) : '?';
@@ -218,21 +216,44 @@ if (empty($timeline)) {
             'border rounded p-2 mb-1 bg-light');
 
         if ($t->status === 'pending') {
-            echo html_writer::div(get_string('ticket_pending', 'local_aimissions'),
+            // En attente : réponse différée, on indique le temps écoulé.
+            echo html_writer::div(
+                get_string('ticket_waiting', 'local_aimissions', format_time($now - (int)$t->timecreated)),
                 'text-muted fst-italic ms-4 mb-3');
-        } else {
-            $cls = $t->status === 'failed' ? 'border rounded p-2 mb-3 ms-4 border-danger'
-                                           : 'border rounded p-2 mb-3 ms-4';
+        } else if ($t->status === 'failed') {
             echo html_writer::div(
                 html_writer::tag('div', s($project->companyname), array('class' => 'small text-muted'))
+                . html_writer::div(get_string('ticket_failed', 'local_aimissions'), 'mt-1'),
+                'border rounded p-2 mb-3 ms-4 border-danger');
+        } else if (trim((string)$t->answer) !== '') {
+            // Réponse du client. Les messages REGROUPÉS ont answer=null (pas de bulle).
+            $reaction = (string)$t->reaction;
+            if ($reaction === 'ended') {
+                $boxcls = 'border rounded p-2 mb-3 ms-4 border-danger';
+                $tag = ' ' . html_writer::span(get_string('reaction_ended', 'local_aimissions'), 'badge bg-danger');
+            } else if ($reaction === 'warning') {
+                $boxcls = 'border rounded p-2 mb-3 ms-4 border-warning';
+                $tag = ' ' . html_writer::span(get_string('reaction_warning', 'local_aimissions'),
+                    'badge bg-warning text-dark');
+            } else {
+                $boxcls = 'border rounded p-2 mb-3 ms-4';
+                $tag = '';
+            }
+            echo html_writer::div(
+                html_writer::tag('div', s($project->companyname) . $tag, array('class' => 'small text-muted'))
                 . html_writer::div(format_text((string)$t->answer, FORMAT_PLAIN), 'mt-1'),
-                $cls);
+                $boxcls);
         }
     }
 }
 
-// Formulaire de question (étudiant propriétaire).
-if (!$readonly) {
+// Formulaire de question (étudiant propriétaire), sauf si le client a rompu.
+if (!$readonly && $ended) {
+    echo $OUTPUT->notification(get_string('ticket_ended', 'local_aimissions'), 'error');
+} else if (!$readonly) {
+    if ((string)$project->clientstatus === 'warned') {
+        echo $OUTPUT->notification(get_string('ticket_warned', 'local_aimissions'), 'warning');
+    }
     echo html_writer::start_tag('form', array('method' => 'post',
         'action' => $PAGE->url->out(false)));
     echo html_writer::empty_tag('input', array('type' => 'hidden',
@@ -245,6 +266,7 @@ if (!$readonly) {
     echo html_writer::tag('button', get_string('ticket_send', 'local_aimissions'),
         array('type' => 'submit', 'class' => 'btn btn-primary'));
     echo html_writer::end_tag('form');
+    echo html_writer::div(get_string('ticket_delayhint', 'local_aimissions'), 'small text-muted mt-1');
 } else if ($isreviewer) {
     echo html_writer::div(get_string('ticket_readonly', 'local_aimissions'), 'text-muted mt-2');
 }

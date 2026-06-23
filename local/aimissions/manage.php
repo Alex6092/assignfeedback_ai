@@ -17,6 +17,7 @@ $courseid  = required_param('courseid', PARAM_INT);
 $action    = optional_param('action', '', PARAM_ALPHA);
 $missionid = optional_param('missionid', 0, PARAM_INT);
 $eventid   = optional_param('eventid', 0, PARAM_INT);
+$projectid = optional_param('projectid', 0, PARAM_INT);
 $confirm   = optional_param('confirm', 0, PARAM_BOOL);
 
 $course  = get_course($courseid);
@@ -87,6 +88,49 @@ if (($action === 'eventpublish' || $action === 'eventhide' || $action === 'event
     redirect($baseurl);
 }
 
+// --- Action : forcer la reprise d'un projet rompu ------------------------
+if ($action === 'resume' && $projectid > 0 && confirm_sesskey()) {
+    $proj = $DB->get_record('local_aimissions_project', array('id' => $projectid));
+    if ($proj && (int)$proj->courseid === $courseid && (string)$proj->clientstatus === 'ended') {
+        $DB->set_field('local_aimissions_project', 'clientstatus', 'active', array('id' => $projectid));
+        $DB->set_field('local_aimissions_project', 'timemodified', time(), array('id' => $projectid));
+        // Message de reprise visible dans le fil (event 'resume', publié).
+        $ev = new stdClass();
+        $ev->projectid   = $projectid;
+        $ev->missionid   = 0;
+        $ev->type        = 'resume';
+        $ev->body        = get_string('resume_message', 'local_aimissions');
+        $ev->applied     = 1;
+        $ev->timecreated = time();
+        $DB->insert_record('local_aimissions_event', $ev);
+    }
+    redirect($baseurl, get_string('resume_done', 'local_aimissions'), null,
+        \core\output\notification::NOTIFY_SUCCESS);
+}
+
+// --- Action : déclencher MAINTENANT la réponse du client -----------------
+if ($action === 'forcereply' && $projectid > 0 && confirm_sesskey()) {
+    $proj = $DB->get_record('local_aimissions_project', array('id' => $projectid));
+    if ($proj && (int)$proj->courseid === $courseid) {
+        $job = $DB->get_record_select('local_aimissions_job',
+            "projectid = ? AND kind = 'ticket' AND status = 'pending'",
+            array($projectid), '*', IGNORE_MULTIPLE);
+        if ($job) {
+            \core_php_time_limit::raise(120);
+            try {
+                // execute() relance l'exception en cas d'échec ; on l'absorbe
+                // ici (le job est déjà marqué/réenfilé par record_failure) pour
+                // ne pas crasher la page enseignant.
+                (new \local_aimissions\job_handler())->execute((object)array('rowid' => (int)$job->id));
+            } catch (\Throwable $e) {
+                debugging('[local_aimissions] forcereply failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+    }
+    redirect($baseurl, get_string('forcereply_done', 'local_aimissions'), null,
+        \core\output\notification::NOTIFY_SUCCESS);
+}
+
 // --- Action supprimer (destructive → confirmation) -----------------------
 if ($action === 'delete' && $missionid > 0) {
     $mission = $load_mission_in_course($missionid);
@@ -152,6 +196,42 @@ foreach ($projects as $project) {
                 array('courseid' => $courseid, 'projectid' => (int)$project->id)),
             get_string('manage_evalcomm', 'local_aimissions')),
         'mb-2');
+
+    // État de la relation client (jalons) + actions.
+    $cs = (string)$project->clientstatus;
+    if ($cs === 'ended') {
+        $statusbadge = html_writer::span(get_string('clientstatus_ended', 'local_aimissions'), 'badge bg-danger');
+    } else if ($cs === 'warned') {
+        $statusbadge = html_writer::span(
+            get_string('clientstatus_warned', 'local_aimissions', (int)$project->clientwarnings),
+            'badge bg-warning text-dark');
+    } else {
+        $statusbadge = html_writer::span(get_string('clientstatus_active', 'local_aimissions'), 'badge bg-success');
+    }
+    $pendingreplies = $DB->count_records('local_aimissions_ticket',
+        array('projectid' => $project->id, 'status' => 'pending'));
+
+    $statusline = get_string('clientstatus_label', 'local_aimissions') . ' ' . $statusbadge;
+    if ($pendingreplies > 0) {
+        $statusline .= ' · ' . html_writer::span(
+            get_string('reply_pending', 'local_aimissions', $pendingreplies), 'badge bg-secondary text-white');
+    }
+    $cactions = array();
+    if ($pendingreplies > 0) {
+        $cactions[] = html_writer::link(
+            new moodle_url($baseurl, array('action' => 'forcereply', 'projectid' => (int)$project->id,
+                'sesskey' => sesskey())),
+            get_string('forcereply', 'local_aimissions'),
+            array('class' => 'btn btn-sm btn-outline-primary'));
+    }
+    if ($cs === 'ended') {
+        $cactions[] = html_writer::link(
+            new moodle_url($baseurl, array('action' => 'resume', 'projectid' => (int)$project->id,
+                'sesskey' => sesskey())),
+            get_string('resume_action', 'local_aimissions'),
+            array('class' => 'btn btn-sm btn-success'));
+    }
+    echo html_writer::div($statusline . (empty($cactions) ? '' : ' ' . implode(' ', $cactions)), 'mb-3');
 
     $missions = $DB->get_records('local_aimissions_mission',
         array('projectid' => $project->id), 'sprint ASC');

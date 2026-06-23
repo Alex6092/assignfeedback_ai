@@ -49,5 +49,24 @@ if ($hassiteconfig) {
         PARAM_RAW_TRIMMED
     ));
 
+    // Délais de réponse du client par persona (une ligne « code: min-max » en
+    // heures). Les valeurs absentes/invalides retombent sur les défauts codés.
+    $settings->add(new admin_setting_configtextarea(
+        'local_aimissions/replydelays',
+        get_string('setting_replydelays', 'local_aimissions'),
+        get_string('setting_replydelays_desc', 'local_aimissions'),
+        "neutre: 2-6\nexigeant: 1-4\nimprecis: 4-12\nversatile: 3-10\nlent: 12-36\nnontechnique: 6-18",
+        PARAM_RAW
+    ));
+
+    // Multiplicateur global des délais (1.0 = réaliste ; <1 compresse pour test).
+    $settings->add(new admin_setting_configtext(
+        'local_aimissions/replydelayfactor',
+        get_string('setting_replyfactor', 'local_aimissions'),
+        get_string('setting_replyfactor_desc', 'local_aimissions'),
+        '1.0',
+        PARAM_FLOAT
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

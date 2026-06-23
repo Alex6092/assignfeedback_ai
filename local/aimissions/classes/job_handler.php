@@ -28,16 +28,19 @@ class job_handler implements \local_aifeedback\job_handler {
     const TABLE_MISSION = 'local_aimissions_mission';
     /** @var string */
     const TABLE_EVENT   = 'local_aimissions_event';
+    /** @var string */
+    const TABLE_TICKET  = 'local_aimissions_ticket';
     /** @var int Tentatives avant de basculer un job en failed. */
     const MAX_ATTEMPTS  = 3;
 
     /**
-     * Enfile un job de génération dans la file partagée.
+     * Enfile un job dans la file partagée, éventuellement DIFFÉRÉ de $delaysec
+     * secondes (réponses client différées).
      */
-    public static function enqueue($jobid) {
+    public static function enqueue($jobid, $delaysec = 0) {
         $payload = new \stdClass();
         $payload->rowid = (int)$jobid;
-        \local_aifeedback\task\run_job::enqueue('local_aimissions', $payload);
+        \local_aifeedback\task\run_job::enqueue('local_aimissions', $payload, (int)$delaysec);
     }
 
     /**
@@ -66,6 +69,8 @@ class job_handler implements \local_aifeedback\job_handler {
         try {
             if ($job->kind === 'event') {
                 $this->process_event($job);
+            } else if ($job->kind === 'ticket') {
+                $this->process_ticket($job);
             } else {
                 $this->process_one($job);
             }
@@ -93,11 +98,12 @@ class job_handler implements \local_aifeedback\job_handler {
      */
     public function find_drainable_payloads(): array {
         global $DB;
+        // notbefore : on ne draine PAS les jobs encore différés (réponses client).
         $rows = $DB->get_records_sql(
             'SELECT id FROM {' . self::TABLE_JOB . '}
-              WHERE status = ?
+              WHERE status = ? AND notbefore <= ?
            ORDER BY timecreated ASC',
-            array('pending'), 0, 1);
+            array('pending', time()), 0, 1);
         if (empty($rows)) {
             return array();
         }
@@ -326,6 +332,137 @@ class job_handler implements \local_aifeedback\job_handler {
                 return "tes BESOINS ont évolué ; annonce un changement concret de besoin qui impacte "
                      . "le travail en cours.";
         }
+    }
+
+    // =====================================================================
+    //  RÉPONSES CLIENT DIFFÉRÉES (tickets asynchrones)
+    // =====================================================================
+
+    /**
+     * Planifie (si besoin) la réponse différée du client pour un projet. Crée UN
+     * job kind=ticket s'il n'en existe pas déjà un en attente, avec un délai
+     * modulé par le persona. Les messages suivants rejoignent le même lot.
+     */
+    public static function schedule_reply(\stdClass $project): void {
+        global $DB;
+        $exists = $DB->record_exists_select(self::TABLE_JOB,
+            "projectid = ? AND kind = 'ticket' AND status = 'pending'",
+            array((int)$project->id));
+        if ($exists) {
+            return;
+        }
+        $delay = personas::reply_delay((string)$project->personaprofile);
+        $now = time();
+        $job = new \stdClass();
+        $job->courseid        = (int)$project->courseid;
+        $job->userid          = 0; // système
+        $job->projectid       = (int)$project->id;
+        $job->kind            = 'ticket';
+        $job->params          = json_encode(array('projectid' => (int)$project->id), JSON_UNESCAPED_UNICODE);
+        $job->status          = 'pending';
+        $job->log             = '';
+        $job->lasterror       = null;
+        $job->resultmissionid = 0;
+        $job->attempts        = 0;
+        $job->notbefore       = $now + $delay;
+        $job->timecreated     = $now;
+        $job->timemodified    = $now;
+        $job->id = (int)$DB->insert_record(self::TABLE_JOB, $job);
+        self::enqueue($job->id, $delay);
+    }
+
+    /**
+     * Génère la réponse différée du client à TOUS les messages en attente d'un
+     * projet (le lot), pose la réponse + la réaction, met à jour l'état client.
+     */
+    private function process_ticket(\stdClass $job): void {
+        global $DB;
+
+        $params    = json_decode((string)$job->params, true) ?: array();
+        $projectid = (int)($params['projectid'] ?? $job->projectid);
+        $project   = $DB->get_record(self::TABLE_PROJECT, array('id' => $projectid));
+        if (!$project) {
+            throw new \moodle_exception('error_event_noproject', 'local_aimissions');
+        }
+        if ((string)$project->clientstatus === 'ended') {
+            $this->log($job, 'Client en rupture : pas de réponse.');
+            return;
+        }
+
+        $batch = array_values($DB->get_records(self::TABLE_TICKET,
+            array('projectid' => $projectid, 'status' => 'pending'), 'timecreated ASC'));
+        if (empty($batch)) {
+            $this->log($job, 'Aucun message en attente.');
+            return;
+        }
+
+        $missions = $DB->get_records(self::TABLE_MISSION,
+            array('projectid' => $projectid, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
+        $mission = $missions ? reset($missions) : null;
+
+        $metrics = $this->batch_metrics($batch);
+        $this->log($job, 'Réponse du client à ' . count($batch) . ' message(s)…');
+
+        $res = client::respond($project, $mission, $batch, $metrics);
+        $reaction    = $res['reaction'];
+        $reactionval = ($reaction === 'none') ? null : $reaction;
+        $now = time();
+
+        // Réponse sur le DERNIER message ; réaction sur TOUS (attribution).
+        $last = end($batch);
+        $latestid = (int)$last->id;
+        foreach ($batch as $t) {
+            $upd = new \stdClass();
+            $upd->id           = (int)$t->id;
+            $upd->status       = 'answered';
+            $upd->reaction     = $reactionval;
+            $upd->timeanswered = $now;
+            $upd->answer       = ((int)$t->id === $latestid) ? $res['reply'] : null;
+            $DB->update_record(self::TABLE_TICKET, $upd);
+        }
+
+        // État de la relation client.
+        if ($reaction === 'warning') {
+            $DB->set_field(self::TABLE_PROJECT, 'clientstatus', 'warned', array('id' => $projectid));
+            $DB->set_field(self::TABLE_PROJECT, 'clientwarnings',
+                (int)$project->clientwarnings + 1, array('id' => $projectid));
+        } else if ($reaction === 'ended') {
+            $DB->set_field(self::TABLE_PROJECT, 'clientstatus', 'ended', array('id' => $projectid));
+        }
+        $DB->set_field(self::TABLE_PROJECT, 'timemodified', $now, array('id' => $projectid));
+
+        // Les précisions données comptent dans la correction du livrable.
+        if ($mission) {
+            correction_sync::sync_for_mission((int)$mission->id);
+        }
+
+        $this->log($job, 'Réponse posée (réaction : ' . $reaction . ').');
+    }
+
+    /**
+     * Métriques de relance d'un lot (pour juger l'éventuel harcèlement).
+     */
+    private function batch_metrics(array $batch): array {
+        $senders = array();
+        $times = array();
+        foreach ($batch as $t) {
+            $senders[(int)$t->userid] = true;
+            $times[] = (int)$t->timecreated;
+        }
+        sort($times);
+        $mininterval = 0;
+        for ($i = 1; $i < count($times); $i++) {
+            $gap = $times[$i] - $times[$i - 1];
+            if ($i === 1 || $gap < $mininterval) {
+                $mininterval = $gap;
+            }
+        }
+        return array(
+            'count'       => count($batch),
+            'senders'     => count($senders),
+            'mininterval' => $mininterval,
+            'sincefirst'  => time() - (int)(isset($times[0]) ? $times[0] : time()),
+        );
     }
 
     // =====================================================================

@@ -188,3 +188,31 @@ $string['privacy:metadata:commeval:score']       = 'The estimated score (0-100).
 $string['privacy:metadata:commeval:comment']     = 'The assessment comment.';
 $string['privacy:metadata:commeval:timecreated'] = 'The date of the assessment.';
 $string['privacy:path:commeval'] = 'Client communication assessments';
+$string['privacy:metadata:ticket:reaction'] = 'The client reaction to the message (warning / breakup).';
+
+// Settings: client reply delays.
+$string['setting_replydelays']      = 'Client reply delays (per persona)';
+$string['setting_replydelays_desc'] = 'One line per persona, format "code: min-max" in HOURS (e.g. "lent: 12-36"). The client draws a random delay in the range before replying. Codes: neutre, exigeant, imprecis, versatile, lent, nontechnique. Missing/invalid lines fall back to defaults.';
+$string['setting_replyfactor']      = 'Global delay multiplier';
+$string['setting_replyfactor_desc'] = 'Multiplies all reply delays. 1.0 = realistic (hours/days). Use a small value (e.g. 0.01) to TEST quickly, or a larger one to stretch further.';
+
+// Asynchronous communication (student thread).
+$string['ticket_waiting']    = 'Waiting for the client to reply (for {$a}).';
+$string['ticket_delayhint']  = 'The client does not reply instantly: they take time to read you, like a real client. No need to keep nudging.';
+$string['ticket_warned']     = 'Warning: the client has already reprimanded you. Stay professional.';
+$string['ticket_ended']      = 'The client has ended the collaboration and no longer replies. Contact your teacher.';
+$string['reaction_warning']  = 'warning';
+$string['reaction_ended']    = 'breakup';
+$string['event_resume']      = 'Resumed';
+
+// Manage: client relationship status + actions.
+$string['clientstatus_label']   = 'Client relationship:';
+$string['clientstatus_active']  = 'active';
+$string['clientstatus_warned']  = 'warned ({$a})';
+$string['clientstatus_ended']   = 'broken off';
+$string['reply_pending']        = 'reply pending ({$a})';
+$string['forcereply']           = 'Trigger the reply now';
+$string['forcereply_done']      = 'Client reply triggered (processed immediately).';
+$string['resume_action']        = 'Force resume';
+$string['resume_done']          = 'The project has been resumed.';
+$string['resume_message']       = 'Hello, following your supervisor\'s intervention, I agree to resume our exchanges. Let\'s keep things constructive and professional from now on.';

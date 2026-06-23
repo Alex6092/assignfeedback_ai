@@ -37,13 +37,19 @@ class run_job extends \core\task\adhoc_task {
      *
      * @param string    $handlername nom frankenstyle du composant (ex: 'assignfeedback_ai')
      * @param \stdClass $payload     données libres pour le handler
+     * @param int       $delaysec    délai minimal avant exécution (0 = dès que possible).
+     *                               Le cron Moodle saute la tâche tant que son nextruntime
+     *                               n'est pas atteint : permet une exécution DIFFÉRÉE.
      */
-    public static function enqueue($handlername, \stdClass $payload) {
+    public static function enqueue($handlername, \stdClass $payload, $delaysec = 0) {
         $task = new self();
         $task->set_custom_data((object)array(
             'handler' => (string)$handlername,
             'payload' => $payload,
         ));
+        if ((int)$delaysec > 0) {
+            $task->set_next_run_time(time() + (int)$delaysec);
+        }
         \core\task\manager::queue_adhoc_task($task);
     }
 

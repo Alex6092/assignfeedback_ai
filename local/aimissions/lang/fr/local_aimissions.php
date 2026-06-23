@@ -188,3 +188,31 @@ $string['privacy:metadata:commeval:score']       = 'Le score estimé (0-100).';
 $string['privacy:metadata:commeval:comment']     = 'Le commentaire d\'évaluation.';
 $string['privacy:metadata:commeval:timecreated'] = 'La date de l\'évaluation.';
 $string['privacy:path:commeval'] = 'Évaluations de communication client';
+$string['privacy:metadata:ticket:reaction'] = 'La réaction du client au message (recadrage / rupture).';
+
+// Réglages : délais de réponse du client.
+$string['setting_replydelays']      = 'Délais de réponse du client (par persona)';
+$string['setting_replydelays_desc'] = 'Une ligne par persona, au format « code: min-max » en HEURES (ex. « lent: 12-36 »). Le client tire un délai aléatoire dans la fourchette avant de répondre. Codes : neutre, exigeant, imprecis, versatile, lent, nontechnique. Les lignes absentes/invalides retombent sur des valeurs par défaut.';
+$string['setting_replyfactor']      = 'Multiplicateur global des délais';
+$string['setting_replyfactor_desc'] = 'Multiplie tous les délais de réponse. 1.0 = réaliste (heures/jours). Mettre une petite valeur (ex. 0.01) pour TESTER rapidement, ou une grande pour étaler davantage.';
+
+// Communication asynchrone (fil étudiant).
+$string['ticket_waiting']    = 'En attente de la réponse du client (depuis {$a}).';
+$string['ticket_delayhint']  = 'Le client ne répond pas immédiatement : il prend le temps de vous lire, comme un vrai client. Inutile de le relancer sans cesse.';
+$string['ticket_warned']     = 'Attention : le client vous a déjà recadrés. Restez professionnels.';
+$string['ticket_ended']      = 'Le client a mis fin à la collaboration et ne répond plus. Contactez votre enseignant.';
+$string['reaction_warning']  = 'recadrage';
+$string['reaction_ended']    = 'rupture';
+$string['event_resume']      = 'Reprise';
+
+// Manage : état de la relation client + actions.
+$string['clientstatus_label']   = 'Relation client :';
+$string['clientstatus_active']  = 'active';
+$string['clientstatus_warned']  = 'averti ({$a})';
+$string['clientstatus_ended']   = 'rompue';
+$string['reply_pending']        = 'réponse en attente ({$a})';
+$string['forcereply']           = 'Déclencher la réponse maintenant';
+$string['forcereply_done']      = 'Réponse du client déclenchée (traitement immédiat).';
+$string['resume_action']        = 'Forcer la reprise';
+$string['resume_done']          = 'Le projet a été relancé.';
+$string['resume_message']       = 'Bonjour, suite à l\'intervention de votre encadrant, j\'accepte de reprendre nos échanges. Restons constructifs et professionnels à l\'avenir.';

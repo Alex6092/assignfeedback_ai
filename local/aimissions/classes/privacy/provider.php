@@ -31,6 +31,7 @@ class provider implements
             'userid'      => 'privacy:metadata:ticket:userid',
             'question'    => 'privacy:metadata:ticket:question',
             'answer'      => 'privacy:metadata:ticket:answer',
+            'reaction'    => 'privacy:metadata:ticket:reaction',
             'timecreated' => 'privacy:metadata:ticket:timecreated',
         ), 'privacy:metadata:ticket');
 
@@ -137,6 +138,7 @@ class provider implements
                         'question'    => $t->question,
                         'answer'      => $t->answer,
                         'status'      => $t->status,
+                        'reaction'    => $t->reaction,
                         'timecreated' => transform::datetime($t->timecreated),
                     );
                 }

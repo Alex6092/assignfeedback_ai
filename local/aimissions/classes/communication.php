@@ -20,15 +20,33 @@ class communication {
      */
     public static function evaluate_student(\stdClass $project, array $tickets): array {
         $convo = '';
+        $haswarning = false;
+        $hasended   = false;
+        $prevtime   = null;
         foreach ($tickets as $t) {
             $q = trim((string)$t->question);
             if ($q === '') {
                 continue;
             }
-            $convo .= "Message de l'étudiant : " . $q . "\n";
+            // Horodatage + intervalle depuis le message précédent (détection du
+            // harcèlement : plusieurs messages très rapprochés sans réponse).
+            $gap = ($prevtime !== null)
+                ? ' [écart avec le message précédent : ' . format_time((int)$t->timecreated - $prevtime) . ']'
+                : '';
+            $convo .= "Message de l'étudiant" . $gap . " : " . $q . "\n";
+            $prevtime = (int)$t->timecreated;
+
             $a = trim((string)$t->answer);
             if ($a !== '') {
                 $convo .= "Réponse du client : " . $a . "\n";
+            }
+            $r = (string)$t->reaction;
+            if ($r === 'warning') {
+                $haswarning = true;
+                $convo .= "[le client a RECADRÉ le prestataire]\n";
+            } else if ($r === 'ended') {
+                $hasended = true;
+                $convo .= "[le client a MIS FIN à la collaboration]\n";
             }
             $convo .= "\n";
         }
@@ -67,7 +85,28 @@ class communication {
         $score   = max(0, min(100, (int)($result['score'] ?? 0)));
         $comment = trim((string)($result['comment'] ?? ''));
 
+        // Plafonnement déterministe (ciblé) : un étudiant qui a provoqué un
+        // recadrage / une rupture ne peut pas obtenir un niveau élevé, quel que
+        // soit le jugement du LLM.
+        if ($hasended) {
+            $colour = self::cap_colour($colour, 'rouge');
+            $score  = min($score, 40);
+        } else if ($haswarning) {
+            $colour = self::cap_colour($colour, 'jaune');
+            $score  = min($score, 60);
+        }
+
         return array('colour' => $colour, 'score' => $score, 'comment' => $comment);
+    }
+
+    /**
+     * Plafonne une couleur (vert>bleu>jaune>rouge) : renvoie au mieux $max.
+     */
+    private static function cap_colour(string $colour, string $max): string {
+        $rank = array('rouge' => 1, 'jaune' => 2, 'bleu' => 3, 'vert' => 4);
+        $c = isset($rank[$colour]) ? $rank[$colour] : 2;
+        $m = isset($rank[$max]) ? $rank[$max] : 2;
+        return ($c > $m) ? $max : $colour;
     }
 
     /**
@@ -97,7 +136,11 @@ class communication {
         $p .= "- clarté et structure des messages ;\n";
         $p .= "- professionnalisme et courtoisie (formules, ton adapté à un client) ;\n";
         $p .= "- pertinence : a-t-il posé les BONNES questions pour lever les ambiguïtés du besoin ?\n";
-        $p .= "- capacité à reformuler le besoin métier.\n\n";
+        $p .= "- capacité à reformuler le besoin métier ;\n";
+        $p .= "- RESPECT DU CLIENT : on ne HARCÈLE pas un client (plusieurs messages très rapprochés sans ";
+        $p .= "lui laisser le temps de répondre est un défaut MAJEUR). À l'inverse, UNE relance polie après ";
+        $p .= "une longue attente est tout à fait légitime et ne doit PAS être pénalisée. Les marqueurs ";
+        $p .= "« [le client a RECADRÉ…] » ou « [le client a MIS FIN…] » signalent un grave manquement.\n\n";
         $p .= "Rends un niveau sous forme de COULEUR : « vert » (excellente maîtrise), « bleu » ";
         $p .= "(maîtrise satisfaisante), « jaune » (maîtrise fragile), « rouge » (insuffisante) ; ";
         $p .= "un score 0-100 cohérent ; et un commentaire bref EN FRANÇAIS adressé à l'enseignant, ";
