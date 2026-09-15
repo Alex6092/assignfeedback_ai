@@ -78,11 +78,15 @@ class assign_feedback_ai extends assign_feedback_plugin {
         if ($def_model === '') { $def_model = 'qwen3.5-9b-instruct'; }
         if ($def_prompt === '') { $def_prompt = self::default_system_prompt(); }
 
+        // Champs de contenu en PARAM_RAW : PARAM_TEXT passe par strip_tags(), qui
+        // détruit le code source (« #include <iostream> » perd <iostream>, un
+        // « i<n » ouvre une balise jamais fermée et avale tout le reste). Ces
+        // valeurs ne sont jamais affichées sans échappement (prompts LLM + textarea).
         // --- Prompt système ---
         $mform->addElement('textarea', 'assignfeedback_ai_systemprompt',
             get_string('systemprompt', 'assignfeedback_ai'),
             array('rows' => 8, 'cols' => 60));
-        $mform->setType('assignfeedback_ai_systemprompt', PARAM_TEXT);
+        $mform->setType('assignfeedback_ai_systemprompt', PARAM_RAW);
         $mform->addHelpButton('assignfeedback_ai_systemprompt', 'systemprompt', 'assignfeedback_ai');
         $mform->setDefault('assignfeedback_ai_systemprompt',
             ($cfg && $cfg->systemprompt !== null) ? $cfg->systemprompt : $def_prompt);
@@ -91,7 +95,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->addElement('textarea', 'assignfeedback_ai_exercise',
             get_string('exercise', 'assignfeedback_ai'),
             array('rows' => 5, 'cols' => 60));
-        $mform->setType('assignfeedback_ai_exercise', PARAM_TEXT);
+        $mform->setType('assignfeedback_ai_exercise', PARAM_RAW);
         $mform->addHelpButton('assignfeedback_ai_exercise', 'exercise', 'assignfeedback_ai');
         $mform->setDefault('assignfeedback_ai_exercise',
             ($cfg && $cfg->exercise !== null) ? $cfg->exercise : '');
@@ -100,7 +104,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->addElement('textarea', 'assignfeedback_ai_expectedanswer',
             get_string('expectedanswer', 'assignfeedback_ai'),
             array('rows' => 6, 'cols' => 60));
-        $mform->setType('assignfeedback_ai_expectedanswer', PARAM_TEXT);
+        $mform->setType('assignfeedback_ai_expectedanswer', PARAM_RAW);
         $mform->addHelpButton('assignfeedback_ai_expectedanswer', 'expectedanswer', 'assignfeedback_ai');
         $mform->setDefault('assignfeedback_ai_expectedanswer',
             ($cfg && $cfg->expectedanswer !== null) ? $cfg->expectedanswer : '');
@@ -109,7 +113,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->addElement('textarea', 'assignfeedback_ai_competencies',
             get_string('competencies', 'assignfeedback_ai'),
             array('rows' => 3, 'cols' => 60));
-        $mform->setType('assignfeedback_ai_competencies', PARAM_TEXT);
+        $mform->setType('assignfeedback_ai_competencies', PARAM_RAW);
         $mform->addHelpButton('assignfeedback_ai_competencies', 'competencies', 'assignfeedback_ai');
         $mform->setDefault('assignfeedback_ai_competencies',
             ($cfg && $cfg->competencies !== null) ? $cfg->competencies : '');
