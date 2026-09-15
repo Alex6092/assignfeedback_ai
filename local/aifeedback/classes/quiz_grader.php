@@ -153,8 +153,11 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
                 $options['apikey'] = $question->apikey; // déjà déchiffrée à l'init
             }
             $result = \local_aifeedback\api::call($messages, $options);
+            // Cohérence niveau ↔ score (le niveau fait foi ; un score renvoyé
+            // en points de barème au lieu d'un pourcentage est ramené dans la bande).
+            $result = \local_aifeedback\scoring::reconcile((array)$result);
 
-            $score   = isset($result['score']) ? max(0, min(100, (int)$result['score'])) : 0;
+            $score   = (int)$result['score'];
             $maxmark = (float)$qa->get_max_mark();
             $mark    = \local_aifeedback\math::round_up_quarter(($score / 100.0) * $maxmark);
             if ($mark > $maxmark) {
@@ -194,6 +197,9 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
                    : ($defprompt !== '' ? $defprompt : $this->default_system_prompt());
         // Consigne d'accessibilité (tolérance orthographique) selon le réglage global.
         $system   .= \local_aifeedback\prompt::accessibility_suffix();
+        // Garde-fous non modifiables par l'enseignant : échelle du score + intégrité.
+        $system   .= \local_aifeedback\prompt::score_scale_suffix();
+        $system   .= \local_aifeedback\prompt::integrity_suffix(false);
 
         $exercise = trim(html_to_text((string)$question->questiontext, 0, false));
 
@@ -212,7 +218,7 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
         if (!empty($question->expectedanswer)) {
             $parts[] = "ATTENDUS / CORRIGE :\n" . (string)$question->expectedanswer;
         }
-        $parts[] = "REPONSE ETUDIANT :\n" . $answer;
+        $parts[] = \local_aifeedback\prompt::wrap_student_answer($answer);
 
         return array(
             array('role' => 'system', 'content' => $system),
