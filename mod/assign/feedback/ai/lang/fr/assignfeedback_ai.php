@@ -59,6 +59,9 @@ $string['competency']            = 'Compétence';
 $string['mastery_level']         = 'Niveau de maîtrise';
 $string['commentary']            = 'Commentaire';
 $string['score']                 = 'Score';
+$string['showscore']             = 'Afficher le score /100 aux étudiants';
+$string['showscore_help']        = 'Si désactivé (défaut), les étudiants ne voient que le niveau de maîtrise et le feedback, sans le score chiffré ni la barre de progression. Les enseignants voient toujours le score. Évite que les étudiants cherchent à « faire 100/100 » alors que la maîtrise est déjà acquise. La note Moodle (carnet) n\'est pas concernée.';
+$string['flag']                  = 'Signalement';
 
 $string['nosubmissiontext']      = '(Aucun texte de soumission trouvé)';
 $string['noconfiguration']       = 'La Correction IA n\'est pas configurée pour ce devoir.';

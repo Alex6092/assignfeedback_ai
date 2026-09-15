@@ -59,6 +59,9 @@ $string['competency']            = 'Competency';
 $string['mastery_level']         = 'Mastery level';
 $string['commentary']            = 'Commentary';
 $string['score']                 = 'Score';
+$string['showscore']             = 'Show the /100 score to students';
+$string['showscore_help']        = 'If disabled (default), students only see the mastery level and the feedback, without the numeric score or the progress bar. Teachers always see the score. Prevents students from chasing "100/100" when mastery is already achieved. The Moodle grade (gradebook) is not affected.';
+$string['flag']                  = 'Alert';
 
 $string['nosubmissiontext']      = '(No submission text found)';
 $string['noconfiguration']       = 'AI Feedback is not configured for this assignment.';
