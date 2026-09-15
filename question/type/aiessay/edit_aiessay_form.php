@@ -71,22 +71,26 @@ class qtype_aiessay_edit_form extends question_edit_form {
         $mform->addElement('header', 'aiconfig',
             get_string('aiconfig_heading', 'qtype_aiessay'));
 
+        // Champs de contenu en PARAM_RAW : PARAM_TEXT passe par strip_tags(), qui
+        // détruit le code source (« #include <iostream> » perd <iostream>, un
+        // « i<n » ouvre une balise jamais fermée et avale tout le reste). Ces
+        // valeurs ne sont jamais affichées sans échappement (prompts LLM + textarea).
         $mform->addElement('textarea', 'systemprompt',
             get_string('systemprompt', 'qtype_aiessay'),
             array('rows' => 6, 'cols' => 60));
-        $mform->setType('systemprompt', PARAM_TEXT);
+        $mform->setType('systemprompt', PARAM_RAW);
         $mform->addHelpButton('systemprompt', 'systemprompt', 'qtype_aiessay');
 
         $mform->addElement('textarea', 'expectedanswer',
             get_string('expectedanswer', 'qtype_aiessay'),
             array('rows' => 6, 'cols' => 60));
-        $mform->setType('expectedanswer', PARAM_TEXT);
+        $mform->setType('expectedanswer', PARAM_RAW);
         $mform->addHelpButton('expectedanswer', 'expectedanswer', 'qtype_aiessay');
 
         $mform->addElement('textarea', 'competencies',
             get_string('competencies', 'qtype_aiessay'),
             array('rows' => 3, 'cols' => 60));
-        $mform->setType('competencies', PARAM_TEXT);
+        $mform->setType('competencies', PARAM_RAW);
         $mform->addHelpButton('competencies', 'competencies', 'qtype_aiessay');
 
         // --- Overrides URL / Modèle / Clé / Vision ---
