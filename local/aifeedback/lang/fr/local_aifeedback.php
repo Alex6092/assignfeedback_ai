@@ -30,6 +30,8 @@ $string['maximagespersubmission']       = 'Nombre maximum d\'images par soumissi
 $string['maximagespersubmission_help']  = 'Plafond global d\'images envoyées au LLM. Permet de contrôler la consommation de contexte et le temps de génération. Défaut : 5.';
 $string['imagemindimension']            = 'Taille minimale d\'image (pixels)';
 $string['imagemindimension_help']       = 'Les images extraites d\'un PDF dont la largeur OU la hauteur est inférieure à cette valeur sont ignorées (filtre les vignettes décoratives). Défaut : 200.';
+$string['imagemaxdimension']            = 'Taille maximale d\'image envoyée (pixels)';
+$string['imagemaxdimension_help']       = 'Les images envoyées au LLM (fichiers joints, images de l\'éditeur, images dans un ZIP, pages PDF rasterisées, images de leçon) dont le plus grand côté dépasse cette valeur sont réduites et ré-encodées en JPEG avant envoi. Réduit les tokens consommés et évite le plantage de certains backends (Gemma sous llama.cpp exige que l\'image entière tienne dans un lot d\'évaluation). 0 = envoyer les images en taille originale. Défaut : 1024.';
 
 // Binaires
 $string['binaries_heading']    = 'Binaires externes (poppler-utils)';

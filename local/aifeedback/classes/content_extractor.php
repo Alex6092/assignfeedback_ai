@@ -258,7 +258,8 @@ class content_extractor {
         if ($bytes === false || $bytes === '') {
             return null;
         }
-        return 'data:image/jpeg;base64,' . base64_encode($bytes);
+        // Passe par la réduction commune (plus grand côté ≤ imagemaxdimension).
+        return self::bytes_to_data_url($bytes, 'image/jpeg');
     }
 
     /**
@@ -422,10 +423,13 @@ class content_extractor {
                     $mime = ($ext === '.png') ? 'image/png'
                           : (($ext === '.gif') ? 'image/gif'
                           : (($ext === '.webp') ? 'image/webp' : 'image/jpeg'));
-                    $images[] = array(
-                        'source'   => ($ziplabel !== '' ? $ziplabel . '/' : '') . $name,
-                        'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
-                    );
+                    $url = self::bytes_to_data_url($bytes, $mime);
+                    if ($url !== null) {
+                        $images[] = array(
+                            'source'   => ($ziplabel !== '' ? $ziplabel . '/' : '') . $name,
+                            'data_url' => $url,
+                        );
+                    }
                 }
                 continue;
 
@@ -463,8 +467,23 @@ class content_extractor {
     }
 
     // =========================================================
-    //  IMAGES (stored_file → data URL)
+    //  IMAGES (stored_file / octets → data URL, avec réduction)
     // =========================================================
+
+    /** Plus grand côté par défaut (px) des images envoyées au LLM. */
+    const DEFAULT_IMAGE_MAX_DIMENSION = 1024;
+
+    /**
+     * Plus grand côté autorisé pour les images envoyées au LLM (réglage
+     * local_aifeedback/imagemaxdimension). 0 = pas de réduction.
+     */
+    public static function image_max_dimension() {
+        $v = get_config('local_aifeedback', 'imagemaxdimension');
+        if ($v === false || $v === '' || $v === null) {
+            return self::DEFAULT_IMAGE_MAX_DIMENSION;
+        }
+        return max(0, (int)$v);
+    }
 
     /**
      * Charge un fichier image (stored_file) en data URL pour envoi au LLM.
@@ -472,14 +491,129 @@ class content_extractor {
      */
     public static function file_to_data_url($file) {
         $mime = $file->get_mimetype();
-        if (!preg_match('#^image/(png|jpeg|jpg|webp|gif)$#', $mime, $m)) {
+        if (!preg_match('#^image/(png|jpeg|jpg|webp|gif)$#', $mime)) {
             return null;
         }
-        $bytes = $file->get_content();
-        if ($bytes === false || $bytes === '') {
+        return self::bytes_to_data_url($file->get_content(), $mime);
+    }
+
+    /**
+     * Prépare des octets d'image pour l'envoi au LLM et retourne une data URL
+     * (null si les octets ne sont pas une image lisible).
+     *
+     * Si le plus grand côté dépasse image_max_dimension(), l'image est réduite
+     * (GD, ratio conservé, fond blanc) et ré-encodée en JPEG. Pourquoi : les
+     * tokens d'image croissent avec la surface, et certains backends exigent
+     * que l'image ENTIÈRE tienne dans un lot d'évaluation — Gemma sous
+     * llama.cpp plante le serveur (« non-causal attention requires n_ubatch
+     * >= n_tokens ») sur une capture ou une photo trop grande. Si la réduction
+     * échoue, l'image originale est envoyée telle quelle.
+     *
+     * @param string      $bytes octets de l'image
+     * @param string|null $mime  type MIME connu, sinon détecté
+     * @return string|null
+     */
+    public static function bytes_to_data_url($bytes, $mime = null) {
+        if ($bytes === false || $bytes === null || $bytes === '') {
             return null;
         }
-        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+        $info = @getimagesizefromstring($bytes);
+        if (!$info || (int)$info[0] <= 0 || (int)$info[1] <= 0) {
+            return null;
+        }
+        $w = (int)$info[0];
+        $h = (int)$info[1];
+        if ($mime === null || $mime === '') {
+            $mime = isset($info['mime']) ? (string)$info['mime'] : 'image/jpeg';
+        }
+
+        $maxdim = self::image_max_dimension();
+        if ($maxdim <= 0 || max($w, $h) <= $maxdim) {
+            return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+        }
+
+        $resized = self::downscale_to_jpeg($bytes, $w, $h, $maxdim);
+        if ($resized === null) {
+            debugging('local_aifeedback: réduction d\'image impossible (' . $w . 'x' . $h
+                . ' px), envoi en taille originale', DEBUG_DEVELOPER);
+            return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+        }
+        return 'data:image/jpeg;base64,' . base64_encode($resized);
+    }
+
+    /**
+     * Réduit une image pour que son plus grand côté fasse $maxdim px et la
+     * ré-encode en JPEG (qualité 85, fond blanc sous la transparence).
+     *
+     * @return string|null octets JPEG, ou null si GD ne peut pas la traiter
+     */
+    private static function downscale_to_jpeg($bytes, $w, $h, $maxdim) {
+        if (!function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $ratio = $maxdim / max($w, $h);
+        $nw = max(1, (int)round($w * $ratio));
+        $nh = max(1, (int)round($h * $ratio));
+
+        // ≈ 5 octets/pixel pour la source décodée + la cible : on refuse plutôt
+        // que de laisser PHP mourir sur "Allowed memory size" (non rattrapable).
+        if (!self::ensure_memory(($w * $h + $nw * $nh) * 5)) {
+            return null;
+        }
+        try {
+            $src = @imagecreatefromstring($bytes);
+            if ($src === false) {
+                return null;
+            }
+            $dst = imagecreatetruecolor($nw, $nh);
+            imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            imagedestroy($src);
+            ob_start();
+            imagejpeg($dst, null, 85);
+            $out = ob_get_clean();
+            imagedestroy($dst);
+            return ($out !== false && $out !== '') ? $out : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Vérifie qu'il reste au moins $bytes de mémoire PHP, en relevant la
+     * limite via raise_memory_limit() si nécessaire.
+     */
+    private static function ensure_memory($bytes) {
+        $limit = self::memory_limit_bytes();
+        if ($limit <= 0 || memory_get_usage(true) + $bytes < $limit) {
+            return true;
+        }
+        if (function_exists('raise_memory_limit')) {
+            raise_memory_limit(MEMORY_EXTRA);
+            $limit = self::memory_limit_bytes();
+            if ($limit <= 0 || memory_get_usage(true) + $bytes < $limit) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** memory_limit de PHP en octets (0 = illimité). */
+    private static function memory_limit_bytes() {
+        $v = trim((string)ini_get('memory_limit'));
+        if ($v === '' || $v === '-1') {
+            return 0;
+        }
+        $n    = (float)$v;
+        $unit = strtolower(substr($v, -1));
+        if ($unit === 'g') {
+            $n *= 1024 * 1024 * 1024;
+        } else if ($unit === 'm') {
+            $n *= 1024 * 1024;
+        } else if ($unit === 'k') {
+            $n *= 1024;
+        }
+        return (int)$n;
     }
 
     // =========================================================
