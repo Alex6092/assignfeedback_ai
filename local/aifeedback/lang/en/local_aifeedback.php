@@ -30,6 +30,8 @@ $string['maximagespersubmission']       = 'Maximum images per submission/respons
 $string['maximagespersubmission_help']  = 'Global cap on images sent to the LLM. Controls context size and generation time. Default: 5.';
 $string['imagemindimension']            = 'Minimum image dimension (pixels)';
 $string['imagemindimension_help']       = 'Images extracted from a PDF whose width OR height is below this value are skipped (filters out decorative thumbnails). Default: 200.';
+$string['imagemaxdimension']            = 'Maximum image size sent (pixels)';
+$string['imagemaxdimension_help']       = 'Images sent to the LLM (attachments, editor images, images inside a ZIP, rasterised PDF pages, lesson images) whose longest side exceeds this value are downscaled and re-encoded as JPEG before sending. Cuts token usage and prevents crashes on some backends (Gemma under llama.cpp requires the whole image to fit in one evaluation batch). 0 = send images at their original size. Default: 1024.';
 
 // Binaries
 $string['binaries_heading']    = 'External binaries (poppler-utils)';

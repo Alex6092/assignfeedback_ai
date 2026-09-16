@@ -88,6 +88,15 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Réduction des images avant envoi (tokens + robustesse des backends).
+    $settings->add(new admin_setting_configtext(
+        'local_aifeedback/imagemaxdimension',
+        new lang_string('imagemaxdimension', 'local_aifeedback'),
+        new lang_string('imagemaxdimension_help', 'local_aifeedback'),
+        \local_aifeedback\content_extractor::DEFAULT_IMAGE_MAX_DIMENSION,
+        PARAM_INT
+    ));
+
     // === Binaires externes ===
     $settings->add(new admin_setting_heading(
         'local_aifeedback/binaries_heading',

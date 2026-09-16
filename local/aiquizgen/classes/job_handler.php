@@ -494,9 +494,14 @@ class job_handler implements \local_aifeedback\job_handler {
                 $label .= ' (' . strip_tags((string)$page->title) . ')';
             }
             $label .= ' : ' . $file->get_filename();
+            // Réduction commune (imagemaxdimension) avant envoi au LLM.
+            $url = \local_aifeedback\content_extractor::bytes_to_data_url($bytes, $mime);
+            if ($url === null) {
+                continue;
+            }
             $images[] = array(
                 'source'   => $label,
-                'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
+                'data_url' => $url,
             );
         }
     }
