@@ -85,5 +85,14 @@ function xmldb_local_aifeedback_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091800, 'local', 'aifeedback');
     }
 
+    // 2026091801 : les réinitialisations de cours passées (« Supprimer toutes
+    // les tentatives ») laissaient les corrections IA de quiz en base, feedback
+    // compris. Nettoyage unique des lignes dont la tentative n'existe plus.
+    if ($oldversion < 2026091801) {
+        $DB->delete_records_select('local_aifeedback_qgrading',
+            'questionattemptid NOT IN (SELECT id FROM {question_attempts})');
+        upgrade_plugin_savepoint(true, 2026091801, 'local', 'aifeedback');
+    }
+
     return true;
 }
