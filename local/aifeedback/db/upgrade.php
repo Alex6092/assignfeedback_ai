@@ -38,5 +38,61 @@ function xmldb_local_aifeedback_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026052900, 'local', 'aifeedback');
     }
 
+    // 2026091800 : pool de serveurs LLM partagé (tickets de file + santé des
+    // serveurs), utilisé par le tuteur interactif local_aichat et, à terme,
+    // par la file de corrections.
+    if ($oldversion < 2026091800) {
+
+        $table = new xmldb_table('local_aifeedback_slot');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('purpose', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'tutor');
+            $table->add_field('serverid', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'queued');
+            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('component', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+            $table->add_field('reference', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timereserved', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timestarted', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timeheartbeat', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timefinished', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+
+            $table->add_index('status_purpose', XMLDB_INDEX_NOTUNIQUE, array('status', 'purpose'));
+            $table->add_index('status_server', XMLDB_INDEX_NOTUNIQUE, array('status', 'serverid'));
+            $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, array('userid'));
+            $table->add_index('timefinished', XMLDB_INDEX_NOTUNIQUE, array('timefinished'));
+
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('local_aifeedback_server');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('serverid', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('failinguntil', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('failures', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('lastused', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+            $table->add_key('serverid', XMLDB_KEY_UNIQUE, array('serverid'));
+
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091800, 'local', 'aifeedback');
+    }
+
+    // 2026091801 : les réinitialisations de cours passées (« Supprimer toutes
+    // les tentatives ») laissaient les corrections IA de quiz en base, feedback
+    // compris. Nettoyage unique des lignes dont la tentative n'existe plus.
+    if ($oldversion < 2026091801) {
+        $DB->delete_records_select('local_aifeedback_qgrading',
+            'questionattemptid NOT IN (SELECT id FROM {question_attempts})');
+        upgrade_plugin_savepoint(true, 2026091801, 'local', 'aifeedback');
+    }
+
     return true;
 }

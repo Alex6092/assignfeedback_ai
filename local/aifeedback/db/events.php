@@ -12,4 +12,15 @@ $observers = array(
         'priority'  => 9999,
         'internal'  => false,
     ),
+    // Nettoyage des corrections IA dont la tentative a été effacée.
+    array(
+        'eventname' => '\core\event\course_reset_ended',
+        'callback'  => '\local_aifeedback\observer::purge_orphan_gradings',
+        'internal'  => false,
+    ),
+    array(
+        'eventname' => '\core\event\course_deleted',
+        'callback'  => '\local_aifeedback\observer::purge_orphan_gradings',
+        'internal'  => false,
+    ),
 );

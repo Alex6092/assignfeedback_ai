@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aichat/db" VERSION="20260918" COMMENT="AI pedagogical tutor: per-activity configuration and student conversations">
+  <TABLES>
+
+    <TABLE NAME="local_aichat_activity" COMMENT="Per course-module configuration of the AI tutor">
+      <FIELDS>
+        <FIELD NAME="id"            TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="cmid"          TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="courseid"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="enabled"       TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="includeintro"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="1" COMMENT="Give the activity description to the tutor"/>
+        <FIELD NAME="includebrief"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="1" COMMENT="Give the pedagogical brief (derived from the marking scheme) to the tutor"/>
+        <FIELD NAME="brief"         TYPE="text"              NOTNULL="false" COMMENT="Criteria and attention points, NEVER the solution"/>
+        <FIELD NAME="briefstatus"   TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="none" COMMENT="none|pending|ready|failed"/>
+        <FIELD NAME="briefhash"     TYPE="char" LENGTH="40"  NOTNULL="true" DEFAULT="" COMMENT="Hash of the source config, to detect a stale brief"/>
+        <FIELD NAME="brieferror"    TYPE="text"              NOTNULL="false"/>
+        <FIELD NAME="customprompt"  TYPE="text"              NOTNULL="false" COMMENT="Extra teacher instructions for the tutor"/>
+        <FIELD NAME="quizscope"     TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="all" COMMENT="all|tagged"/>
+        <FIELD NAME="quiztag"       TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="cmid"    TYPE="unique"  FIELDS="cmid"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="courseid"    UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="briefstatus" UNIQUE="false" FIELDS="briefstatus"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aichat_conversation" COMMENT="One conversation thread between a student and the AI tutor on an activity">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="cmid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="active" COMMENT="active|closed"/>
+        <FIELD NAME="msgcount"     TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cmid_user"    UNIQUE="false" FIELDS="cmid, userid"/>
+        <INDEX NAME="timemodified" UNIQUE="false" FIELDS="timemodified"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aichat_message" COMMENT="Messages of a tutor conversation (student turns and AI turns)">
+      <FIELDS>
+        <FIELD NAME="id"             TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="conversationid" TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="userid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Denormalised from the conversation, for quota and privacy queries"/>
+        <FIELD NAME="role"           TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="user" COMMENT="user|assistant"/>
+        <FIELD NAME="content"        TYPE="text"             NOTNULL="false"/>
+        <FIELD NAME="contenthtml"    TYPE="text"             NOTNULL="false" COMMENT="Rendered and sanitised markdown, assistant turns only"/>
+        <FIELD NAME="status"         TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="done" COMMENT="done|pending|streaming|failed|cancelled"/>
+        <FIELD NAME="slotid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Pool ticket id"/>
+        <FIELD NAME="serverid"       TYPE="int"  LENGTH="2"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Exact if reported by the server, estimated otherwise"/>
+        <FIELD NAME="error"          TYPE="text"             NOTNULL="false"/>
+        <FIELD NAME="flagstatus"     TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="none" COMMENT="Moderation of student turns: none|pending|retry|clean|flagged|failed"/>
+        <FIELD NAME="flagcategory"   TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="" COMMENT="manipulation|menace|chantage|insulte|contenu_inapproprie|detresse"/>
+        <FIELD NAME="flagreason"     TYPE="text"             NOTNULL="false" COMMENT="Factual description for the teacher, written by the moderation model"/>
+        <FIELD NAME="flagattempts"   TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="flagtime"       TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecreated"    TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"   TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="conversationid" UNIQUE="false" FIELDS="conversationid"/>
+        <INDEX NAME="user_time"      UNIQUE="false" FIELDS="userid, timecreated"/>
+        <INDEX NAME="status"         UNIQUE="false" FIELDS="status"/>
+        <INDEX NAME="flagstatus"     UNIQUE="false" FIELDS="flagstatus"/>
+      </INDEXES>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>

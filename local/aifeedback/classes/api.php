@@ -14,11 +14,12 @@ require_once($CFG->libdir . '/filelib.php'); // pour la classe curl
  * - Supporte les messages multimodaux (image_url) si le modèle est vision
  * - Gère l'authentification optionnelle via Bearer token
  * - Accepte des overrides ponctuels (URL/modèle/apikey) sans toucher la config
+ * - Supporte le STREAMING (SSE) via stream() pour les usages interactifs
  */
 class api {
 
     /**
-     * Effectue un appel chat/completions.
+     * Effectue un appel chat/completions (bloquant).
      *
      * @param array $messages messages OpenAI (role + content string ou array multimodal)
      * @param array $options  Options de l'appel :
@@ -37,6 +38,326 @@ class api {
      * @throws \moodle_exception en cas d'erreur HTTP ou de parsing
      */
     public static function call(array $messages, array $options = array()) {
+        $req = self::prepare($messages, $options);
+
+        $curl = new \curl();
+        $curl->setopt(array(
+            'CURLOPT_TIMEOUT'        => isset($options['timeout']) ? (int)$options['timeout'] : 180,
+            'CURLOPT_CONNECTTIMEOUT' => 15,
+            'CURLOPT_RETURNTRANSFER' => true,
+            'CURLOPT_HTTPHEADER'     => $req['headers'],
+        ));
+
+        $raw = $curl->post($req['url'], json_encode($req['payload'], JSON_UNESCAPED_UNICODE));
+
+        if ($curl->get_errno()) {
+            // Erreur réseau / TLS / DNS / timeout — typiquement backend injoignable.
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                'curl error (' . $curl->get_errno() . '): ' . $curl->error
+                . ' [url=' . $req['url'] . ']');
+        }
+
+        // Code HTTP de la réponse (présent dans curl->info après la requête).
+        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : 0;
+
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
+            // Réponse inexploitable : on remonte le code HTTP + le corps brut.
+            // Les API compatibles OpenAI renvoient en cas d'erreur un objet
+            // {"error":{"message":"...","type":"...","code":"..."}} : ce message
+            // est la clé pour diagnostiquer (modèle inconnu, paramètre non
+            // supporté, clé invalide, quota dépassé, etc.).
+            $detail = 'HTTP ' . $httpcode . ' — ';
+            if (is_array($data) && isset($data['error'])) {
+                $detail .= self::format_api_error($data['error']);
+            } else {
+                $detail .= 'bad response: ' . substr((string)$raw, 0, 500);
+            }
+            $detail .= ' [model=' . $req['model'] . ', url=' . $req['url'] . ']';
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
+        }
+
+        $content = trim((string)$data['choices'][0]['message']['content']);
+        // Retire les balises markdown si le modèle en ajoute.
+        $content = preg_replace('/^```(?:json)?\s*/i', '', $content);
+        $content = preg_replace('/\s*```\s*$/i', '', $content);
+        $content = trim($content);
+
+        // Si on attendait du JSON, on parse. Sinon on retourne le texte brut wrappé.
+        $expectjson = !empty($options['response_format'])
+                       && isset($options['response_format']['type'])
+                       && in_array($options['response_format']['type'],
+                                   array('json_object', 'json_schema'));
+
+        if (!$expectjson) {
+            return array('__text__' => $content);
+        }
+
+        // Cherche le premier { au cas où le modèle ajoute du texte avant.
+        $start = strpos($content, '{');
+        if ($start !== false && $start > 0) {
+            $content = substr($content, $start);
+        }
+
+        $result = json_decode($content, true);
+        if (!is_array($result)) {
+            // Diagnostic enrichi : la cause la plus fréquente avec les modèles
+            // « raisonneurs » (gpt-5, o1…) est un `content` VIDE ou TRONQUÉ
+            // parce que les reasoning tokens ont épuisé max_completion_tokens
+            // (finish_reason='length'). On remonte donc finish_reason, la
+            // longueur du contenu, l'usage des tokens et un extrait.
+            $finish = isset($data['choices'][0]['finish_reason'])
+                ? $data['choices'][0]['finish_reason'] : '?';
+            $usage = '';
+            if (isset($data['usage']) && is_array($data['usage'])) {
+                $u = $data['usage'];
+                $usage = ' tokens(prompt=' . (isset($u['prompt_tokens']) ? $u['prompt_tokens'] : '?')
+                    . ', completion=' . (isset($u['completion_tokens']) ? $u['completion_tokens'] : '?');
+                if (isset($u['completion_tokens_details']['reasoning_tokens'])) {
+                    $usage .= ', reasoning=' . $u['completion_tokens_details']['reasoning_tokens'];
+                }
+                $usage .= ')';
+            }
+            $detail = 'json parse error: ' . json_last_error_msg()
+                . ' [finish_reason=' . $finish
+                . ', content_len=' . strlen($content) . $usage;
+            if ($content === '') {
+                $detail .= ', contenu VIDE → probablement max_tokens trop bas '
+                        .  'pour un modèle raisonneur (reasoning tokens). '
+                        .  'Augmentez max_tokens ou réduisez reasoning_effort';
+            } else {
+                $detail .= ', extrait=' . substr($content, 0, 200);
+            }
+            $detail .= ']';
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
+        }
+        return $result;
+    }
+
+    /**
+     * Effectue un appel chat/completions en STREAMING (SSE).
+     *
+     * Chaque fragment de texte produit par le modèle est passé à $ondelta au fil
+     * de l'eau : c'est ce qui permet au tuteur (local_aichat) d'afficher la
+     * réponse pendant sa génération. Le callback peut retourner false pour
+     * INTERROMPRE la génération (élève qui ferme l'onglet ou clique « Arrêter ») :
+     * on rend alors 0 depuis le write callback de curl, ce qui coupe la connexion
+     * et libère immédiatement le serveur LLM.
+     *
+     * @param array    $messages messages OpenAI
+     * @param array    $options  mêmes options que call() ('timeout' défaut 600)
+     * @param callable $ondelta  function(string $delta): bool|null — false = arrêter
+     * @return array ['content' => string, 'finish_reason' => string|null,
+     *                'usage' => array|null, 'aborted' => bool]
+     * @throws \moodle_exception en cas d'erreur réseau ou HTTP
+     */
+    public static function stream(array $messages, array $options, callable $ondelta) {
+        $req = self::prepare($messages, $options);
+
+        $payload = $req['payload'];
+        $payload['stream'] = true;
+        // Décompte exact des tokens en fin de flux. Tous les backends ne
+        // l'acceptent pas (certains répondent HTTP 400) : activable par réglage
+        // pour les serveurs génériques, toujours actif chez OpenAI.
+        if ($req['flavor'] === 'openai' || !empty(get_config('local_aifeedback', 'stream_usage'))) {
+            $payload['stream_options'] = array('include_usage' => true);
+        }
+
+        $headers = $req['headers'];
+        foreach ($headers as $i => $h) {
+            if (stripos($h, 'Accept:') === 0) {
+                $headers[$i] = 'Accept: text/event-stream';
+            }
+        }
+
+        // État partagé avec le write callback.
+        $state = (object)array(
+            'buffer'   => '',   // fragment de ligne SSE incomplet
+            'content'  => '',   // texte complet accumulé
+            'finish'   => null,
+            'usage'    => null,
+            'aborted'  => false,
+            'errbody'  => '',   // corps de réponse quand le HTTP n'est pas 200
+            'httpcode' => 0,
+        );
+
+        $curl = new \curl();
+        $curl->setopt(array(
+            'CURLOPT_TIMEOUT'         => isset($options['timeout']) ? (int)$options['timeout'] : 600,
+            'CURLOPT_CONNECTTIMEOUT'  => 15,
+            'CURLOPT_RETURNTRANSFER'  => true,
+            'CURLOPT_HTTPHEADER'      => $headers,
+            // Détection de blocage : moins de 1 octet/s pendant 90 s → on coupe.
+            'CURLOPT_LOW_SPEED_LIMIT' => 1,
+            'CURLOPT_LOW_SPEED_TIME'  => 90,
+            'CURLOPT_WRITEFUNCTION'   => function($ch, $data) use ($state, $ondelta) {
+                $len = strlen($data);
+                if ($state->httpcode === 0) {
+                    $state->httpcode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                }
+                // Réponse d'erreur : ce n'est pas du SSE mais un corps JSON.
+                if ($state->httpcode !== 0 && $state->httpcode !== 200) {
+                    if (strlen($state->errbody) < 2000) {
+                        $state->errbody .= $data;
+                    }
+                    return $len;
+                }
+                if (!self::feed_sse($state, $data, $ondelta)) {
+                    $state->aborted = true;
+                    return 0; // coupe la connexion (curl renverra un errno)
+                }
+                return $len;
+            },
+        ));
+
+        $curl->post($req['url'], json_encode($payload, JSON_UNESCAPED_UNICODE));
+
+        $errno    = $curl->get_errno();
+        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : $state->httpcode;
+
+        if ($state->aborted) {
+            // Interruption volontaire : ce n'est pas une erreur.
+            return array(
+                'content'       => $state->content,
+                'finish_reason' => 'aborted',
+                'usage'         => $state->usage,
+                'aborted'       => true,
+            );
+        }
+
+        if ($errno) {
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                'curl error (' . $errno . '): ' . $curl->error . ' [url=' . $req['url'] . ']');
+        }
+
+        if ($httpcode !== 200) {
+            $detail = 'HTTP ' . $httpcode . ' — ';
+            $data   = json_decode($state->errbody, true);
+            if (is_array($data) && isset($data['error'])) {
+                $detail .= self::format_api_error($data['error']);
+            } else {
+                $detail .= 'bad response: ' . substr(trim($state->errbody), 0, 500);
+            }
+            $detail .= ' [model=' . $req['model'] . ', url=' . $req['url'] . ']';
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
+        }
+
+        if (trim($state->content) === '') {
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                'flux vide (aucun delta reçu) [model=' . $req['model'] . ', url=' . $req['url'] . ']');
+        }
+
+        return array(
+            'content'       => $state->content,
+            'finish_reason' => $state->finish,
+            'usage'         => $state->usage,
+            'aborted'       => false,
+        );
+    }
+
+    /**
+     * Absorbe un fragment brut reçu du réseau et traite les lignes complètes
+     * qu'il contient.
+     *
+     * Le découpage TCP ne respecte aucune frontière de ligne : un même « data: »
+     * peut arriver en deux morceaux, et deux événements peuvent arriver
+     * ensemble. Tout ce qui reste incomplet est conservé dans $state->buffer
+     * jusqu'au fragment suivant.
+     *
+     * @param \stdClass $state
+     * @param string    $data fragment brut
+     * @param callable  $ondelta
+     * @return bool false = interrompre la génération
+     */
+    private static function feed_sse(\stdClass $state, $data, callable $ondelta) {
+        $state->buffer .= $data;
+        while (($pos = strpos($state->buffer, "\n")) !== false) {
+            $line = rtrim(substr($state->buffer, 0, $pos), "\r");
+            $state->buffer = substr($state->buffer, $pos + 1);
+            if (!self::consume_sse_line($line, $state, $ondelta)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Traite une ligne du flux SSE. Retourne false si l'appelant demande l'arrêt.
+     *
+     * Format : des lignes « data: {json} », une ligne vide entre les événements,
+     * et un « data: [DONE] » final. Tout le reste (commentaires « : ping »,
+     * champs event:/id:) est ignoré.
+     *
+     * @param string    $line
+     * @param \stdClass $state
+     * @param callable  $ondelta
+     * @return bool false = interrompre
+     */
+    private static function consume_sse_line($line, \stdClass $state, callable $ondelta) {
+        if (strpos($line, 'data:') !== 0) {
+            return true; // ligne vide, commentaire, ou champ non géré
+        }
+        $json = trim(substr($line, 5));
+        if ($json === '' || $json === '[DONE]') {
+            return true;
+        }
+        $chunk = json_decode($json, true);
+        if (!is_array($chunk)) {
+            return true; // fragment illisible : on l'ignore plutôt que de tout casser
+        }
+        // Le chunk final (include_usage) porte l'usage et un tableau choices vide.
+        if (isset($chunk['usage']) && is_array($chunk['usage'])) {
+            $state->usage = $chunk['usage'];
+        }
+        if (isset($chunk['choices'][0]['finish_reason'])
+                && $chunk['choices'][0]['finish_reason'] !== null) {
+            $state->finish = (string)$chunk['choices'][0]['finish_reason'];
+        }
+        $delta = null;
+        if (isset($chunk['choices'][0]['delta']['content'])) {
+            $delta = (string)$chunk['choices'][0]['delta']['content'];
+        }
+        if ($delta === null || $delta === '') {
+            return true;
+        }
+        $state->content .= $delta;
+        return ($ondelta($delta) !== false);
+    }
+
+    /**
+     * Met en forme l'objet d'erreur standard des API compatibles OpenAI.
+     */
+    private static function format_api_error($err) {
+        if (!is_array($err)) {
+            return 'API error: ' . (string)$err;
+        }
+        return 'API error: '
+            . (isset($err['message']) ? $err['message'] : json_encode($err))
+            . (isset($err['type']) ? ' (type=' . $err['type'] . ')' : '')
+            . (isset($err['code']) && $err['code'] !== null ? ' (code=' . $err['code'] . ')' : '');
+    }
+
+    /**
+     * Prépare l'URL, les en-têtes et le payload d'un appel (partie commune à
+     * call() et stream()).
+     *
+     * @return array ['url'=>string, 'model'=>string, 'headers'=>array,
+     *                'payload'=>array, 'flavor'=>string]
+     */
+    private static function prepare(array $messages, array $options) {
+        // Serveur imposé par le pool quand l'appelant n'a rien surchargé
+        // (pool::set_current_server() — utilisé par les jobs de la file).
+        $server = pool::current_server();
+        if ($server !== null) {
+            foreach (array('apiurl', 'model', 'apikey') as $key) {
+                if (!isset($options[$key]) || $options[$key] === null || $options[$key] === '') {
+                    if (isset($server[$key]) && $server[$key] !== '') {
+                        $options[$key] = $server[$key];
+                    }
+                }
+            }
+        }
+
         $url   = self::resolve($options, 'apiurl',
             (string)get_config('local_aifeedback', 'apiurl'),
             'http://localhost:1234/v1/chat/completions');
@@ -129,102 +450,13 @@ class api {
             $headers[] = 'Authorization: Bearer ' . $apikey;
         }
 
-        $curl = new \curl();
-        $curl->setopt(array(
-            'CURLOPT_TIMEOUT'        => isset($options['timeout']) ? (int)$options['timeout'] : 180,
-            'CURLOPT_CONNECTTIMEOUT' => 15,
-            'CURLOPT_RETURNTRANSFER' => true,
-            'CURLOPT_HTTPHEADER'     => $headers,
-        ));
-
-        $raw = $curl->post($url, json_encode($payload, JSON_UNESCAPED_UNICODE));
-
-        if ($curl->get_errno()) {
-            // Erreur réseau / TLS / DNS / timeout — typiquement backend injoignable.
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'curl error (' . $curl->get_errno() . '): ' . $curl->error
-                . ' [url=' . $url . ']');
-        }
-
-        // Code HTTP de la réponse (présent dans curl->info après la requête).
-        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : 0;
-
-        $data = json_decode($raw, true);
-        if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
-            // Réponse inexploitable : on remonte le code HTTP + le corps brut.
-            // Les API compatibles OpenAI renvoient en cas d'erreur un objet
-            // {"error":{"message":"...","type":"...","code":"..."}} : ce message
-            // est la clé pour diagnostiquer (modèle inconnu, paramètre non
-            // supporté, clé invalide, quota dépassé, etc.).
-            $detail = 'HTTP ' . $httpcode . ' — ';
-            if (is_array($data) && isset($data['error'])) {
-                $err = $data['error'];
-                $detail .= 'API error: '
-                    . (isset($err['message']) ? $err['message'] : json_encode($err))
-                    . (isset($err['type']) ? ' (type=' . $err['type'] . ')' : '')
-                    . (isset($err['code']) && $err['code'] !== null ? ' (code=' . $err['code'] . ')' : '');
-            } else {
-                $detail .= 'bad response: ' . substr((string)$raw, 0, 500);
-            }
-            $detail .= ' [model=' . $model . ', url=' . $url . ']';
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
-        }
-
-        $content = trim((string)$data['choices'][0]['message']['content']);
-        // Retire les balises markdown si le modèle en ajoute.
-        $content = preg_replace('/^```(?:json)?\s*/i', '', $content);
-        $content = preg_replace('/\s*```\s*$/i', '', $content);
-        $content = trim($content);
-
-        // Si on attendait du JSON, on parse. Sinon on retourne le texte brut wrappé.
-        $expectjson = !empty($options['response_format'])
-                       && isset($options['response_format']['type'])
-                       && in_array($options['response_format']['type'],
-                                   array('json_object', 'json_schema'));
-
-        if (!$expectjson) {
-            return array('__text__' => $content);
-        }
-
-        // Cherche le premier { au cas où le modèle ajoute du texte avant.
-        $start = strpos($content, '{');
-        if ($start !== false && $start > 0) {
-            $content = substr($content, $start);
-        }
-
-        $result = json_decode($content, true);
-        if (!is_array($result)) {
-            // Diagnostic enrichi : la cause la plus fréquente avec les modèles
-            // « raisonneurs » (gpt-5, o1…) est un `content` VIDE ou TRONQUÉ
-            // parce que les reasoning tokens ont épuisé max_completion_tokens
-            // (finish_reason='length'). On remonte donc finish_reason, la
-            // longueur du contenu, l'usage des tokens et un extrait.
-            $finish = isset($data['choices'][0]['finish_reason'])
-                ? $data['choices'][0]['finish_reason'] : '?';
-            $usage = '';
-            if (isset($data['usage']) && is_array($data['usage'])) {
-                $u = $data['usage'];
-                $usage = ' tokens(prompt=' . (isset($u['prompt_tokens']) ? $u['prompt_tokens'] : '?')
-                    . ', completion=' . (isset($u['completion_tokens']) ? $u['completion_tokens'] : '?');
-                if (isset($u['completion_tokens_details']['reasoning_tokens'])) {
-                    $usage .= ', reasoning=' . $u['completion_tokens_details']['reasoning_tokens'];
-                }
-                $usage .= ')';
-            }
-            $detail = 'json parse error: ' . json_last_error_msg()
-                . ' [finish_reason=' . $finish
-                . ', content_len=' . strlen($content) . $usage;
-            if ($content === '') {
-                $detail .= ', contenu VIDE → probablement max_tokens trop bas '
-                        .  'pour un modèle raisonneur (reasoning tokens). '
-                        .  'Augmentez max_tokens ou réduisez reasoning_effort';
-            } else {
-                $detail .= ', extrait=' . substr($content, 0, 200);
-            }
-            $detail .= ']';
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
-        }
-        return $result;
+        return array(
+            'url'     => $url,
+            'model'   => $model,
+            'headers' => $headers,
+            'payload' => $payload,
+            'flavor'  => $flavor,
+        );
     }
 
     /**
