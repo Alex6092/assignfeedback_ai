@@ -45,14 +45,33 @@ if ($hassiteconfig) {
     ));
 
     // === Pool de serveurs LLM ===
-    // Les appels régulés (tuteur interactif, et à terme la file de corrections)
-    // sont répartis entre ces serveurs selon leur simultanéité maximale et les
+    // Les appels régulés (tuteur interactif et file de corrections) sont
+    // répartis entre ces serveurs selon leur simultanéité maximale et les
     // usages qu'ils acceptent. L'emplacement 1 est le serveur configuré
     // ci-dessus ; les emplacements 2 et 3 sont facultatifs.
     $settings->add(new admin_setting_heading(
         'local_aifeedback/pool_heading',
         new lang_string('pool_heading', 'local_aifeedback'),
-        new lang_string('pool_heading_desc', 'local_aifeedback')
+        get_string('pool_heading_desc', 'local_aifeedback') . ' '
+            . html_writer::link(new moodle_url('/local/aifeedback/servers.php'),
+                get_string('servers_link', 'local_aifeedback'))
+    ));
+
+    // Interrupteur de sécurité : désactivé, la file revient au mode historique
+    // (un seul appel à la fois, sur le serveur 1).
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aifeedback/pool_feedback',
+        new lang_string('pool_feedback', 'local_aifeedback'),
+        new lang_string('pool_feedback_help', 'local_aifeedback'),
+        1
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aifeedback/pool_acquire_wait',
+        new lang_string('pool_acquire_wait', 'local_aifeedback'),
+        new lang_string('pool_acquire_wait_help', 'local_aifeedback'),
+        10,
+        PARAM_INT
     ));
 
     for ($slot = 1; $slot <= \local_aifeedback\pool::MAX_SERVERS; $slot++) {
@@ -216,4 +235,12 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('localplugins', $settings);
+
+    // Page d'état des serveurs (charge, quarantaine, remise en service).
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_aifeedback_servers',
+        new lang_string('servers_page', 'local_aifeedback'),
+        new moodle_url('/local/aifeedback/servers.php'),
+        'moodle/site:config'
+    ));
 }

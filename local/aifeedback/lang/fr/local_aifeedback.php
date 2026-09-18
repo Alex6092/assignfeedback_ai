@@ -35,7 +35,38 @@ $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défin
 
 // Pool de serveurs LLM
 $string['pool_heading']              = 'Serveurs LLM (répartition de charge)';
-$string['pool_heading_desc']         = 'Vous pouvez déclarer jusqu\'à 3 serveurs LLM. Les appels régulés (tuteur IA des élèves, et à terme la file de corrections) sont répartis entre les serveurs qui acceptent l\'usage demandé et qui ont une place libre. Les demandes du tuteur sont servies EN PREMIER : un élève attend devant son écran, pas une correction différée. Laisser l\'URL d\'un emplacement vide le désactive.';
+$string['pool_heading_desc']         = 'Vous pouvez déclarer jusqu\'à 3 serveurs LLM. Le tuteur IA et la file de corrections sont répartis entre les serveurs qui acceptent l\'usage demandé et qui ont une place libre ; si un serveur tombe en panne, le travail bascule automatiquement sur un autre. Les demandes du tuteur sont servies EN PREMIER : un élève attend devant son écran, pas une correction différée. Laisser l\'URL d\'un emplacement vide le désactive.';
+$string['pool_feedback']             = 'Répartir la file de corrections sur le pool';
+$string['pool_feedback_help']        = 'Si activé (recommandé), chaque correction prend une place sur un des serveurs qui acceptent les corrections, plusieurs corrections peuvent tourner en parallèle, et une correction bascule sur un autre serveur si le sien est en panne. Si désactivé, retour au fonctionnement historique : une seule correction à la fois sur tout le site, toujours sur le serveur 1. Les activités configurées avec leur propre URL (API externe) ne passent jamais par le pool.';
+$string['pool_acquire_wait']         = 'Attente maximale d\'une place (secondes)';
+$string['pool_acquire_wait_help']    = 'Durée pendant laquelle une tâche de fond attend qu\'un serveur se libère avant d\'être re-planifiée. À garder courte : pendant cette attente, le processus cron ne traite aucune autre tâche du site (courriels, sauvegardes…). Défaut : 10.';
+$string['poolbusy']                  = 'Tous les serveurs IA sont occupés pour le moment. Réessayez dans un instant.';
+
+// Page d'état des serveurs
+$string['servers_link']              = 'Voir l\'état des serveurs.';
+$string['servers_page']              = 'État des serveurs IA';
+$string['servers_intro']             = 'Occupation et santé des serveurs du pool. La page s\'actualise toutes les 15 secondes.';
+$string['servers_legacy']            = 'La répartition de la file de corrections est désactivée : les corrections passent une par une sur le serveur 1 (mode historique). Seul le tuteur utilise le pool.';
+$string['servers_col_endpoint']      = 'Serveur';
+$string['servers_col_usages']        = 'Usages';
+$string['servers_col_busy']          = 'Occupation';
+$string['servers_col_state']         = 'État';
+$string['servers_col_lasthour']      = 'Dernière heure';
+$string['servers_col_lastused']      = 'Dernière utilisation';
+$string['servers_use_feedback']      = 'corrections';
+$string['servers_use_tutor']         = 'tuteur';
+$string['servers_inservice']         = 'En service';
+$string['servers_quarantine']        = 'En quarantaine jusqu\'à {$a}';
+$string['servers_clear']             = 'Remettre en service';
+$string['servers_cleared']           = 'Serveur {$a} remis en service.';
+$string['servers_failures']          = '{$a} panne(s) détectée(s) depuis l\'installation';
+$string['servers_defaultmodel']      = 'modèle global';
+$string['servers_lasthour_value']    = '{$a->done} terminé(s), {$a->failed} échoué(s)';
+$string['servers_never']             = 'jamais';
+$string['servers_queues']            = 'En attente : {$a->tutor} demande(s) du tuteur, {$a->feedback} correction(s).';
+$string['servers_nofeedback']        = 'Aucun serveur n\'accepte les corrections : elles ne seront jamais traitées. Cochez « Autoriser la correction » sur au moins un serveur.';
+$string['servers_concurrency']       = 'Vos serveurs peuvent traiter {$a->capacity} corrections en parallèle, mais Moodle ne lance que {$a->limit} processus de tâches de fond à la fois (réglage « task_adhoc_concurrency_limit », Administration > Serveur > Tâches) : augmentez-le pour utiliser toute la capacité.';
+$string['servers_modeltip']          = 'Conseil : chaque serveur utilise son propre modèle. Évitez d\'imposer un modèle unique au niveau d\'une activité ou d\'un plugin (sans URL) : il devrait alors exister sur tous les serveurs qui acceptent les corrections.';
 $string['server_heading']            = 'Serveur {$a}';
 $string['server1_desc']              = 'Cet emplacement utilise l\'URL, le modèle et la clé API saisis plus haut. Il est toujours actif.';
 $string['server_apiurl']             = 'URL de l\'API';

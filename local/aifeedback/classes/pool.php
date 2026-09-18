@@ -133,29 +133,211 @@ class pool {
         return $opts;
     }
 
+    // =====================================================================
+    //  CONTEXTE COURANT (serveur + ticket tenus par ce processus)
+    // =====================================================================
+
     /**
-     * Impose (ou lève) le serveur utilisé par les appels api du processus.
-     * @param array|null $server descripteur, ou null pour revenir au défaut
+     * Déclare le serveur et le ticket tenus par ce processus : api::call() et
+     * api::stream() les utilisent alors automatiquement (quand l'appelant n'a
+     * pas imposé sa propre URL), entretiennent le battement de cœur du ticket
+     * pendant l'appel et peuvent basculer sur un autre serveur en cas de panne.
+     *
+     * @param array  $server    descripteur (voir servers())
+     * @param int    $slotid    ticket réservé et démarré
+     * @param string $purpose   self::PURPOSE_*
+     * @param string $component frankenstyle de l'appelant (repris si basculement)
+     */
+    public static function set_current(array $server, $slotid, $purpose, $component = 'local_aifeedback') {
+        self::$currentserver = array(
+            'server'       => $server,
+            'slotid'       => (int)$slotid,
+            'purpose'      => (string)$purpose,
+            'component'    => (string)$component,
+            'tried'        => array((int)$server['id']),
+            'servererrors' => 0,
+            'lastbeat'     => time(),
+        );
+    }
+
+    /** @return array|null descripteur du serveur tenu par ce processus */
+    public static function current() {
+        return (self::$currentserver === null) ? null : self::$currentserver['server'];
+    }
+
+    /** @return int ticket tenu par ce processus (0 si aucun) */
+    public static function current_slot() {
+        return (self::$currentserver === null) ? 0 : (int)self::$currentserver['slotid'];
+    }
+
+    /** Oublie le contexte courant (après avoir libéré le ticket). */
+    public static function clear_current() {
+        self::$currentserver = null;
+    }
+
+    /**
+     * Compatibilité : impose un serveur sans ticket (pas de battement de cœur,
+     * pas de basculement), ou lève le contexte avec null.
+     *
+     * @param array|null $server
      */
     public static function set_current_server($server) {
-        self::$currentserver = $server;
+        if ($server === null) {
+            self::clear_current();
+            return;
+        }
+        self::set_current($server, 0, self::PURPOSE_FEEDBACK);
     }
 
-    /** @return array|null descripteur du serveur imposé au processus courant */
+    /** Compatibilité : alias de current(). */
     public static function current_server() {
-        return self::$currentserver;
+        return self::current();
     }
 
     /**
-     * Un seul serveur accepte-t-il cet usage ? (sinon inutile de faire la queue)
+     * Battement de cœur du ticket courant. Appelé par la fonction de
+     * progression de curl (environ une fois par seconde, y compris pendant que
+     * le serveur calcule sans rien envoyer) : sans lui, une correction de plus
+     * de 90 s verrait sa place récupérée alors que le serveur travaille
+     * encore. Une écriture en base au plus toutes les 15 s.
      */
-    public static function has_server_for($purpose) {
-        foreach (self::servers() as $server) {
+    public static function heartbeat_current() {
+        if (self::$currentserver === null || self::$currentserver['slotid'] <= 0) {
+            return;
+        }
+        $now = time();
+        if ($now - self::$currentserver['lastbeat'] < 15) {
+            return;
+        }
+        self::$currentserver['lastbeat'] = $now;
+        try {
+            self::heartbeat(self::$currentserver['slotid']);
+        } catch (\Throwable $e) {
+            // Jamais d'exception depuis un callback curl : au pire, le ticket
+            // sera récupéré et l'erreur apparaîtra au prochain battement.
+        }
+    }
+
+    /**
+     * Bascule le processus sur un autre serveur après une panne.
+     *
+     * - UNREACHABLE : le serveur est mis en quarantaine, puis on essaie chacun
+     *   des autres serveurs acceptant l'usage.
+     * - SERVER_ERROR : pas de quarantaine (c'est peut-être la requête qui fait
+     *   planter le modèle) et un seul nouvel essai, pour qu'une copie
+     *   « empoisonnée » ne fasse pas le tour de tous les serveurs.
+     *
+     * @param server_unavailable_exception $e
+     * @return bool true si un autre serveur a été obtenu (l'appel peut être
+     *              rejoué), false sinon (le ticket courant est alors libéré)
+     */
+    public static function failover(server_unavailable_exception $e) {
+        global $DB;
+
+        if (self::$currentserver === null || self::$currentserver['slotid'] <= 0) {
+            return false; // pas de ticket : appel hors pool, rien à basculer
+        }
+        $ctx    = self::$currentserver;
+        $failed = (int)$ctx['server']['id'];
+
+        if ($e->kind === server_unavailable_exception::UNREACHABLE) {
+            self::mark_server_failed($failed);
+        } else if ($ctx['servererrors'] >= 1) {
+            return false; // déjà rejoué une fois sur un autre serveur
+        }
+
+        $old = $DB->get_record(self::TABLE_SLOT, array('id' => (int)$ctx['slotid']));
+        self::release($ctx['slotid'], 'failed');
+        self::$currentserver['slotid'] = 0;
+
+        $got = self::acquire($ctx['purpose'], self::setting('pool_acquire_wait', 10),
+            $ctx['component'], $ctx['tried'],
+            $old ? (int)$old->userid : 0, $old ? (int)$old->reference : 0);
+        if ($got === null) {
+            return false;
+        }
+
+        debugging('local_aifeedback: serveur ' . $failed . ' indisponible (' . $e->kind
+            . '), bascule sur le serveur ' . (int)$got['server']['id'], DEBUG_DEVELOPER);
+
+        self::$currentserver['server']   = $got['server'];
+        self::$currentserver['slotid']   = (int)$got['slotid'];
+        self::$currentserver['tried'][]  = (int)$got['server']['id'];
+        self::$currentserver['lastbeat'] = time();
+        if ($e->kind === server_unavailable_exception::SERVER_ERROR) {
+            self::$currentserver['servererrors']++;
+        }
+        return true;
+    }
+
+    /**
+     * Exécute un appel synchrone (page web) sous régulation du pool : prend une
+     * place, exécute, libère. Si le processus tient déjà une place (appel
+     * imbriqué) ou si la répartition est désactivée, exécute directement.
+     *
+     * @param string   $purpose
+     * @param callable $fn
+     * @param int      $maxwait attente maximale d'une place (secondes)
+     * @param string   $component
+     * @return mixed ce que renvoie $fn
+     * @throws \moodle_exception poolbusy si aucune place ne s'est libérée
+     */
+    public static function run($purpose, callable $fn, $maxwait = 30, $component = 'local_aifeedback') {
+        if (self::$currentserver !== null || !self::feedback_enabled()) {
+            return $fn();
+        }
+        $got = self::acquire($purpose, $maxwait, $component);
+        if ($got === null) {
+            throw new \moodle_exception('poolbusy', 'local_aifeedback');
+        }
+        self::set_current($got['server'], $got['slotid'], $purpose, $component);
+        $status = 'failed';
+        try {
+            $result = $fn();
+            $status = 'done';
+            return $result;
+        } finally {
+            self::release(self::current_slot(), $status);
+            self::clear_current();
+        }
+    }
+
+    /**
+     * La file de jobs est-elle répartie sur le pool ? (interrupteur de
+     * sécurité : activé tant qu'il n'a pas été explicitement désactivé)
+     */
+    public static function feedback_enabled() {
+        $value = get_config('local_aifeedback', 'pool_feedback');
+        return ($value === false) ? true : !empty($value);
+    }
+
+    /**
+     * Un serveur (hors exclusions) accepte-t-il cet usage ? Sinon, inutile de
+     * faire la queue.
+     *
+     * @param string $purpose
+     * @param int[]  $exclude
+     */
+    public static function has_server_for($purpose, array $exclude = array()) {
+        $exclude = array_map('intval', $exclude);
+        foreach (self::servers() as $id => $server) {
+            if (in_array((int)$id, $exclude, true)) {
+                continue;
+            }
             if (self::server_accepts($server, $purpose)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** « 1,3 » → array(1, 3) */
+    private static function parse_ids($csv) {
+        $csv = trim((string)$csv);
+        if ($csv === '') {
+            return array();
+        }
+        return array_values(array_filter(array_map('intval', explode(',', $csv))));
     }
 
     private static function server_accepts(array $server, $purpose) {
@@ -177,9 +359,10 @@ class pool {
      * @param int    $userid    utilisateur à l'origine (0 = système/cron)
      * @param string $component frankenstyle de l'appelant
      * @param int    $reference identifiant métier libre (ex. id de message)
+     * @param int[]  $exclude   serveurs à ne pas utiliser (déjà essayés)
      * @return int id du ticket
      */
-    public static function request($purpose, $userid, $component, $reference = 0) {
+    public static function request($purpose, $userid, $component, $reference = 0, array $exclude = array()) {
         global $DB;
         $now = time();
         $row = (object)array(
@@ -189,6 +372,7 @@ class pool {
             'userid'        => (int)$userid,
             'component'     => (string)$component,
             'reference'     => (int)$reference,
+            'excluded'      => implode(',', array_unique(array_map('intval', $exclude))),
             'timecreated'   => $now,
             'timereserved'  => 0,
             'timestarted'   => 0,
@@ -312,20 +496,27 @@ class pool {
     }
 
     /**
-     * Attente bloquante d'une place (usage cron / file de jobs, où il n'y a pas
-     * de client pour faire du polling).
+     * Attente bloquante d'une place (file de jobs, appels synchrones,
+     * basculement), là où il n'y a pas de navigateur pour faire du polling.
+     *
+     * L'attente doit rester COURTE en cron : pendant qu'il attend, le processus
+     * ne traite aucune autre tâche de fond du site (courriels, sauvegardes…).
      *
      * @param string $purpose
      * @param int    $maxwaitsec durée maximale d'attente
      * @param string $component
-     * @return array|null ['slotid' => int, 'server' => array] ou null si rien
-     *                    n'a pu être obtenu dans le délai (le ticket est annulé)
+     * @param int[]  $exclude    serveurs à ne pas utiliser (déjà essayés)
+     * @param int    $userid
+     * @param int    $reference
+     * @return array|null ['slotid' => int, 'server' => array] (ticket démarré),
+     *                    ou null si rien n'a pu être obtenu (ticket annulé)
      */
-    public static function acquire_blocking($purpose, $maxwaitsec = 30, $component = 'local_aifeedback') {
-        if (!self::has_server_for($purpose)) {
-            return null;
+    public static function acquire($purpose, $maxwaitsec = 30, $component = 'local_aifeedback',
+            array $exclude = array(), $userid = 0, $reference = 0) {
+        if (!self::has_server_for($purpose, $exclude)) {
+            return null; // aucun serveur possible : inutile de faire la queue
         }
-        $slotid   = self::request($purpose, 0, $component, 0);
+        $slotid   = self::request($purpose, $userid, $component, $reference, $exclude);
         $deadline = time() + max(1, (int)$maxwaitsec);
         do {
             $state = self::poll($slotid);
@@ -346,6 +537,11 @@ class pool {
 
         self::cancel($slotid);
         return null;
+    }
+
+    /** Compatibilité : ancienne signature de acquire(). */
+    public static function acquire_blocking($purpose, $maxwaitsec = 30, $component = 'local_aifeedback') {
+        return self::acquire($purpose, $maxwaitsec, $component);
     }
 
     // =====================================================================
@@ -416,9 +612,13 @@ class pool {
                 $best     = null;
                 $bestfree = 0;
                 $bestused = 0;
+                $excluded = self::parse_ids(isset($row->excluded) ? $row->excluded : '');
                 foreach ($servers as $id => $server) {
                     if (!self::server_accepts($server, $row->purpose)) {
                         continue;
+                    }
+                    if (in_array((int)$id, $excluded, true)) {
+                        continue; // déjà essayé par ce job (basculement)
                     }
                     if (isset($state[$id]) && (int)$state[$id]->failinguntil > $now) {
                         continue; // serveur en quarantaine
@@ -559,12 +759,27 @@ class pool {
            GROUP BY serverid',
             array('reserved', 'running'));
 
+        // Bilan de la dernière heure, par serveur et par issue.
+        $recent = $DB->get_recordset_sql(
+            'SELECT serverid, status, COUNT(*) AS n
+               FROM {' . self::TABLE_SLOT . '}
+              WHERE serverid > 0 AND timefinished > ?
+           GROUP BY serverid, status',
+            array(time() - HOURSECS));
+        $lasthour = array();
+        foreach ($recent as $r) {
+            $lasthour[(int)$r->serverid][(string)$r->status] = (int)$r->n;
+        }
+        $recent->close();
+
         $out = array();
         foreach ($servers as $id => $server) {
             $server['busy']         = isset($load[$id]) ? (int)$load[$id]->n : 0;
             $server['failinguntil'] = isset($state[$id]) ? (int)$state[$id]->failinguntil : 0;
             $server['failures']     = isset($state[$id]) ? (int)$state[$id]->failures : 0;
             $server['lastused']     = isset($state[$id]) ? (int)$state[$id]->lastused : 0;
+            $server['done1h']       = isset($lasthour[$id]['done']) ? $lasthour[$id]['done'] : 0;
+            $server['failed1h']     = isset($lasthour[$id]['failed']) ? $lasthour[$id]['failed'] : 0;
             $out[$id] = $server;
         }
         return $out;

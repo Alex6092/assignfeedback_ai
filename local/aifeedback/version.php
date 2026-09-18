@@ -1,8 +1,8 @@
 <?php
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026091801;
+$plugin->version   = 2026091802;
 $plugin->requires  = 2023042400; // Moodle 4.2
 $plugin->component = 'local_aifeedback';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '1.9.1';
+$plugin->release   = '1.10.0';

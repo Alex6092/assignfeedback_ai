@@ -169,6 +169,7 @@ $string['comm_col_status']       = 'Statut';
 $string['comm_evaluate']         = 'Évaluer la communication';
 $string['comm_send']             = 'Envoyer vers EFE';
 $string['comm_evaluated']        = '{$a} étudiant(s) évalué(s).';
+$string['comm_partial']          = '{$a} étudiant(s) évalué(s). Les serveurs IA sont occupés : relancez l\'évaluation pour les étudiants restants.';
 $string['comm_sent']             = '{$a} positionnement(s) envoyé(s) vers EFE.';
 $string['comm_sendfailed']       = '{$a} envoi(s) en échec (voir les logs).';
 $string['comm_status_draft']     = 'À envoyer';
