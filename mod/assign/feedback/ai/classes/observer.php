@@ -184,9 +184,22 @@ class observer {
                 return;
             }
         }
+        self::sweep_orphans();
+    }
+
+    /**
+     * Supprime les lignes dont le devoir, ou la note Moodle, n'existe plus.
+     * Appelée sur les événements de suppression et une fois à la mise à jour
+     * (restes des réinitialisations passées, quand delete_instance() n'existait
+     * pas encore).
+     */
+    public static function sweep_orphans() {
+        global $DB;
         $DB->delete_records_select('assignfeedback_ai',
             'assignment NOT IN (SELECT id FROM {assign})');
         $DB->delete_records_select('assignfeedback_ai_grade',
             'assignment NOT IN (SELECT id FROM {assign})');
+        $DB->delete_records_select('assignfeedback_ai_grade',
+            'grade NOT IN (SELECT id FROM {assign_grades})');
     }
 }
