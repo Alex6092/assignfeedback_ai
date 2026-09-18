@@ -179,6 +179,30 @@ class activity {
     }
 
     /**
+     * Modules d'un cours sur lesquels le tuteur a été configuré.
+     *
+     * @param int         $courseid
+     * @param string|null $modname  restreint à un type d'activité (nécessite que
+     *                              les modules existent encore : pas après la
+     *                              suppression du cours)
+     * @return int[]
+     */
+    public static function cmids_for_course($courseid, $modname = null) {
+        global $DB;
+        if ($modname === null) {
+            return array_map('intval', $DB->get_fieldset_select(self::TABLE, 'cmid',
+                'courseid = ?', array((int)$courseid)));
+        }
+        return array_map('intval', $DB->get_fieldset_sql(
+            "SELECT a.cmid
+               FROM {" . self::TABLE . "} a
+               JOIN {course_modules} cm ON cm.id = a.cmid
+               JOIN {modules} m ON m.id = cm.module
+              WHERE a.courseid = ? AND m.name = ?",
+            array((int)$courseid, (string)$modname)));
+    }
+
+    /**
      * Supprime toutes les données liées à un module, configuration comprise
      * (activité supprimée du cours).
      */

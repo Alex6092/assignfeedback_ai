@@ -110,4 +110,28 @@ class observer {
             $handlerclass::enqueue($rowid);
         }
     }
+
+    /**
+     * Supprime les corrections IA dont la tentative de question n'existe plus.
+     *
+     * La réinitialisation d'un cours (« Supprimer toutes les tentatives ») et
+     * la suppression d'un cours effacent les tentatives de quiz, mais pas nos
+     * lignes de correction, qui contiennent pourtant le feedback rédigé sur la
+     * réponse de l'élève. On balaie donc les lignes orphelines : c'est plus sûr
+     * que de chercher à reconstituer quels quiz étaient concernés, puisque les
+     * tentatives ont déjà disparu quand l'événement arrive.
+     *
+     * @param \core\event\base $event course_reset_ended ou course_deleted
+     */
+    public static function purge_orphan_gradings(\core\event\base $event) {
+        global $DB;
+        if ($event instanceof \core\event\course_reset_ended) {
+            $options = isset($event->other['reset_options']) ? (array)$event->other['reset_options'] : array();
+            if (empty($options['reset_quiz_attempts'])) {
+                return;
+            }
+        }
+        $DB->delete_records_select('local_aifeedback_qgrading',
+            'questionattemptid NOT IN (SELECT id FROM {question_attempts})');
+    }
 }
