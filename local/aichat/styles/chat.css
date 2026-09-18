@@ -6,10 +6,18 @@
  * fixe : aucun risque d'interférence avec la mise en page du thème.
  */
 
+/*
+ * Placement : Boost occupe déjà le coin inférieur droit avec son bouton « ? »
+ * (bottom 2rem / right 2rem, z-index 1000) et, sur certaines pages de devoir,
+ * un pied de page collant de 80 px portant les boutons de remise. On se place
+ * donc à GAUCHE du « ? », et au-dessus du pied collant quand il existe — avec
+ * la même règle que Boost pour ses propres boutons.
+ * z-index 1040/1041 : au-dessus des tiroirs (1030), sous les modales (1050).
+ */
 .local-aichat-toggle {
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    right: 5rem;
+    bottom: 2rem;
     z-index: 1040;
     display: flex;
     align-items: center;
@@ -33,6 +41,15 @@
 
 .local-aichat-toggle.local-aichat-hidden {
     display: none;
+}
+
+.hasstickyfooter .local-aichat-toggle {
+    bottom: calc(1rem + 80px);
+}
+
+.hasstickyfooter .local-aichat-panel {
+    bottom: calc(1rem + 80px);
+    max-height: calc(100vh - 80px - 2rem);
 }
 
 .local-aichat-toggle-icon {
@@ -284,8 +301,13 @@
         border-radius: 0;
     }
 
+    .hasstickyfooter .local-aichat-panel {
+        bottom: 0;
+        max-height: 100vh;
+    }
+
     .local-aichat-toggle {
-        right: 12px;
-        bottom: 12px;
+        right: 4.5rem;
+        bottom: 1.5rem;
     }
 }

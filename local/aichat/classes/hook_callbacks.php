@@ -41,21 +41,25 @@ class hook_callbacks {
         if (!in_array($PAGE->pagetype, self::PAGETYPES, true)) {
             return '';
         }
-        if (empty($PAGE->cm) || !in_array($PAGE->cm->modname, activity::SUPPORTED_MODS, true)) {
+        // Lecture explicite : $PAGE n'implémente que __get, pas __isset. Un
+        // empty($PAGE->cm) interrogerait __isset (absent) et vaudrait TOUJOURS
+        // vrai, ce qui masquerait le widget sur toutes les pages.
+        $cm = $PAGE->cm;
+        if (!$cm || !in_array($cm->modname, activity::SUPPORTED_MODS, true)) {
             return '';
         }
         $context = $PAGE->context;
         if (!($context instanceof \context_module)) {
             return '';
         }
-        if (!activity::is_enabled((int)$PAGE->cm->id)) {
+        if (!activity::is_enabled((int)$cm->id)) {
             return '';
         }
         if (!has_capability('local/aichat:use', $context)) {
             return '';
         }
 
-        $cmid = (int)$PAGE->cm->id;
+        $cmid = (int)$cm->id;
         $config = array(
             'cmid'         => $cmid,
             'sesskey'      => sesskey(),
