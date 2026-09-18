@@ -34,7 +34,13 @@ class observer {
             return;
         }
 
-        $userid   = (int)$event->userid;
+        // Propriétaire de la remise — PAS l'auteur de l'action. $event->userid
+        // est l'utilisateur connecté qui a déclenché l'envoi : quand un
+        // enseignant ou un admin envoie la remise POUR un élève, c'est lui, et
+        // le feedback (avec la note calculée sur une remise vide) lui était
+        // attribué à tort. Le vrai propriétaire est alors dans relateduserid,
+        // renseigné uniquement dans ce cas (voir create_from_submission()).
+        $userid   = !empty($event->relateduserid) ? (int)$event->relateduserid : (int)$event->userid;
         $assignid = (int)$assign->get_instance()->id;
 
         if ($userid <= 0 || $assignid <= 0) {
@@ -157,5 +163,43 @@ class observer {
             $formdata->{$key} = isset($_POST[$key]) ? $_POST[$key] : '';
         }
         return $formdata;
+    }
+
+    /**
+     * Devoir ou cours supprimé : nettoie les configurations IA orphelines.
+     *
+     * Les feedbacks des élèves sont déjà effacés par delete_instance(). Reste
+     * la configuration, qu'on ne peut pas effacer là (la même méthode sert à la
+     * réinitialisation, où il faut la conserver). La suppression d'un cours
+     * entier ne déclenche pas d'événement par activité : on balaie donc les
+     * lignes dont le devoir n'existe plus, ce qui couvre les deux cas.
+     *
+     * @param \core\event\base $event course_module_deleted ou course_deleted
+     */
+    public static function purge_orphan_configs(\core\event\base $event) {
+        global $DB;
+        if ($event instanceof \core\event\course_module_deleted) {
+            $other = (array)$event->other;
+            if (!isset($other['modulename']) || $other['modulename'] !== 'assign') {
+                return;
+            }
+        }
+        self::sweep_orphans();
+    }
+
+    /**
+     * Supprime les lignes dont le devoir, ou la note Moodle, n'existe plus.
+     * Appelée sur les événements de suppression et une fois à la mise à jour
+     * (restes des réinitialisations passées, quand delete_instance() n'existait
+     * pas encore).
+     */
+    public static function sweep_orphans() {
+        global $DB;
+        $DB->delete_records_select('assignfeedback_ai',
+            'assignment NOT IN (SELECT id FROM {assign})');
+        $DB->delete_records_select('assignfeedback_ai_grade',
+            'assignment NOT IN (SELECT id FROM {assign})');
+        $DB->delete_records_select('assignfeedback_ai_grade',
+            'grade NOT IN (SELECT id FROM {assign_grades})');
     }
 }

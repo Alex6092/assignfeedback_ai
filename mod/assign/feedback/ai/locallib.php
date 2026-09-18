@@ -388,6 +388,29 @@ class assign_feedback_ai extends assign_feedback_plugin {
             $isteacher || self::show_score_to_students(), $isteacher);
     }
 
+    /**
+     * Supprime les feedbacks IA des élèves pour ce devoir.
+     *
+     * mod_assign appelle cette méthode dans DEUX cas :
+     *   - réinitialisation du cours (« Supprimer toutes les remises ») ;
+     *   - suppression du devoir.
+     * On n'efface donc QUE les données des élèves, jamais la configuration
+     * (énoncé, corrigé, compétences, prompt) : un cours réinitialisé est fait
+     * pour être réutilisé tel quel. La configuration d'un devoir supprimé est
+     * nettoyée à part (observer::purge_orphan_configs).
+     *
+     * @return bool
+     */
+    public function delete_instance() {
+        global $DB;
+        $instance = $this->assignment->get_instance();
+        if ($instance === null || empty($instance->id)) {
+            return true;
+        }
+        $DB->delete_records(self::TABLE_GRADE, array('assignment' => (int)$instance->id));
+        return true;
+    }
+
     public function is_feedback_modified(stdClass $grade, stdClass $submissionorgrade) {
         return false;
     }

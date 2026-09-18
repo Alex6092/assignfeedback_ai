@@ -73,5 +73,19 @@ function xmldb_assignfeedback_ai_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026051100, 'assignfeedback', 'ai');
     }
 
+    // 2026091800 : les réinitialisations de cours passées laissaient les
+    // feedbacks IA des élèves en base (delete_instance() n'était pas
+    // implémentée). Nettoyage unique des lignes dont la note ou le devoir
+    // n'existe plus.
+    if ($oldversion < 2026091800) {
+        $DB->delete_records_select('assignfeedback_ai_grade',
+            'grade NOT IN (SELECT id FROM {assign_grades})');
+        $DB->delete_records_select('assignfeedback_ai_grade',
+            'assignment NOT IN (SELECT id FROM {assign})');
+        $DB->delete_records_select('assignfeedback_ai',
+            'assignment NOT IN (SELECT id FROM {assign})');
+        upgrade_plugin_savepoint(true, 2026091800, 'assignfeedback', 'ai');
+    }
+
     return true;
 }
