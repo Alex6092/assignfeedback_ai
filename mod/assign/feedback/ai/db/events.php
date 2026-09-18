@@ -23,4 +23,15 @@ $observers = array(
         'priority'  => 9999,
         'internal'  => false,
     ),
+    // Nettoyage des configurations IA dont le devoir n'existe plus.
+    array(
+        'eventname' => '\core\event\course_module_deleted',
+        'callback'  => '\assignfeedback_ai\observer::purge_orphan_configs',
+        'internal'  => false,
+    ),
+    array(
+        'eventname' => '\core\event\course_deleted',
+        'callback'  => '\assignfeedback_ai\observer::purge_orphan_configs',
+        'internal'  => false,
+    ),
 );
