@@ -33,6 +33,14 @@ $string['setting_quotatokens_help']   = 'Total tokens (question + answer) allowe
 $string['setting_quotamessages']      = 'Messages per window';
 $string['setting_quotamessages_help'] = 'Additional safeguard against bursts of very short questions. 0 = no limit. Default: 40.';
 
+$string['moderation_heading']             = 'Moderation';
+$string['moderation_heading_desc']        = 'Each student message is analysed separately, afterwards, by a distinct call going through the job queue (grading server): the tutor is not slowed down and streaming is unaffected. A fresh context reads the message as data to classify, which makes it much harder to manipulate than the tutor itself. Cost: one small LLM call (about 300 tokens) per message.';
+$string['setting_moderation']             = 'Analyse student messages';
+$string['setting_moderation_help']        = 'Flags to the teacher attempts to manipulate the tutor, threats, blackmail, insults, inappropriate content and signs of serious distress. Flags appear on the activity "AI tutor" page.';
+$string['setting_moderationnotify']       = 'Notify teachers';
+$string['setting_moderationnotify_help']  = 'Sends a Moodle notification to the activity teachers when a message is flagged (at most one per conversation per hour). The notification does not include the student text: only the category, the reason and a link to the conversation.';
+$string['messageprovider:flagged']        = 'Student message flagged by the AI tutor';
+
 $string['misc_heading']               = 'Interface and retention';
 $string['setting_studentnotice']      = 'Notice shown to students';
 $string['setting_studentnotice_help'] = 'Message displayed at the top of the chat panel. Since teachers can read the conversations, students must be told. Leave empty to use the default text.';
@@ -84,6 +92,35 @@ $string['viewtranscript']       = 'View';
 $string['transcript_for']       = 'Conversation of {$a}';
 $string['backtolist']           = 'Back to the list';
 $string['deleteduser']          = 'Deleted user';
+$string['col_flags']            = 'Flags';
+$string['filter_flagged']       = 'Show the {$a} flagged conversation(s)';
+$string['filter_all']           = 'Show all conversations';
+
+// Moderation
+$string['flag_label']            = 'Flagged: {$a}';
+$string['flag_pending']          = 'Moderation analysis in progress...';
+$string['flag_failed']           = 'Moderation analysis failed (server unavailable).';
+$string['moderation_reanalyse']  = 'Retry failed analyses';
+$string['moderation_requeued']   = '{$a} message(s) queued for analysis again.';
+$string['flagcat_manipulation']        = 'manipulation attempt';
+$string['flagcat_menace']              = 'threat';
+$string['flagcat_chantage']            = 'blackmail';
+$string['flagcat_insulte']             = 'insult or harassment';
+$string['flagcat_contenu_inapproprie'] = 'inappropriate content';
+$string['flagcat_detresse']            = 'signs of distress';
+$string['notify_subject']  = 'AI tutor: flagged message ({$a->category}) — {$a->student}';
+$string['notify_body']     = 'A message from {$a->student} to the AI tutor was flagged.
+
+Course: {$a->course}
+Activity: {$a->activity}
+Category: {$a->category}
+Reason: {$a->reason}
+
+View the conversation: {$a->url}
+
+This flag is produced automatically by an AI and may be wrong: check the conversation before taking any decision.';
+$string['notify_small']    = 'AI tutor: message from {$a->student} flagged ({$a->category})';
+$string['notify_linkname'] = 'View the conversation';
 
 $string['status_done']      = 'Completed';
 $string['status_pending']   = 'Waiting';
@@ -137,6 +174,9 @@ $string['privacy:metadata:message:userid']           = 'The student the exchange
 $string['privacy:metadata:message:role']             = 'Author of the message (student or tutor).';
 $string['privacy:metadata:message:content']          = 'The message text.';
 $string['privacy:metadata:message:tokens']           = 'Number of tokens used by the exchange.';
+$string['privacy:metadata:message:flagstatus']       = 'Result of the moderation analysis of the message.';
+$string['privacy:metadata:message:flagcategory']     = 'Category of the flag, if any.';
+$string['privacy:metadata:message:flagreason']       = 'Reason for the flag, written by the moderation AI.';
 $string['privacy:metadata:message:timecreated']      = 'When the message was sent.';
 $string['privacy:metadata:llm']                      = 'Messages are sent to an external LLM service to produce the answer.';
 $string['privacy:metadata:llm:message']              = 'The student message and the activity context.';

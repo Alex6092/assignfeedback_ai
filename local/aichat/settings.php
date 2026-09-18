@@ -98,6 +98,27 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // === Modération ===
+    $settings->add(new admin_setting_heading(
+        'local_aichat/moderation_heading',
+        new lang_string('moderation_heading', 'local_aichat'),
+        new lang_string('moderation_heading_desc', 'local_aichat')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/moderation_enabled',
+        new lang_string('setting_moderation', 'local_aichat'),
+        new lang_string('setting_moderation_help', 'local_aichat'),
+        1
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/moderation_notify',
+        new lang_string('setting_moderationnotify', 'local_aichat'),
+        new lang_string('setting_moderationnotify_help', 'local_aichat'),
+        1
+    ));
+
     // === Interface et conservation ===
     $settings->add(new admin_setting_heading(
         'local_aichat/misc_heading',

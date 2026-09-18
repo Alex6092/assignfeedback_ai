@@ -62,6 +62,11 @@
         <FIELD NAME="serverid"       TYPE="int"  LENGTH="2"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Exact if reported by the server, estimated otherwise"/>
         <FIELD NAME="error"          TYPE="text"             NOTNULL="false"/>
+        <FIELD NAME="flagstatus"     TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="none" COMMENT="Moderation of student turns: none|pending|retry|clean|flagged|failed"/>
+        <FIELD NAME="flagcategory"   TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="" COMMENT="manipulation|menace|chantage|insulte|contenu_inapproprie|detresse"/>
+        <FIELD NAME="flagreason"     TYPE="text"             NOTNULL="false" COMMENT="Factual description for the teacher, written by the moderation model"/>
+        <FIELD NAME="flagattempts"   TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="flagtime"       TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timecreated"    TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timemodified"   TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
       </FIELDS>
@@ -72,6 +77,7 @@
         <INDEX NAME="conversationid" UNIQUE="false" FIELDS="conversationid"/>
         <INDEX NAME="user_time"      UNIQUE="false" FIELDS="userid, timecreated"/>
         <INDEX NAME="status"         UNIQUE="false" FIELDS="status"/>
+        <INDEX NAME="flagstatus"     UNIQUE="false" FIELDS="flagstatus"/>
       </INDEXES>
     </TABLE>
 

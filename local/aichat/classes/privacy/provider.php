@@ -38,6 +38,9 @@ class provider implements
             'role'        => 'privacy:metadata:message:role',
             'content'     => 'privacy:metadata:message:content',
             'tokens'      => 'privacy:metadata:message:tokens',
+            'flagstatus'   => 'privacy:metadata:message:flagstatus',
+            'flagcategory' => 'privacy:metadata:message:flagcategory',
+            'flagreason'   => 'privacy:metadata:message:flagreason',
             'timecreated' => 'privacy:metadata:message:timecreated',
         ), 'privacy:metadata:message');
 
@@ -92,13 +95,20 @@ class provider implements
                     array('conversationid' => $conversation->id), 'id ASC');
                 $rows = array();
                 foreach ($messages as $message) {
-                    $rows[] = array(
+                    $row = array(
                         'role'        => $message->role,
                         'content'     => $message->content,
                         'status'      => $message->status,
                         'tokens'      => (int)$message->tokens,
                         'timecreated' => transform::datetime($message->timecreated),
                     );
+                    // Résultat de la modération : l'élève a le droit de savoir
+                    // qu'un de ses messages a été signalé, et pourquoi.
+                    if ($message->flagstatus === 'flagged') {
+                        $row['flagcategory'] = $message->flagcategory;
+                        $row['flagreason']   = $message->flagreason;
+                    }
+                    $rows[] = $row;
                 }
                 writer::with_context($context)->export_data(
                     array_merge($root, array(

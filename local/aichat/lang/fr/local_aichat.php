@@ -33,6 +33,14 @@ $string['setting_quotatokens_help']   = 'Nombre total de tokens (question + rép
 $string['setting_quotamessages']      = 'Nombre de messages par fenêtre';
 $string['setting_quotamessages_help'] = 'Garde-fou complémentaire contre l\'envoi en rafale de questions très courtes. 0 = pas de limite. Défaut : 40.';
 
+$string['moderation_heading']             = 'Modération';
+$string['moderation_heading_desc']        = 'Chaque message d\'élève est analysé à part, après coup, par un appel séparé qui passe par la file de jobs (serveur des corrections) : le tuteur n\'est pas ralenti et le streaming n\'est pas affecté. Un contexte neuf lit le message comme une donnée à classer, ce qui le rend bien plus difficile à manipuler que le tuteur lui-même. Coût : un petit appel LLM (environ 300 tokens) par message.';
+$string['setting_moderation']             = 'Analyser les messages des élèves';
+$string['setting_moderation_help']        = 'Signale à l\'enseignant les tentatives de manipulation du tuteur, les menaces, le chantage, les insultes, les contenus inappropriés et les signes de détresse sérieuse. Les signalements apparaissent sur la page « Tuteur IA » de l\'activité.';
+$string['setting_moderationnotify']       = 'Prévenir les enseignants';
+$string['setting_moderationnotify_help']  = 'Envoie une notification Moodle aux enseignants de l\'activité quand un message est signalé (au plus une par conversation et par heure). La notification ne reprend pas le texte de l\'élève : seulement la catégorie, le motif et un lien vers la conversation.';
+$string['messageprovider:flagged']        = 'Message d\'élève signalé par le tuteur IA';
+
 $string['misc_heading']               = 'Interface et conservation';
 $string['setting_studentnotice']      = 'Avertissement affiché aux élèves';
 $string['setting_studentnotice_help'] = 'Message affiché en haut du volet de discussion. Puisque les enseignants peuvent lire les conversations, les élèves doivent en être informés. Laisser vide pour utiliser le texte par défaut.';
@@ -84,6 +92,35 @@ $string['viewtranscript']       = 'Voir';
 $string['transcript_for']       = 'Conversation de {$a}';
 $string['backtolist']           = 'Retour à la liste';
 $string['deleteduser']          = 'Utilisateur supprimé';
+$string['col_flags']            = 'Signalements';
+$string['filter_flagged']       = 'Afficher les {$a} conversation(s) signalée(s)';
+$string['filter_all']           = 'Afficher toutes les conversations';
+
+// Modération
+$string['flag_label']            = 'Signalé : {$a}';
+$string['flag_pending']          = 'Analyse de modération en cours…';
+$string['flag_failed']           = 'Analyse de modération impossible (serveur indisponible).';
+$string['moderation_reanalyse']  = 'Relancer les analyses échouées';
+$string['moderation_requeued']   = '{$a} message(s) remis en file d\'analyse.';
+$string['flagcat_manipulation']        = 'tentative de manipulation';
+$string['flagcat_menace']              = 'menace';
+$string['flagcat_chantage']            = 'chantage';
+$string['flagcat_insulte']             = 'insulte ou harcèlement';
+$string['flagcat_contenu_inapproprie'] = 'contenu inapproprié';
+$string['flagcat_detresse']            = 'signes de détresse';
+$string['notify_subject']  = 'Tuteur IA : message signalé ({$a->category}) — {$a->student}';
+$string['notify_body']     = 'Un message de {$a->student} au tuteur IA a été signalé.
+
+Cours : {$a->course}
+Activité : {$a->activity}
+Catégorie : {$a->category}
+Motif : {$a->reason}
+
+Consulter la conversation : {$a->url}
+
+Ce signalement est produit automatiquement par une IA et peut être erroné : vérifiez la conversation avant toute décision.';
+$string['notify_small']    = 'Tuteur IA : message de {$a->student} signalé ({$a->category})';
+$string['notify_linkname'] = 'Voir la conversation';
 
 $string['status_done']      = 'Terminé';
 $string['status_pending']   = 'En attente';
@@ -137,6 +174,9 @@ $string['privacy:metadata:message:userid']           = 'L\'élève à l\'origine
 $string['privacy:metadata:message:role']             = 'Auteur du message (élève ou tuteur).';
 $string['privacy:metadata:message:content']          = 'Le texte du message.';
 $string['privacy:metadata:message:tokens']           = 'Le nombre de tokens consommés par l\'échange.';
+$string['privacy:metadata:message:flagstatus']       = 'Résultat de l\'analyse de modération du message.';
+$string['privacy:metadata:message:flagcategory']     = 'Catégorie du signalement, le cas échéant.';
+$string['privacy:metadata:message:flagreason']       = 'Motif du signalement, rédigé par l\'IA de modération.';
 $string['privacy:metadata:message:timecreated']      = 'Date du message.';
 $string['privacy:metadata:llm']                      = 'Les messages sont transmis à un service LLM externe pour produire la réponse.';
 $string['privacy:metadata:llm:message']              = 'Le message de l\'élève et le contexte de l\'activité.';

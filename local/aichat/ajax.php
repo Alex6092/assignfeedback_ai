@@ -15,6 +15,7 @@ require_once(__DIR__ . '/../../config.php');
 
 use local_aichat\activity;
 use local_aichat\conversation;
+use local_aichat\moderation;
 use local_aichat\quota;
 use local_aifeedback\pool;
 
@@ -119,6 +120,15 @@ switch ($action) {
         $slotid = pool::request(pool::PURPOSE_TUTOR, $USER->id, 'local_aichat',
             $pair->assistantid);
         conversation::attach_slot($pair->assistantid, $slotid);
+
+        // Analyse de modération en parallèle, via la file de jobs : sans effet
+        // sur la réponse du tuteur. Un échec de mise en file ne doit jamais
+        // empêcher l'élève d'obtenir sa réponse.
+        try {
+            moderation::schedule($pair->usermsgid);
+        } catch (\Throwable $e) {
+            debugging('local_aichat: modération non planifiée — ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
 
         local_aichat_reply(array(
             'ok'          => true,
