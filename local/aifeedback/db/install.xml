@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/aifeedback/db" VERSION="20260529" COMMENT="Shared AI feedback infrastructure">
+<XMLDB PATH="local/aifeedback/db" VERSION="20260918" COMMENT="Shared AI feedback infrastructure">
   <TABLES>
 
     <TABLE NAME="local_aifeedback_qgrading" COMMENT="One row per quiz question_attempt graded (or being graded) by the LLM, shared by all AI question types">
@@ -26,6 +26,46 @@
         <INDEX NAME="comp_question_user" UNIQUE="false" FIELDS="component, questionid, userid"/>
         <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
       </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aifeedback_slot" COMMENT="Tickets of the shared LLM server pool: one row per regulated LLM request (queue place)">
+      <FIELDS>
+        <FIELD NAME="id"            TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="purpose"       TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="tutor" COMMENT="tutor|feedback. Tutor requests are interactive and admitted first."/>
+        <FIELD NAME="serverid"      TYPE="int"  LENGTH="2"   NOTNULL="true" DEFAULT="0" COMMENT="Configured server slot 1..3, 0 while still queued"/>
+        <FIELD NAME="status"        TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="queued" COMMENT="queued|reserved|running|done|failed|cancelled"/>
+        <FIELD NAME="userid"        TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="0 for system/cron requests"/>
+        <FIELD NAME="component"     TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="reference"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Caller-defined id, e.g. local_aichat message id"/>
+        <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timereserved"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timestarted"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timeheartbeat" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timefinished"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="status_purpose" UNIQUE="false" FIELDS="status, purpose"/>
+        <INDEX NAME="status_server"  UNIQUE="false" FIELDS="status, serverid"/>
+        <INDEX NAME="userid"         UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="timefinished"   UNIQUE="false" FIELDS="timefinished"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aifeedback_server" COMMENT="Health and usage state of each configured LLM server slot">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="serverid"     TYPE="int" LENGTH="2"  NOTNULL="true" DEFAULT="0" COMMENT="Configured server slot 1..3"/>
+        <FIELD NAME="failinguntil" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Quarantine deadline after a network failure"/>
+        <FIELD NAME="failures"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="lastused"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"  TYPE="primary" FIELDS="id"/>
+        <KEY NAME="serverid" TYPE="unique"  FIELDS="serverid"/>
+      </KEYS>
     </TABLE>
 
   </TABLES>

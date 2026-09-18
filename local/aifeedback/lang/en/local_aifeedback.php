@@ -2,7 +2,23 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'AI feedback (shared library)';
-$string['privacy:metadata'] = 'The local_aifeedback plugin does not store personal data directly. It forwards to an external LLM the content provided by consumer plugins (assignfeedback_ai, qtype_aiessay, ...).';
+// Privacy
+$string['privacy:metadata:qgrading']             = 'AI gradings of quiz questions.';
+$string['privacy:metadata:qgrading:userid']      = 'The user whose response is graded.';
+$string['privacy:metadata:qgrading:status']      = 'Grading status (pending, generated, failed).';
+$string['privacy:metadata:qgrading:aifeedback']  = 'The feedback produced by the AI for this response.';
+$string['privacy:metadata:qgrading:mark']        = 'The mark awarded by the AI.';
+$string['privacy:metadata:qgrading:timecreated'] = 'When the grading was created.';
+$string['privacy:metadata:slot']                 = 'Queue tickets of the LLM server pool (no content, only technical scheduling information).';
+$string['privacy:metadata:slot:userid']          = 'The user who made the request.';
+$string['privacy:metadata:slot:purpose']         = 'The requested purpose (tutor or grading).';
+$string['privacy:metadata:slot:component']       = 'The plugin that made the request.';
+$string['privacy:metadata:slot:status']          = 'Ticket status (queued, reserved, running, finished).';
+$string['privacy:metadata:slot:timecreated']     = 'When the request was made.';
+$string['privacy:metadata:llm']                  = 'Content sent to an external LLM service for analysis.';
+$string['privacy:metadata:llm:content']          = 'The content sent to the model (student response, question, conversation message).';
+$string['privacy:path:qgrading']                 = 'AI gradings';
+$string['privacy:path:pool']                     = 'AI queue';
 
 $string['taskname'] = 'AI generation (shared queue)';
 
@@ -16,6 +32,26 @@ $string['apikey']                   = 'API key';
 $string['apikey_help']              = 'Secret key sent as the HTTP header "Authorization: Bearer ...". Leave empty if the server does not require one (LM Studio default). The value is encrypted at rest.';
 $string['defaultsystemprompt']      = 'Default system prompt';
 $string['defaultsystemprompt_help'] = 'Used when no assignment-level or question-level prompt is defined.';
+
+// LLM server pool
+$string['pool_heading']              = 'LLM servers (load balancing)';
+$string['pool_heading_desc']         = 'You can declare up to 3 LLM servers. Regulated calls (the student AI tutor, and eventually the grading queue) are spread across the servers that accept the requested purpose and have a free slot. Tutor requests are admitted FIRST: a student is waiting in front of their screen, a deferred grading is not. Leaving a slot URL empty disables it.';
+$string['server_heading']            = 'Server {$a}';
+$string['server1_desc']              = 'This slot uses the API URL, model and key entered above. It is always enabled.';
+$string['server_apiurl']             = 'API URL';
+$string['server_apiurl_help']        = 'OpenAI-compatible Chat Completions endpoint of this server, e.g. http://192.168.1.42:1234/v1/chat/completions. Leave empty to disable this slot.';
+$string['server_model']              = 'Model name';
+$string['server_model_help']         = 'Model to use on this server. Leave empty to fall back to the global model.';
+$string['server_apikey']             = 'API key';
+$string['server_apikey_help']        = 'Secret key for this server (sent as "Authorization: Bearer ..."). Leave empty if the server does not require one. The value is encrypted at rest.';
+$string['server_maxconcurrency']     = 'Maximum concurrent requests';
+$string['server_maxconcurrency_help'] = 'How many generations this server can handle AT THE SAME TIME. LM Studio usually serves one request at a time: leave 1 unless you enabled parallel processing. Beyond that, requests wait in the queue. Default: 1.';
+$string['server_use_feedback']       = 'Allow assignment and question grading';
+$string['server_use_feedback_help']  = 'If enabled, this server can process deferred gradings (job queue).';
+$string['server_use_tutor']          = 'Allow the AI tutor (student chat)';
+$string['server_use_tutor_help']     = 'If enabled, this server can process AI tutor conversations. Dedicating a server to the tutor prevents gradings from making students wait.';
+$string['stream_usage']              = 'Request token counts when streaming';
+$string['stream_usage_help']         = 'If enabled, streaming calls ask the server for the exact number of tokens used ("stream_options") so quotas are accurate. Some older servers reject this option with an HTTP 400 error: leave it disabled in that case (tokens are then estimated). No effect on OpenAI, where the option is always sent.';
 
 // Accessibility
 $string['accessibility_heading']    = 'Accessibility';

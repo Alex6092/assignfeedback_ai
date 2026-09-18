@@ -1,0 +1,291 @@
+/**
+ * Widget du tuteur IA.
+ *
+ * Feuille servie directement par le plugin (référencée depuis le hook de pied
+ * de page). Tout est préfixé « local-aichat- » et le widget est en position
+ * fixe : aucun risque d'interférence avec la mise en page du thème.
+ */
+
+.local-aichat-toggle {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 1040;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: 0;
+    border-radius: 28px;
+    background: #0f6cbf;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+.local-aichat-toggle:hover,
+.local-aichat-toggle:focus {
+    background: #0b5394;
+    color: #fff;
+}
+
+.local-aichat-toggle.local-aichat-hidden {
+    display: none;
+}
+
+.local-aichat-toggle-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.local-aichat-panel {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 1041;
+    display: flex;
+    flex-direction: column;
+    width: 400px;
+    max-width: calc(100vw - 40px);
+    height: 560px;
+    max-height: calc(100vh - 40px);
+    border: 1px solid #d0d7de;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+}
+
+.local-aichat-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: #0f6cbf;
+    color: #fff;
+}
+
+.local-aichat-title {
+    flex: 1;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.local-aichat-iconbtn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.local-aichat-iconbtn:hover,
+.local-aichat-iconbtn:focus {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.local-aichat-notice {
+    margin: 0;
+    padding: 6px 12px;
+    background: #fff8e1;
+    border-bottom: 1px solid #ffe8a1;
+    color: #6b5200;
+    font-size: 12px;
+}
+
+.local-aichat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #f7f9fc;
+}
+
+.local-aichat-welcome {
+    margin: 12px 4px;
+    color: #5a6673;
+    font-size: 14px;
+    text-align: center;
+}
+
+.local-aichat-msg {
+    display: flex;
+    margin-bottom: 10px;
+}
+
+.local-aichat-user {
+    justify-content: flex-end;
+}
+
+.local-aichat-body {
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.local-aichat-user .local-aichat-body {
+    background: #0f6cbf;
+    color: #fff;
+    border-bottom-right-radius: 3px;
+    white-space: pre-wrap;
+}
+
+.local-aichat-assistant .local-aichat-body {
+    background: #fff;
+    border: 1px solid #e1e6ec;
+    border-bottom-left-radius: 3px;
+    color: #1d2125;
+}
+
+/* Pendant la génération, le texte arrive brut : on préserve les retours ligne. */
+.local-aichat-streaming .local-aichat-body {
+    white-space: pre-wrap;
+}
+
+.local-aichat-streaming .local-aichat-body::after {
+    content: "\25CF";
+    margin-left: 3px;
+    color: #0f6cbf;
+    animation: local-aichat-blink 1s steps(2, start) infinite;
+}
+
+@keyframes local-aichat-blink {
+    to {
+        visibility: hidden;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .local-aichat-streaming .local-aichat-body::after {
+        animation: none;
+    }
+}
+
+.local-aichat-error .local-aichat-body {
+    background: #fdeaea;
+    border-color: #f5c2c2;
+    color: #8a1f1f;
+}
+
+.local-aichat-assistant .local-aichat-body > :first-child {
+    margin-top: 0;
+}
+
+.local-aichat-assistant .local-aichat-body > :last-child {
+    margin-bottom: 0;
+}
+
+.local-aichat-assistant .local-aichat-body pre {
+    padding: 8px;
+    background: #f1f3f5;
+    border-radius: 6px;
+    font-size: 12.5px;
+    overflow-x: auto;
+}
+
+.local-aichat-assistant .local-aichat-body code {
+    font-size: 12.5px;
+}
+
+.local-aichat-interrupted {
+    margin: 6px 0 0;
+    color: #8a6d3b;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.local-aichat-status {
+    padding: 6px 12px;
+    border-top: 1px solid #e1e6ec;
+    background: #eef4fb;
+    color: #26466d;
+    font-size: 13px;
+}
+
+.local-aichat-status-error {
+    background: #fdeaea;
+    color: #8a1f1f;
+}
+
+.local-aichat-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 8px;
+    border-top: 1px solid #e1e6ec;
+    background: #fff;
+}
+
+.local-aichat-input {
+    flex: 1;
+    min-height: 38px;
+    max-height: 140px;
+    padding: 8px 10px;
+    border: 1px solid #ccd3da;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+}
+
+.local-aichat-send,
+.local-aichat-stop {
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.local-aichat-send {
+    background: #0f6cbf;
+    color: #fff;
+}
+
+.local-aichat-stop {
+    background: #6c757d;
+    color: #fff;
+}
+
+.local-aichat-quota {
+    margin: 0;
+    padding: 0 12px 8px;
+    background: #fff;
+    color: #6b7684;
+    font-size: 11.5px;
+    text-align: right;
+}
+
+/* Sur téléphone, le volet occupe l'écran : une fenêtre de 400 px y serait
+   inutilisable, et le clavier virtuel masquerait la zone de saisie. */
+@media (max-width: 600px) {
+    .local-aichat-panel {
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        max-width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .local-aichat-toggle {
+        right: 12px;
+        bottom: 12px;
+    }
+}

@@ -44,6 +44,78 @@ if ($hassiteconfig) {
         PARAM_TEXT
     ));
 
+    // === Pool de serveurs LLM ===
+    // Les appels régulés (tuteur interactif, et à terme la file de corrections)
+    // sont répartis entre ces serveurs selon leur simultanéité maximale et les
+    // usages qu'ils acceptent. L'emplacement 1 est le serveur configuré
+    // ci-dessus ; les emplacements 2 et 3 sont facultatifs.
+    $settings->add(new admin_setting_heading(
+        'local_aifeedback/pool_heading',
+        new lang_string('pool_heading', 'local_aifeedback'),
+        new lang_string('pool_heading_desc', 'local_aifeedback')
+    ));
+
+    for ($slot = 1; $slot <= \local_aifeedback\pool::MAX_SERVERS; $slot++) {
+        $p = 'server' . $slot . '_';
+
+        $settings->add(new admin_setting_heading(
+            'local_aifeedback/' . $p . 'heading',
+            get_string('server_heading', 'local_aifeedback', $slot),
+            ($slot === 1) ? new lang_string('server1_desc', 'local_aifeedback') : ''
+        ));
+
+        // L'emplacement 1 réutilise apiurl / model / apikey déjà saisis plus haut.
+        if ($slot > 1) {
+            $settings->add(new admin_setting_configtext(
+                'local_aifeedback/' . $p . 'apiurl',
+                new lang_string('server_apiurl', 'local_aifeedback'),
+                new lang_string('server_apiurl_help', 'local_aifeedback'),
+                '',
+                PARAM_URL
+            ));
+            $settings->add(new admin_setting_configtext(
+                'local_aifeedback/' . $p . 'model',
+                new lang_string('server_model', 'local_aifeedback'),
+                new lang_string('server_model_help', 'local_aifeedback'),
+                '',
+                PARAM_TEXT
+            ));
+            $settings->add(new \local_aifeedback\admin\encrypted_password(
+                'local_aifeedback/' . $p . 'apikey',
+                new lang_string('server_apikey', 'local_aifeedback'),
+                new lang_string('server_apikey_help', 'local_aifeedback'),
+                ''
+            ));
+        }
+
+        $settings->add(new admin_setting_configtext(
+            'local_aifeedback/' . $p . 'maxconcurrency',
+            new lang_string('server_maxconcurrency', 'local_aifeedback'),
+            new lang_string('server_maxconcurrency_help', 'local_aifeedback'),
+            1,
+            PARAM_INT
+        ));
+        $settings->add(new admin_setting_configcheckbox(
+            'local_aifeedback/' . $p . 'use_feedback',
+            new lang_string('server_use_feedback', 'local_aifeedback'),
+            new lang_string('server_use_feedback_help', 'local_aifeedback'),
+            ($slot === 1) ? 1 : 0
+        ));
+        $settings->add(new admin_setting_configcheckbox(
+            'local_aifeedback/' . $p . 'use_tutor',
+            new lang_string('server_use_tutor', 'local_aifeedback'),
+            new lang_string('server_use_tutor_help', 'local_aifeedback'),
+            ($slot === 1) ? 1 : 0
+        ));
+    }
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aifeedback/stream_usage',
+        new lang_string('stream_usage', 'local_aifeedback'),
+        new lang_string('stream_usage_help', 'local_aifeedback'),
+        0
+    ));
+
     // === Accessibilité ===
     $settings->add(new admin_setting_heading(
         'local_aifeedback/accessibility_heading',

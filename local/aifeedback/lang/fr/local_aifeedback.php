@@ -2,7 +2,23 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Correction IA (bibliothèque partagée)';
-$string['privacy:metadata'] = 'Le plugin local_aifeedback ne stocke aucune donnée personnelle directement. Il transmet à un LLM externe les contenus que lui passent les plugins consommateurs (assignfeedback_ai, qtype_aiessay, ...).';
+// Confidentialité
+$string['privacy:metadata:qgrading']             = 'Corrections IA des questions de quiz.';
+$string['privacy:metadata:qgrading:userid']      = 'L\'utilisateur dont la réponse est corrigée.';
+$string['privacy:metadata:qgrading:status']      = 'État de la correction (en attente, générée, échec).';
+$string['privacy:metadata:qgrading:aifeedback']  = 'Le feedback produit par l\'IA pour cette réponse.';
+$string['privacy:metadata:qgrading:mark']        = 'La note attribuée par l\'IA.';
+$string['privacy:metadata:qgrading:timecreated'] = 'Date de création de la correction.';
+$string['privacy:metadata:slot']                 = 'Tickets de file d\'attente du pool de serveurs LLM (aucun contenu, uniquement des informations techniques d\'ordonnancement).';
+$string['privacy:metadata:slot:userid']          = 'L\'utilisateur à l\'origine de la demande.';
+$string['privacy:metadata:slot:purpose']         = 'L\'usage demandé (tuteur ou correction).';
+$string['privacy:metadata:slot:component']       = 'Le plugin à l\'origine de la demande.';
+$string['privacy:metadata:slot:status']          = 'État du ticket (en attente, réservé, en cours, terminé).';
+$string['privacy:metadata:slot:timecreated']     = 'Date de la demande.';
+$string['privacy:metadata:llm']                  = 'Les contenus transmis pour analyse à un service LLM externe.';
+$string['privacy:metadata:llm:content']          = 'Le contenu envoyé au modèle (réponse d\'élève, question, message de conversation).';
+$string['privacy:path:qgrading']                 = 'Corrections IA';
+$string['privacy:path:pool']                     = 'File d\'attente IA';
 
 $string['taskname'] = 'Génération IA (file partagée)';
 
@@ -16,6 +32,26 @@ $string['apikey']                   = 'Clé API';
 $string['apikey_help']              = 'Clé secrète envoyée dans l\'en-tête HTTP "Authorization: Bearer ...". Laisser vide si le serveur n\'en demande pas (cas par défaut de LM Studio). La valeur est chiffrée en base.';
 $string['defaultsystemprompt']      = 'Prompt système par défaut';
 $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défini au niveau du devoir ou de la question.';
+
+// Pool de serveurs LLM
+$string['pool_heading']              = 'Serveurs LLM (répartition de charge)';
+$string['pool_heading_desc']         = 'Vous pouvez déclarer jusqu\'à 3 serveurs LLM. Les appels régulés (tuteur IA des élèves, et à terme la file de corrections) sont répartis entre les serveurs qui acceptent l\'usage demandé et qui ont une place libre. Les demandes du tuteur sont servies EN PREMIER : un élève attend devant son écran, pas une correction différée. Laisser l\'URL d\'un emplacement vide le désactive.';
+$string['server_heading']            = 'Serveur {$a}';
+$string['server1_desc']              = 'Cet emplacement utilise l\'URL, le modèle et la clé API saisis plus haut. Il est toujours actif.';
+$string['server_apiurl']             = 'URL de l\'API';
+$string['server_apiurl_help']        = 'Point d\'accès compatible OpenAI Chat Completions de ce serveur, ex. http://192.168.1.42:1234/v1/chat/completions. Laisser vide pour désactiver cet emplacement.';
+$string['server_model']              = 'Nom du modèle';
+$string['server_model_help']         = 'Modèle à utiliser sur ce serveur. Laisser vide pour reprendre le modèle global.';
+$string['server_apikey']             = 'Clé API';
+$string['server_apikey_help']        = 'Clé secrète de ce serveur (en-tête « Authorization: Bearer … »). Laisser vide si le serveur n\'en demande pas. La valeur est chiffrée en base.';
+$string['server_maxconcurrency']     = 'Requêtes simultanées maximum';
+$string['server_maxconcurrency_help'] = 'Nombre de générations que ce serveur peut traiter EN MÊME TEMPS. LM Studio ne sert en général qu\'une requête à la fois : laissez 1 sauf si vous avez activé le traitement parallèle. Au-delà, les demandes attendent leur tour dans la file. Défaut : 1.';
+$string['server_use_feedback']       = 'Autoriser la correction des devoirs et des questions';
+$string['server_use_feedback_help']  = 'Si activé, ce serveur peut traiter les corrections différées (file de jobs).';
+$string['server_use_tutor']          = 'Autoriser le tuteur IA (chat des élèves)';
+$string['server_use_tutor_help']     = 'Si activé, ce serveur peut traiter les conversations du tuteur IA. Dédier un serveur au tuteur évite que les corrections ne fassent attendre les élèves.';
+$string['stream_usage']              = 'Demander le décompte des tokens en streaming';
+$string['stream_usage_help']         = 'Si activé, les appels en streaming demandent au serveur le nombre exact de tokens consommés (« stream_options ») pour un quota plus juste. Certains serveurs anciens refusent cette option et renvoient une erreur HTTP 400 : dans ce cas, laissez désactivé (les tokens sont alors estimés). Sans effet sur OpenAI, où l\'option est toujours envoyée.';
 
 // Accessibilité
 $string['accessibility_heading']    = 'Accessibilité';
