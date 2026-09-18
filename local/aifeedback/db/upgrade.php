@@ -94,5 +94,17 @@ function xmldb_local_aifeedback_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091801, 'local', 'aifeedback');
     }
 
+    // 2026091802 : la file de jobs passe sur le pool (basculement entre
+    // serveurs) — chaque ticket retient les serveurs déjà essayés.
+    if ($oldversion < 2026091802) {
+        $table = new xmldb_table('local_aifeedback_slot');
+        $field = new xmldb_field('excluded', XMLDB_TYPE_CHAR, '32', null,
+            XMLDB_NOTNULL, null, '', 'reference');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026091802, 'local', 'aifeedback');
+    }
+
     return true;
 }

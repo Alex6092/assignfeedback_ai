@@ -37,6 +37,7 @@
         <FIELD NAME="userid"        TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="0 for system/cron requests"/>
         <FIELD NAME="component"     TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
         <FIELD NAME="reference"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Caller-defined id, e.g. local_aichat message id"/>
+        <FIELD NAME="excluded"      TYPE="char" LENGTH="32"  NOTNULL="true" DEFAULT="" COMMENT="Comma-separated server ids already tried by this job (failover)"/>
         <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timereserved"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timestarted"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>

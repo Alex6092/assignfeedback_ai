@@ -35,7 +35,38 @@ $string['defaultsystemprompt_help'] = 'Used when no assignment-level or question
 
 // LLM server pool
 $string['pool_heading']              = 'LLM servers (load balancing)';
-$string['pool_heading_desc']         = 'You can declare up to 3 LLM servers. Regulated calls (the student AI tutor, and eventually the grading queue) are spread across the servers that accept the requested purpose and have a free slot. Tutor requests are admitted FIRST: a student is waiting in front of their screen, a deferred grading is not. Leaving a slot URL empty disables it.';
+$string['pool_heading_desc']         = 'You can declare up to 3 LLM servers. The AI tutor and the grading queue are spread across the servers that accept the requested purpose and have a free slot; if a server goes down, work automatically fails over to another one. Tutor requests are admitted FIRST: a student is waiting in front of their screen, a deferred grading is not. Leaving a slot URL empty disables it.';
+$string['pool_feedback']             = 'Spread the grading queue over the pool';
+$string['pool_feedback_help']        = 'If enabled (recommended), each grading takes a slot on one of the servers that accept gradings, several gradings can run in parallel, and a grading fails over to another server if its own is down. If disabled, back to the historical behaviour: a single grading at a time on the whole site, always on server 1. Activities configured with their own URL (external API) never go through the pool.';
+$string['pool_acquire_wait']         = 'Maximum wait for a slot (seconds)';
+$string['pool_acquire_wait_help']    = 'How long a background task waits for a server to become free before being rescheduled. Keep it short: while waiting, the cron process does not run any other site task (emails, backups...). Default: 10.';
+$string['poolbusy']                  = 'All AI servers are busy at the moment. Please try again shortly.';
+
+// Server status page
+$string['servers_link']              = 'View server status.';
+$string['servers_page']              = 'AI server status';
+$string['servers_intro']             = 'Load and health of the pool servers. The page refreshes every 15 seconds.';
+$string['servers_legacy']            = 'Spreading the grading queue is disabled: gradings run one at a time on server 1 (historical mode). Only the tutor uses the pool.';
+$string['servers_col_endpoint']      = 'Server';
+$string['servers_col_usages']        = 'Purposes';
+$string['servers_col_busy']          = 'Load';
+$string['servers_col_state']         = 'State';
+$string['servers_col_lasthour']      = 'Last hour';
+$string['servers_col_lastused']      = 'Last used';
+$string['servers_use_feedback']      = 'grading';
+$string['servers_use_tutor']         = 'tutor';
+$string['servers_inservice']         = 'In service';
+$string['servers_quarantine']        = 'Quarantined until {$a}';
+$string['servers_clear']             = 'Put back in service';
+$string['servers_cleared']           = 'Server {$a} put back in service.';
+$string['servers_failures']          = '{$a} failure(s) detected since installation';
+$string['servers_defaultmodel']      = 'global model';
+$string['servers_lasthour_value']    = '{$a->done} completed, {$a->failed} failed';
+$string['servers_never']             = 'never';
+$string['servers_queues']            = 'Waiting: {$a->tutor} tutor request(s), {$a->feedback} grading(s).';
+$string['servers_nofeedback']        = 'No server accepts gradings: they will never be processed. Tick "Allow grading" on at least one server.';
+$string['servers_concurrency']       = 'Your servers can process {$a->capacity} gradings in parallel, but Moodle only runs {$a->limit} background task processes at once ("task_adhoc_concurrency_limit" setting, Site administration > Server > Tasks): raise it to use the full capacity.';
+$string['servers_modeltip']          = 'Tip: each server uses its own model. Avoid forcing a single model at activity or plugin level (without a URL): it would then have to exist on every server that accepts gradings.';
 $string['server_heading']            = 'Server {$a}';
 $string['server1_desc']              = 'This slot uses the API URL, model and key entered above. It is always enabled.';
 $string['server_apiurl']             = 'API URL';

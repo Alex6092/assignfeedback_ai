@@ -22,7 +22,7 @@ defined('MOODLE_INTERNAL') || die();
  * Toutes les lignes de travail vivent dans la table partagée
  * {local_aifeedback_qgrading}, discriminées par la colonne `component`.
  */
-abstract class quiz_grader implements \local_aifeedback\job_handler {
+abstract class quiz_grader implements \local_aifeedback\job_handler, \local_aifeedback\routable_job_handler {
 
     /** Tentatives techniques avant abandon. */
     const MAX_ATTEMPTS = 3;
@@ -40,6 +40,35 @@ abstract class quiz_grader implements \local_aifeedback\job_handler {
 
     /** Prompt système par défaut quand ni la question ni le site n'en fournit. */
     abstract protected function default_system_prompt(): string;
+
+    // === Routage =============================================================
+
+    /**
+     * URL imposée par la question (API externe), ou null pour laisser la file
+     * répartir le job sur les serveurs du pool. Les types de question IA
+     * stockent leurs surcharges dans {<composant>_options}, par questionid.
+     */
+    public function external_endpoint(\stdClass $payload): ?string {
+        global $DB;
+        $rowid = isset($payload->rowid) ? (int)$payload->rowid : 0;
+        if ($rowid <= 0) {
+            return null;
+        }
+        $row = $DB->get_record(self::TABLE, array('id' => $rowid), 'id, component, questionid');
+        if (!$row || !preg_match('/^qtype_[a-z0-9_]+$/', (string)$row->component)) {
+            return null;
+        }
+        $table = $row->component . '_options';
+        if (!$DB->get_manager()->table_exists($table)) {
+            return null;
+        }
+        $opts = $DB->get_record($table, array('questionid' => (int)$row->questionid),
+            'id, apiurl, apiurl_override');
+        if ($opts && !empty($opts->apiurl_override) && trim((string)$opts->apiurl) !== '') {
+            return trim((string)$opts->apiurl);
+        }
+        return null;
+    }
 
     // === API de la file d'attente =========================================
 

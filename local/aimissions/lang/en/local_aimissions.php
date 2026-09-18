@@ -169,6 +169,7 @@ $string['comm_col_status']       = 'Status';
 $string['comm_evaluate']         = 'Assess communication';
 $string['comm_send']             = 'Send to EFE';
 $string['comm_evaluated']        = '{$a} student(s) assessed.';
+$string['comm_partial']          = '{$a} student(s) assessed. The AI servers are busy: run the assessment again for the remaining students.';
 $string['comm_sent']             = '{$a} competency position(s) sent to EFE.';
 $string['comm_sendfailed']       = '{$a} send(s) failed (see logs).';
 $string['comm_status_draft']     = 'To send';

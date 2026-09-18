@@ -36,8 +36,27 @@ class api {
      *               (en JSON si response_format=json_schema/json_object,
      *                ou ['__text__' => string] si réponse texte brute)
      * @throws \moodle_exception en cas d'erreur HTTP ou de parsing
+     *         (server_unavailable_exception si le serveur est en cause et
+     *         qu'aucun autre serveur du pool n'a pu prendre le relais)
      */
     public static function call(array $messages, array $options = array()) {
+        while (true) {
+            try {
+                return self::call_once($messages, $options);
+            } catch (server_unavailable_exception $e) {
+                // Le pool bascule le processus sur un autre serveur : on rejoue
+                // l'appel, qui prendra ce nouveau serveur dans prepare().
+                if (!self::can_failover($options) || !pool::failover($e)) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /**
+     * Un seul essai de call(), sur le serveur désigné par prepare().
+     */
+    private static function call_once(array $messages, array $options) {
         $req = self::prepare($messages, $options);
 
         $curl = new \curl();
@@ -46,19 +65,24 @@ class api {
             'CURLOPT_CONNECTTIMEOUT' => 15,
             'CURLOPT_RETURNTRANSFER' => true,
             'CURLOPT_HTTPHEADER'     => $req['headers'],
-        ));
+        ) + self::heartbeat_options());
 
         $raw = $curl->post($req['url'], json_encode($req['payload'], JSON_UNESCAPED_UNICODE));
 
+        $info = is_array($curl->info) ? $curl->info : array();
         if ($curl->get_errno()) {
             // Erreur réseau / TLS / DNS / timeout — typiquement backend injoignable.
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'curl error (' . $curl->get_errno() . '): ' . $curl->error
-                . ' [url=' . $req['url'] . ']');
+            $detail = 'curl error (' . $curl->get_errno() . '): ' . $curl->error
+                . ' [url=' . $req['url'] . ']';
+            $kind = self::classify($curl->get_errno(), $info, 0);
+            if ($kind !== null) {
+                throw new server_unavailable_exception($kind, $detail);
+            }
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
         // Code HTTP de la réponse (présent dans curl->info après la requête).
-        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : 0;
+        $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
 
         $data = json_decode($raw, true);
         if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
@@ -74,6 +98,10 @@ class api {
                 $detail .= 'bad response: ' . substr((string)$raw, 0, 500);
             }
             $detail .= ' [model=' . $req['model'] . ', url=' . $req['url'] . ']';
+            $kind = self::classify(0, $info, $httpcode);
+            if ($kind !== null) {
+                throw new server_unavailable_exception($kind, $detail);
+            }
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
@@ -152,6 +180,28 @@ class api {
      * @throws \moodle_exception en cas d'erreur réseau ou HTTP
      */
     public static function stream(array $messages, array $options, callable $ondelta) {
+        while (true) {
+            // On ne peut basculer que tant que RIEN n'a été transmis à l'élève :
+            // un texte déjà affiché ne peut pas être réécrit par un autre modèle.
+            $received = false;
+            $tracked  = function($delta) use ($ondelta, &$received) {
+                $received = true;
+                return $ondelta($delta);
+            };
+            try {
+                return self::stream_once($messages, $options, $tracked);
+            } catch (server_unavailable_exception $e) {
+                if ($received || !self::can_failover($options) || !pool::failover($e)) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /**
+     * Un seul essai de stream(), sur le serveur désigné par prepare().
+     */
+    private static function stream_once(array $messages, array $options, callable $ondelta) {
         $req = self::prepare($messages, $options);
 
         $payload = $req['payload'];
@@ -208,12 +258,13 @@ class api {
                 }
                 return $len;
             },
-        ));
+        ) + self::heartbeat_options());
 
         $curl->post($req['url'], json_encode($payload, JSON_UNESCAPED_UNICODE));
 
         $errno    = $curl->get_errno();
-        $httpcode = isset($curl->info['http_code']) ? (int)$curl->info['http_code'] : $state->httpcode;
+        $info     = is_array($curl->info) ? $curl->info : array();
+        $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : $state->httpcode;
 
         if ($state->aborted) {
             // Interruption volontaire : ce n'est pas une erreur.
@@ -226,8 +277,12 @@ class api {
         }
 
         if ($errno) {
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'curl error (' . $errno . '): ' . $curl->error . ' [url=' . $req['url'] . ']');
+            $detail = 'curl error (' . $errno . '): ' . $curl->error . ' [url=' . $req['url'] . ']';
+            $kind   = self::classify($errno, $info, 0);
+            if ($kind !== null) {
+                throw new server_unavailable_exception($kind, $detail);
+            }
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
         if ($httpcode !== 200) {
@@ -239,6 +294,10 @@ class api {
                 $detail .= 'bad response: ' . substr(trim($state->errbody), 0, 500);
             }
             $detail .= ' [model=' . $req['model'] . ', url=' . $req['url'] . ']';
+            $kind = self::classify(0, $info, $httpcode);
+            if ($kind !== null) {
+                throw new server_unavailable_exception($kind, $detail);
+            }
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
@@ -325,6 +384,74 @@ class api {
     }
 
     /**
+     * Classe un échec : imputable au SERVEUR (on peut retenter ailleurs) ou à
+     * la requête (inutile de retenter ailleurs).
+     *
+     *   - UNREACHABLE : DNS (6), connexion refusée (7), délai dépassé AVANT
+     *     d'avoir pu se connecter (28 avec connect_time nul) → serveur en panne.
+     *   - SERVER_ERROR : serveur joint mais défaillant — HTTP 5xx, réponse vide
+     *     (52), réception interrompue (56), transfert incomplet (18).
+     *   - null : le reste, notamment un délai dépassé APRÈS connexion (le
+     *     serveur fonctionne mais la génération est trop longue : la rejouer
+     *     ailleurs doublerait l'attente), les HTTP 4xx (requête refusée) et les
+     *     réponses illisibles.
+     *
+     * @param int   $errno    code d'erreur curl (0 si aucun)
+     * @param array $info     curl_getinfo() de la requête
+     * @param int   $httpcode code HTTP (0 si non pertinent)
+     * @return string|null server_unavailable_exception::* ou null
+     */
+    public static function classify($errno, array $info, $httpcode) {
+        $errno = (int)$errno;
+        if ($errno === 6 || $errno === 7) {
+            return server_unavailable_exception::UNREACHABLE;
+        }
+        if ($errno === 28) {
+            $connected = isset($info['connect_time']) && (float)$info['connect_time'] > 0;
+            return $connected ? null : server_unavailable_exception::UNREACHABLE;
+        }
+        if ($errno === 18 || $errno === 52 || $errno === 56) {
+            return server_unavailable_exception::SERVER_ERROR;
+        }
+        if ($errno === 0 && (int)$httpcode >= 500 && (int)$httpcode <= 599) {
+            return server_unavailable_exception::SERVER_ERROR;
+        }
+        return null;
+    }
+
+    /**
+     * Basculement autorisé pour cet appel ? Seulement quand le serveur vient du
+     * pool (un ticket est tenu) et que l'appelant n'a pas imposé sa propre URL :
+     * une activité configurée sur une API externe ne doit JAMAIS être envoyée à
+     * un modèle local (tous les élèves d'un devoir sont corrigés par le même).
+     */
+    private static function can_failover(array $options) {
+        if (pool::current_slot() <= 0) {
+            return false;
+        }
+        return !isset($options['apiurl']) || $options['apiurl'] === null || $options['apiurl'] === '';
+    }
+
+    /**
+     * Options curl qui entretiennent le battement de cœur du ticket courant
+     * pendant l'appel. libcurl invoque la fonction de progression environ une
+     * fois par seconde, y compris pendant que le serveur calcule sans rien
+     * envoyer (lecture du prompt, images). Sans ticket, aucun surcoût.
+     */
+    private static function heartbeat_options() {
+        if (pool::current_slot() <= 0) {
+            return array();
+        }
+        return array(
+            'CURLOPT_NOPROGRESS'       => false,
+            'CURLOPT_PROGRESSFUNCTION' => function() {
+                pool::heartbeat_current();
+                return 0; // 0 = continuer le transfert
+            },
+        );
+    }
+
+    /**
      * Met en forme l'objet d'erreur standard des API compatibles OpenAI.
      */
     private static function format_api_error($err) {
@@ -345,9 +472,9 @@ class api {
      *                'payload'=>array, 'flavor'=>string]
      */
     private static function prepare(array $messages, array $options) {
-        // Serveur imposé par le pool quand l'appelant n'a rien surchargé
-        // (pool::set_current_server() — utilisé par les jobs de la file).
-        $server = pool::current_server();
+        // Serveur tenu par ce processus (pool::set_current() — file de jobs,
+        // tuteur, appels synchrones), quand l'appelant n'a rien surchargé.
+        $server = pool::current();
         if ($server !== null) {
             foreach (array('apiurl', 'model', 'apikey') as $key) {
                 if (!isset($options[$key]) || $options[$key] === null || $options[$key] === '') {

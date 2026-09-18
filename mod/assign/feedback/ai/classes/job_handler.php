@@ -8,10 +8,32 @@ defined('MOODLE_INTERNAL') || die();
  * de devoirs. Le routage depuis la queue partagée se fait par nom de
  * composant : 'assignfeedback_ai' → \assignfeedback_ai\job_handler.
  */
-class job_handler implements \local_aifeedback\job_handler {
+class job_handler implements \local_aifeedback\job_handler, \local_aifeedback\routable_job_handler {
 
     /** Nombre max de tentatives avant de basculer une ligne en status=failed. */
     const MAX_ATTEMPTS = 3;
+
+    /**
+     * URL imposée par le devoir (API externe choisie par l'enseignant), ou
+     * null pour laisser la file répartir le job sur les serveurs du pool.
+     */
+    public function external_endpoint(\stdClass $payload): ?string {
+        global $DB;
+        $rowid = isset($payload->rowid) ? (int)$payload->rowid : 0;
+        if ($rowid <= 0) {
+            return null;
+        }
+        $assignment = $DB->get_field('assignfeedback_ai_grade', 'assignment', array('id' => $rowid));
+        if (!$assignment) {
+            return null;
+        }
+        $cfg = $DB->get_record('assignfeedback_ai', array('assignment' => (int)$assignment),
+            'id, apiurl, apiurl_override');
+        if ($cfg && !empty($cfg->apiurl_override) && trim((string)$cfg->apiurl) !== '') {
+            return trim((string)$cfg->apiurl);
+        }
+        return null;
+    }
 
     /**
      * Enqueue un job pour traiter la ligne $rowid de mdl_assignfeedback_ai_grade.

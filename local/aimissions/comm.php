@@ -45,8 +45,9 @@ if ((int)$project->groupid > 0) {
 // --- Traitement -----------------------------------------------------------
 if ($action === 'evaluate' && data_submitted() && confirm_sesskey() && $commcode !== '') {
     // L'évaluation enchaîne un appel LLM par étudiant : on évite le timeout.
-    \core_php_time_limit::raise(120);
+    \core_php_time_limit::raise(600);
     $done = 0;
+    $busy = false;
     foreach ($members as $m) {
         $tickets = $DB->get_records('local_aimissions_ticket',
             array('projectid' => $projectid, 'userid' => (int)$m->id), 'timecreated ASC');
@@ -54,7 +55,19 @@ if ($action === 'evaluate' && data_submitted() && confirm_sesskey() && $commcode
             continue;
         }
         try {
-            $eval = communication::evaluate_student($project, array_values($tickets));
+            // Une place du pool par étudiant, rendue aussitôt : un élève en
+            // attente du tuteur passe entre deux évaluations.
+            $eval = \local_aifeedback\pool::run(\local_aifeedback\pool::PURPOSE_FEEDBACK,
+                function() use ($project, $tickets) {
+                    return communication::evaluate_student($project, array_values($tickets));
+                }, 30, 'local_aimissions');
+        } catch (\moodle_exception $e) {
+            if ($e->errorcode === 'poolbusy') {
+                $busy = true;
+                break; // serveurs saturés : inutile d'insister pour les suivants
+            }
+            debugging('[local_aimissions] comm eval failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            continue;
         } catch (\Throwable $e) {
             debugging('[local_aimissions] comm eval failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
             continue;
@@ -78,6 +91,10 @@ if ($action === 'evaluate' && data_submitted() && confirm_sesskey() && $commcode
             $DB->insert_record('local_aimissions_commeval', $rec);
         }
         $done++;
+    }
+    if ($busy) {
+        redirect($baseurl, get_string('comm_partial', 'local_aimissions', $done), null,
+            \core\output\notification::NOTIFY_WARNING);
     }
     redirect($baseurl, get_string('comm_evaluated', 'local_aimissions', $done), null,
         \core\output\notification::NOTIFY_SUCCESS);
