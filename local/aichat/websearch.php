@@ -34,6 +34,13 @@ if ($action === 'unblock') {
 
 $testsearch = null;
 $testtools  = null;
+$testread   = null;
+$readurl    = optional_param('readurl', '', PARAM_URL);
+$readfocus  = optional_param('readfocus', '', PARAM_TEXT);
+if ($action === 'testread' && $readurl !== '') {
+    require_sesskey();
+    $testread = diagnostic::test_read($readurl, $readfocus);
+}
 if ($action === 'testsearch') {
     require_sesskey();
     $testsearch = diagnostic::test_search();
@@ -95,6 +102,21 @@ echo html_writer::tag('p', get_string('ws_cache_hits', 'local_aichat', (object)a
     'hits' => budget::cached_count(),
     'days' => manager::cachedays(),
 )));
+// Activités qui consomment le plus (plafond propre à chaque activité).
+$top = budget::top_activities(5);
+if (!empty($top)) {
+    $items = array();
+    foreach ($top as $cmid => $count) {
+        $cm   = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+        $name = $cm ? html_writer::link(new moodle_url('/local/aichat/manage.php', array('id' => $cmid)),
+            format_string($cm->name)) : '#' . (int)$cmid;
+        $cap  = manager::activitycap(\local_aichat\activity::get($cmid));
+        $items[] = html_writer::tag('li', $name . ' — ' . s(get_string('ws_activity_used', 'local_aichat',
+            (object)array('used' => $count, 'cap' => $cap > 0 ? $cap : '-'))));
+    }
+    echo html_writer::tag('p', get_string('ws_top_activities', 'local_aichat'), array('class' => 'mb-0'))
+        . html_writer::tag('ul', implode('', $items));
+}
 echo html_writer::tag('p', get_string('ws_budget_explain', 'local_aichat', (object)array(
     'peruser'  => manager::peruser(),
     'hours'    => \local_aichat\quota::window_hours(),
@@ -211,6 +233,43 @@ if ($testtools !== null) {
             echo html_writer::tag('pre', s($report[$key]), array('class' => 'small border p-2'));
         }
     }
+}
+
+// --- Test de la lecture d'une page (mode « recherche de matériel ») ---------
+echo $OUTPUT->heading(get_string('ws_testread_heading', 'local_aichat'), 3);
+echo html_writer::tag('p', get_string('ws_testread_explain', 'local_aichat'), array('class' => 'small text-muted'));
+if (\local_aifeedback\content_extractor::find_pdftotext() === null) {
+    echo $OUTPUT->notification(get_string('ws_testread_nopdftotext', 'local_aichat'),
+        \core\output\notification::NOTIFY_WARNING);
+}
+echo html_writer::start_tag('form', array('method' => 'post', 'action' => $pageurl->out(false),
+    'class' => 'mb-3'));
+echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()));
+echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'action', 'value' => 'testread'));
+echo html_writer::div(
+    html_writer::tag('label', get_string('ws_testread_url', 'local_aichat'), array('for' => 'aichat-readurl'))
+    . html_writer::empty_tag('input', array('type' => 'url', 'name' => 'readurl', 'id' => 'aichat-readurl',
+        'value' => $readurl, 'class' => 'form-control', 'required' => 'required',
+        'placeholder' => 'https://www.hw-group.com/device/poseidon2-3268')), 'form-group');
+echo html_writer::div(
+    html_writer::tag('label', get_string('ws_testread_focus', 'local_aichat'), array('for' => 'aichat-readfocus'))
+    . html_writer::empty_tag('input', array('type' => 'text', 'name' => 'readfocus', 'id' => 'aichat-readfocus',
+        'value' => $readfocus, 'class' => 'form-control', 'placeholder' => 'digital input counter')), 'form-group');
+echo html_writer::empty_tag('input', array('type' => 'submit', 'class' => 'btn btn-secondary',
+    'value' => get_string('ws_testread', 'local_aichat')));
+echo html_writer::end_tag('form');
+
+if ($testread !== null) {
+    if ($testread['ok']) {
+        echo $OUTPUT->notification(get_string('ws_testread_ok', 'local_aichat'),
+            \core\output\notification::NOTIFY_SUCCESS);
+    } else {
+        echo $OUTPUT->notification(get_string('ws_testread_failed', 'local_aichat',
+            manager::reason_label($testread['reason'])), \core\output\notification::NOTIFY_ERROR);
+    }
+    echo html_writer::tag('p', html_writer::tag('strong', get_string('ws_testread_output', 'local_aichat')));
+    echo html_writer::tag('pre', s($testread['output']), array('class' => 'small border p-2',
+        'style' => 'white-space: pre-wrap; max-height: 40em; overflow: auto;'));
 }
 
 echo $OUTPUT->footer();

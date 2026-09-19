@@ -16,4 +16,13 @@ $definitions = array(
         'simpledata'         => false,
         'staticacceleration' => false,
     ),
+    // pagecache : texte extrait des pages et datasheets lues par read_page
+    // (mode « recherche de matériel ») — une classe qui lit la même datasheet
+    // ne la télécharge qu'une fois. Validité : réglage websearch_pagecachehours.
+    'pagecache' => array(
+        'mode'               => cache_store::MODE_APPLICATION,
+        'simplekeys'         => true,
+        'simpledata'         => false,
+        'staticacceleration' => false,
+    ),
 );

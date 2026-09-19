@@ -3,6 +3,7 @@ defined('MOODLE_INTERNAL') || die();
 
 use local_aichat\activity;
 use local_aichat\brief;
+use local_aichat\websearch\manager as websearch;
 
 /**
  * Ajoute la section « Tuteur IA » au formulaire de réglages des activités
@@ -68,14 +69,35 @@ function local_aichat_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->setDefault('aichatcustomprompt', ($config !== null) ? (string)$config->customprompt : '');
     $mform->hideIf('aichatcustomprompt', 'aichatenabled', 'notchecked');
 
-    // Recherche Web : proposée seulement si l'administrateur l'a activée
-    // pour le site. Décochée par défaut : c'est un choix de l'enseignant.
-    if (\local_aichat\websearch\manager::site_enabled()) {
-        $mform->addElement('advcheckbox', 'aichatwebsearch',
-            get_string('form_websearch', 'local_aichat'));
+    // Recherches du tuteur : proposées seulement si l'administrateur les a
+    // activées pour le site. « Aucune » par défaut : c'est un choix de
+    // l'enseignant.
+    if (websearch::site_enabled()) {
+        $mform->addElement('select', 'aichatwebsearch', get_string('form_websearch', 'local_aichat'), array(
+            websearch::MODE_NONE     => get_string('form_websearch_none', 'local_aichat'),
+            websearch::MODE_WEB      => get_string('form_websearch_web', 'local_aichat'),
+            websearch::MODE_MATERIAL => get_string('form_websearch_material', 'local_aichat'),
+        ));
         $mform->addHelpButton('aichatwebsearch', 'form_websearch', 'local_aichat');
-        $mform->setDefault('aichatwebsearch', ($config !== null && !empty($config->websearch)) ? 1 : 0);
+        $mform->setDefault('aichatwebsearch', ($config !== null) ? (int)$config->websearch : 0);
         $mform->hideIf('aichatwebsearch', 'aichatenabled', 'notchecked');
+
+        $mform->addElement('text', 'aichatwebsearchcap', get_string('form_websearchcap', 'local_aichat'),
+            array('size' => 6));
+        $mform->setType('aichatwebsearchcap', PARAM_INT);
+        $mform->addHelpButton('aichatwebsearchcap', 'form_websearchcap', 'local_aichat');
+        $mform->setDefault('aichatwebsearchcap', ($config !== null && (int)$config->websearch > 0)
+            ? (int)$config->websearchcap : websearch::DEFAULT_ACTIVITYCAP);
+        $mform->hideIf('aichatwebsearchcap', 'aichatenabled', 'notchecked');
+        $mform->hideIf('aichatwebsearchcap', 'aichatwebsearch', 'eq', websearch::MODE_NONE);
+
+        $mform->addElement('textarea', 'aichatwebsearchsites', get_string('form_websearchsites', 'local_aichat'),
+            array('rows' => 4, 'cols' => 40));
+        $mform->setType('aichatwebsearchsites', PARAM_TEXT);
+        $mform->addHelpButton('aichatwebsearchsites', 'form_websearchsites', 'local_aichat');
+        $mform->setDefault('aichatwebsearchsites', ($config !== null) ? (string)$config->websearchsites : '');
+        $mform->hideIf('aichatwebsearchsites', 'aichatenabled', 'notchecked');
+        $mform->hideIf('aichatwebsearchsites', 'aichatwebsearch', 'neq', websearch::MODE_MATERIAL);
     }
 }
 
@@ -106,9 +128,15 @@ function local_aichat_coursemodule_edit_post_actions($moduleinfo, $course) {
         'customprompt' => isset($moduleinfo->aichatcustomprompt)
             ? (string)$moduleinfo->aichatcustomprompt : null,
     );
-    // Case absente (recherche désactivée pour le site) : valeur conservée.
+    // Champs absents (recherche désactivée pour le site) : valeurs conservées.
     if (isset($moduleinfo->aichatwebsearch)) {
-        $data['websearch'] = !empty($moduleinfo->aichatwebsearch) ? 1 : 0;
+        $data['websearch'] = max(0, min(2, (int)$moduleinfo->aichatwebsearch));
+        if (isset($moduleinfo->aichatwebsearchcap)) {
+            $data['websearchcap'] = max(0, (int)$moduleinfo->aichatwebsearchcap);
+        }
+        if (isset($moduleinfo->aichatwebsearchsites)) {
+            $data['websearchsites'] = trim((string)$moduleinfo->aichatwebsearchsites);
+        }
     }
     activity::save($cmid, (int)$course->id, $data);
 

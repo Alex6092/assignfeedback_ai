@@ -159,6 +159,32 @@ class diagnostic {
         return $result;
     }
 
+    /**
+     * Lecture d'une page par le vrai chemin de read_page (téléchargement,
+     * extraction, sélection), sans cache : l'administrateur voit exactement
+     * ce que le modèle recevrait.
+     *
+     * @param string $url
+     * @param string $focus
+     * @return array {ok, reason, output (texte transmis au modèle), pdftotext (bool)}
+     */
+    public static function test_read($url, $focus) {
+        $allowlist = new \local_aichat\reader\allowlist();
+        $allowlist->add($url);
+        $reader = new \local_aichat\reader\tool($allowlist,
+            new \local_aichat\reader\fetcher(manager::maxbytes(), manager::readtimeout()), 1, 0, 0, 0);
+        $output = $reader->execute(\local_aichat\reader\tool::NAME,
+            json_encode(array('url' => $url, 'focus' => $focus)));
+        $log = $reader->log();
+        $last = end($log);
+        return array(
+            'ok'        => ($last !== false && $last['status'] === 'done'),
+            'reason'    => ($last !== false) ? $last['reason'] : '',
+            'output'    => $output,
+            'pdftotext' => (\local_aifeedback\content_extractor::find_pdftotext() !== null),
+        );
+    }
+
     /** Premier marqueur d'appel d'outil trouvé dans un texte, ou ''. */
     public static function find_leak($text) {
         foreach (self::LEAK_MARKERS as $marker) {

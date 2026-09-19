@@ -75,5 +75,42 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091900, 'local', 'aichat');
     }
 
+    // 2026091904 : mode « recherche de matériel » (lecture de pages, plafond de
+    // recherches par activité, sites de référence).
+    if ($oldversion < 2026091904) {
+        $table  = new xmldb_table('local_aichat_activity');
+        $fields = array(
+            new xmldb_field('websearchcap', XMLDB_TYPE_INTEGER, '10', null,
+                XMLDB_NOTNULL, null, '0', 'websearch'),
+            new xmldb_field('websearchsites', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'websearchcap'),
+        );
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        $table = new xmldb_table('local_aichat_message');
+        $field = new xmldb_field('pagereads', XMLDB_TYPE_INTEGER, '4', null,
+            XMLDB_NOTNULL, null, '0', 'websearches');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $table = new xmldb_table('local_aichat_wsledger');
+        $field = new xmldb_field('cmid', XMLDB_TYPE_INTEGER, '10', null,
+            XMLDB_NOTNULL, null, '0', 'status');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $index = new xmldb_index('cmid_time', XMLDB_INDEX_NOTUNIQUE, array('cmid', 'timecreated'));
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091904, 'local', 'aichat');
+    }
+
     return true;
 }

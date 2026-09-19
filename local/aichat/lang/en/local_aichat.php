@@ -186,6 +186,9 @@ $string['privacy:metadata:message:websearches']      = 'Number of web searches m
 $string['privacy:metadata:message:toolcalls']        = 'The web search queries written by the tutor for this answer, and their outcome.';
 $string['privacy:metadata:websearch']                = 'If web search is enabled, the tutor may query an external search engine (Brave Search). Only the query written by the model is sent, after removing the student\'s first name, last name, username and email.';
 $string['privacy:metadata:websearch:query']          = 'The text of the search query.';
+$string['privacy:metadata:message:pagereads']        = 'Number of pages or documents read by the tutor for this answer.';
+$string['privacy:metadata:pagereader']               = 'In "material search" mode, the server downloads the pages and documents the tutor reads, from the site publishing them. Only the page address is sent; no student data.';
+$string['privacy:metadata:pagereader:url']           = 'The address of the page or document read.';
 
 // === Web search ===
 $string['websearch_heading']          = 'Web search';
@@ -210,10 +213,31 @@ $string['setting_wstimeout_help']     = 'Beyond this, the search is abandoned an
 $string['setting_wscachedays']        = 'Search cache duration (days)';
 $string['setting_wscachedays_help']   = 'The results of a successful search are kept and served again to any student asking the same query (case and spacing ignored): free, instant, and available even when the engine is down. A search served from the cache counts neither against the site cap nor against the student quota. The model is told how old the results are. Shorter = fresher information; longer = more savings. 0 = no cache. Between 0 and 90. Default: 7.';
 $string['cachedef_searchcache']       = 'AI tutor web search results';
+$string['cachedef_pagecache']         = 'Pages and datasheets read by the AI tutor';
+$string['material_heading']           = 'Material search (page reading)';
+$string['material_heading_desc']      = 'In activities set to "Material search", the tutor can read manufacturer pages and PDF datasheets found by its searches, to pick out precise characteristics. Reading is free (no Brave budget); only addresses found by a search, documents linked from a page already read and addresses given by the student can be read. Internal addresses are refused by the Moodle HTTP security policy. PDFs use pdftotext (shared library settings).';
+$string['setting_wstoolcalls']        = 'Tool calls per answer';
+$string['setting_wstoolcalls_help']   = 'Searches and reads in total for a single tutor answer in material mode (searches remain limited by the "Maximum searches per answer" setting too). Beyond that, the model must answer. Each call adds a generation round. Between 2 and 8. Default: 5.';
+$string['setting_wsreadsperuser']     = 'Page reads per student per window';
+$string['setting_wsreadsperuser_help'] = 'Maximum number of pages or documents read for a student over the student quota window, across all activities. Protects the server (download, extraction). 0 = no limit. Default: 30.';
+$string['setting_wsmaxmb']            = 'Maximum document size (MB)';
+$string['setting_wsmaxmb_help']       = 'Beyond this, the page or PDF is not downloaded. Between 1 and 50. Default: 8.';
+$string['setting_wsreadtimeout']      = 'Page read timeout (seconds)';
+$string['setting_wsreadtimeout_help'] = 'Maximum download time. The student waits meanwhile. Between 3 and 30. Default: 10.';
+$string['setting_wspagecachehours']   = 'Page cache duration (hours)';
+$string['setting_wspagecachehours_help'] = 'The text extracted from a page or datasheet is kept and served again: a class reading the same datasheet only downloads it once. 0 = no cache. Between 0 and 720. Default: 24.';
 
-$string['form_websearch']             = 'Allow web search';
-$string['form_websearch_help']        = 'The tutor may search the Internet when recent or external information is needed (software version, official documentation...), and then cites its sources. It never searches for the solution of the activity. Leave unticked if the activity is not suited to it (exercise whose solution is easy to find online, assessment).';
+$string['form_websearch']             = 'Tutor searches';
+$string['form_websearch_help']        = '<strong>None</strong>: the tutor answers from its own knowledge only.<br><strong>Occasional web search</strong>: it may search the Internet when recent or external information is needed (software version, official documentation...) and cites its sources.<br><strong>Material search</strong>: for an activity where the student chooses equipment from a specification (I/O board, sensor...). The tutor searches for references, reads manufacturer pages and datasheets to pick out their characteristics, suggests at most 3 leads per answer, but never fills in the comparative study and never chooses for the student.<br>In every case, it never searches for the solution of the activity. Leave on "None" if the activity is not suited to it (exercise whose solution is easy to find online, assessment).';
+$string['form_websearch_none']        = 'None';
+$string['form_websearch_web']         = 'Occasional web search';
+$string['form_websearch_material']    = 'Material search (web + reading pages and datasheets)';
+$string['form_websearchcap']          = 'Activity web search cap (31 days)';
+$string['form_websearchcap_help']     = 'Maximum number of web searches (billed beyond the site free budget) for this activity, over a rolling 31-day window, all classes included. Prevents a single lab session from using up the whole school budget. Page reads and searches served from the cache do not count. About 5 searches per student is enough: 150 for a class of 30. 0 = only the site cap applies.';
+$string['form_websearchsites']        = 'Reference sites';
+$string['form_websearchsites_help']   = 'Optional, one domain per line (e.g. teracomsystems.com, hw-group.com, icpdas-europe.com, gotronic.fr, raspberrypi.com). The tutor favours these sites in its searches (site: operator): manufacturer and usual distributor pages rather than marketplaces or blogs.';
 $string['widget_searching']           = 'Searching the Web (Brave Search): "{$a}"...';
+$string['widget_reading']             = 'Reading a page: {$a}...';
 $string['ws_sources_heading']         = 'Sources consulted (web search, Brave Search):';
 
 $string['ws_transcript']              = 'Web searches:';
@@ -222,6 +246,16 @@ $string['ws_cached']                  = '(cache)';
 $string['ws_cache_hits']              = '{$a->hits} search(es) served from the cache over the last 31 days, counted against nothing (cache duration: {$a->days} day(s)).';
 $string['ws_unavailable']             = 'not performed ({$a})';
 $string['ws_noquery']                 = 'invalid query';
+$string['ws_read']                    = 'Read:';
+$string['ws_read_done']               = '{$a->type}, {$a->chars} characters kept';
+$string['ws_reason_activity_quota_exhausted'] = 'activity cap reached';
+$string['ws_reason_url_not_allowed']      = 'address not allowed';
+$string['ws_reason_fetch_error']          = 'page unreachable';
+$string['ws_reason_too_large']            = 'document too large';
+$string['ws_reason_unsupported_type']     = 'unreadable format';
+$string['ws_reason_empty_content']        = 'unreadable content (JavaScript, scanned PDF...)';
+$string['ws_reason_pdftotext_missing']    = 'PDF reading unavailable (pdftotext)';
+$string['ws_reason_reads_exhausted']      = 'student page-read quota reached';
 $string['ws_offered_unused']          = 'search offered to the model, not used';
 $string['ws_notoffered']              = 'search not offered to the model ({$a})';
 $string['ws_reason_not_configured']       = 'API key missing';
@@ -274,6 +308,17 @@ $string['ws_testtools_verdict_ok']    = 'This server handles web search correctl
 $string['ws_testtools_verdict_bad']   = 'This server does not handle tool calling correctly with this model. Do not enable web search while it serves the tutor: update LM Studio, try another model, or remove its "tutor" purpose.';
 $string['ws_answer1']                 = 'First-round text (should be empty or short, without any call tag):';
 $string['ws_answer2']                 = 'Final answer after the fake result:';
+$string['ws_top_activities']          = 'Activities using the most web searches (31 days):';
+$string['ws_activity_used']           = '{$a->used} search(es), activity cap: {$a->cap}';
+$string['ws_testread_heading']        = 'Test reading a page';
+$string['ws_testread_explain']        = 'Reads a page or PDF through the same path as the tutor read_page tool (download, extraction, selection of the passages relevant to the keywords), without cache and without calling the search engine. The result shown is exactly what the model would receive.';
+$string['ws_testread_nopdftotext']    = 'pdftotext cannot be found on this server: PDF datasheets cannot be read (see the shared library settings, poppler-utils binaries).';
+$string['ws_testread_url']            = 'Page or PDF address';
+$string['ws_testread_focus']          = 'Keywords (focus)';
+$string['ws_testread']                = 'Test reading';
+$string['ws_testread_ok']             = 'Read succeeded.';
+$string['ws_testread_failed']         = 'Could not read: {$a}.';
+$string['ws_testread_output']         = 'Text sent to the model:';
 $string['diag_step_request']          = 'Request accepted by the server';
 $string['diag_step_toolcall']         = 'web_search tool call recognised in the stream (tool_calls)';
 $string['diag_step_noleak']           = 'No tool call tag in the first-round text';

@@ -365,10 +365,11 @@
             return;
         }
         if (name === 'search') {
-            // Recherche Web en cours : effacée par le fragment de texte suivant.
-            // (remplacement par fonction : une requête contenant « $& » ne doit
-            // pas être interprétée comme un motif de remplacement)
-            setStatus((S.widget_searching || '').replace('{$a}', function () {
+            // Recherche Web ou lecture d'une page en cours : effacée par le
+            // fragment de texte suivant. (Remplacement par fonction : une requête
+            // contenant « $& » ne doit pas être interprétée comme un motif.)
+            var label = (data.tool === 'read') ? S.widget_reading : S.widget_searching;
+            setStatus((label || '').replace('{$a}', function () {
                 return data.q || '';
             }), 'queue');
             return;

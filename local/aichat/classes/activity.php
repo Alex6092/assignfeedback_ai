@@ -68,6 +68,8 @@ class activity {
                 'quizscope'    => 'all',
                 'quiztag'      => '',
                 'websearch'    => 0,
+                'websearchcap' => 0,
+                'websearchsites' => null,
                 'timecreated'  => $now,
                 'timemodified' => $now,
             );

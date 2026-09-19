@@ -21,6 +21,7 @@ compétences).
 - [Support de la vision (images)](#support-de-la-vision-images)
 - [Surcharges par devoir / par question](#surcharges-par-devoir--par-question)
 - [Tuteur IA — recherche Web](#tuteur-ia--recherche-web)
+  (dont [mode « Recherche de matériel »](#mode--recherche-de-matériel-))
 - [Structure du dépôt](#structure-du-dépôt)
 - [Feuille de route](#feuille-de-route)
 
@@ -267,8 +268,16 @@ requête qu'avant** (aucun champ `tools`, aucun bloc de prompt).
 3. **Page « Tuteur IA : recherche Web »** (lien dans la rubrique) : lancer d'abord
    **« Tester l'appel d'outil »** sur chaque serveur du tuteur (aucun appel à Brave),
    puis **« Tester la recherche »** (une vraie recherche, décomptée).
-4. **Par activité** : l'enseignant coche « Autoriser la recherche Web » dans la section
-   « Tuteur IA » des réglages de l'activité (décoché par défaut).
+4. **Par activité**, dans la section « Tuteur IA » des réglages de l'activité, le menu
+   « Recherches du tuteur » propose trois choix :
+   - **Aucune** (défaut) ;
+   - **Recherche Web ponctuelle** ;
+   - **Recherche de matériel** (voir la section suivante).
+
+   Deux champs l'accompagnent :
+   - le **plafond de recherches Web de l'activité** sur 31 jours (150 par défaut,
+     0 = seul le plafond du site) ;
+   - les **sites de référence**, pour le mode matériel.
 
 ### Quota
 
@@ -393,8 +402,104 @@ Sur le site :
 - Chaque recherche ajoute un tour de génération : réponse plus lente, quota de tokens
   de l'élève davantage consommé.
 - Un texte écrit avant l'appel (« Je vérifie… ») reste dans la réponse.
-- Extraits seulement (principal + supplémentaires) : pas de lecture de pages entières.
+- En mode ponctuel : extraits seulement (principal + supplémentaires), pas de lecture de
+  pages. La lecture de pages n'existe que dans le mode « Recherche de matériel ».
 - Le retrait de l'identité peut effacer un mot identique au nom de l'élève (« Martin »).
+
+### Mode « Recherche de matériel »
+
+Pour les activités où l'élève choisit un matériel d'après un cahier des charges :
+modules d'E/S Ethernet (HW group Poseidon2, Teracom TCW241, ICP DAS ET-7052…), Arduino,
+Raspberry Pi, capteurs et actionneurs. **L'élève rédige lui-même l'étude comparative.**
+
+Pourquoi pas un catalogue de distributeur :
+- DigiKey ne référence qu'une partie de ce matériel (ICP DAS, mais ni Teracom ni HW group) ;
+- RS et Gotronic n'ont pas d'API.
+
+Les caractéristiques fines se trouvent en revanche sur les pages des fabricants et dans
+leurs datasheets. Le tuteur dispose donc de deux outils :
+
+| Outil | Coût | Rôle |
+|---|---|---|
+| `web_search` | Brave (budget) | trouver la page du fabricant ou la datasheet (`site:`, `filetype:pdf`) |
+| `read_page` | gratuit | lire cette page ou ce PDF et relever les caractéristiques |
+
+```
+stream.php → toolbox (limite globale d'appels par réponse, 5 par défaut)
+  ├─ websearch\tool  → Brave (plafonds du site et de l'activité, cache)
+  └─ reader\tool     → reader\fetcher (curl Moodle) → reader\extractor
+                        HTML : texte visible + liens de documents (datasheet, manuel)
+                        PDF  : pdftotext (content_extractor de local_aifeedback)
+                        sélection des passages pertinents pour « focus » (≤ 6 000 car.)
+```
+
+**Contrat pédagogique** (bloc ajouté au prompt, règles d'intégrité inchangées et en
+dernier) :
+- le tuteur fait d'abord expliciter à l'élève les critères du cahier des charges
+  (nombre d'E/S, répartition analogique/numérique, compteurs et fronts, tensions,
+  protocole, alimentation, environnement, budget) ;
+- il propose **au plus 3 références par réponse**, avec les seules caractéristiques
+  lues sur les sources, « à vérifier sur la datasheet » ;
+- il **ne remplit jamais le comparatif**, ne classe pas les produits et ne dit pas
+  lequel convient ;
+- il enseigne la démarche : où trouver la datasheet, quels mots-clés utiliser ;
+- la référence fabricant permet de retrouver le produit chez RS ou Gotronic.
+
+**Sécurité de la lecture :**
+- seules sont lisibles les adresses trouvées par une recherche de la même réponse, les
+  documents liés d'une page déjà lue et les adresses collées par l'élève ;
+- http/https uniquement, sans identifiants dans l'URL ;
+- le « security helper » de la classe `curl` de Moodle refuse les hôtes internes et les
+  ports non autorisés, à chaque redirection ;
+- le téléchargement est borné en taille (8 Mo, coupure même sans `Content-Length`) et en
+  délai (10 s) ;
+- le texte lu est présenté au modèle comme des données, jamais comme des instructions.
+
+**Budget :**
+- le plafond de recherches **par activité** est vérifié sous le même verrou que celui
+  du site, et les recherches sont rattachées à l'activité dans le registre ;
+- les lectures sont gratuites, mais limitées par élève (30 par fenêtre de 4 h) ;
+- le **cache des pages** (24 h) évite de retélécharger une datasheet que toute la
+  classe lit ;
+- le quota de tokens de l'élève compte le **prompt du dernier tour** (le contexte réel,
+  résultats compris) **plus tout le texte généré** : LM Studio garde en cache le début
+  commun des tours.
+
+**Réglages** (rubrique « Recherche de matériel ») :
+
+| Réglage | Défaut |
+|---|---|
+| Appels d'outils par réponse | 5 |
+| Lectures par élève et par fenêtre | 30 |
+| Taille maximale d'un document | 8 Mo |
+| Délai de lecture | 10 s |
+| Durée du cache des pages | 24 h |
+
+**Diagnostic** :
+- « Tester la lecture d'une page » (adresse + mots-clés) affiche exactement le texte que
+  le modèle recevrait, et signale l'absence de `pdftotext` ;
+- la page indique aussi les activités qui consomment le plus de recherches.
+
+**Tests** hors Moodle, sur le vrai code et deux PDF réels (datasheet ICP DAS, manuel
+Teracom de 100 000 caractères), 51 tests :
+- parcours recherche → page → datasheet liée → réponse ;
+- sélection :
+  - « DI/Counter: 8 Channels » et « 32-bit counter » retenus sur la datasheet ICP DAS ;
+  - section « Specifications » retenue sur le manuel Teracom ;
+- sécurité : adresses refusées, délai, taille, type, page produite en JavaScript,
+  `pdftotext` absent ;
+- cache des pages ;
+- limites : globale, lectures de l'élève, plafond d'activité ;
+- prompt ;
+- concurrence : 2 processus réels à 49/50 sur la même activité → une seule
+  réservation.
+
+**Limites :**
+- pages produites en JavaScript et PDF scannés illisibles (pas de reconnaissance de
+  caractères) ;
+- la sélection par mots-clés peut manquer une ligne formulée autrement ;
+- chaque lecture ajoute un tour et du contexte : vérifier la **longueur de contexte**
+  chargée dans LM Studio (16k ou plus conseillés) et la VRAM disponible.
 
 ---
 

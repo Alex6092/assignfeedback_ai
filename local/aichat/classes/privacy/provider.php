@@ -39,6 +39,7 @@ class provider implements
             'content'     => 'privacy:metadata:message:content',
             'tokens'      => 'privacy:metadata:message:tokens',
             'websearches' => 'privacy:metadata:message:websearches',
+            'pagereads'   => 'privacy:metadata:message:pagereads',
             'toolcalls'   => 'privacy:metadata:message:toolcalls',
             'flagstatus'   => 'privacy:metadata:message:flagstatus',
             'flagcategory' => 'privacy:metadata:message:flagcategory',
@@ -55,6 +56,12 @@ class provider implements
         $collection->add_external_location_link('websearch', array(
             'query' => 'privacy:metadata:websearch:query',
         ), 'privacy:metadata:websearch');
+
+        // Mode « recherche de matériel » : le serveur télécharge les pages lues
+        // (seule l'adresse part vers le site concerné, rien de l'élève).
+        $collection->add_external_location_link('pagereader', array(
+            'url' => 'privacy:metadata:pagereader:url',
+        ), 'privacy:metadata:pagereader');
 
         return $collection;
     }

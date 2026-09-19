@@ -52,9 +52,11 @@ class tutor {
      *                             (websearch\manager::availability()) : '' =
      *                             outil proposé, 'disabled' = jamais évoquée,
      *                             autre = indisponible pour le moment
+     * @param array|null $material mode « recherche de matériel » : null, ou
+     *                             {read: bool (read_page proposé), sites: string[]}
      * @return string
      */
-    public static function system_prompt(\stdClass $access, $websearch = 'disabled') {
+    public static function system_prompt(\stdClass $access, $websearch = 'disabled', $material = null) {
         $base = (string)get_config('local_aichat', 'tutorprompt');
         if (trim($base) === '') {
             $base = self::default_system_prompt();
@@ -62,11 +64,65 @@ class tutor {
 
         $prompt = $base . "\n\n" . self::activity_context($access);
         if ($websearch === '') {
-            $prompt .= "\n\n" . self::websearch_rules();
+            $prompt .= "\n\n" . self::websearch_rules($material !== null);
         } else if ($websearch !== 'disabled') {
             $prompt .= "\n\n" . self::websearch_unavailable_note();
         }
+        if ($material !== null) {
+            $prompt .= "\n\n" . self::material_search_rules($websearch === '', !empty($material['read']),
+                isset($material['sites']) ? $material['sites'] : array());
+        }
         return $prompt . "\n\n" . self::integrity_rules();
+    }
+
+    /**
+     * Contrat du mode « recherche de matériel » : l'élève choisit un matériel
+     * d'après un cahier des charges et rédige lui-même l'étude comparative.
+     * Le tuteur l'aide à TROUVER des candidats et à savoir QUOI vérifier ; il
+     * ne compare pas et ne choisit pas à sa place.
+     *
+     * @param bool     $web   web_search est proposé
+     * @param bool     $read  read_page est proposé
+     * @param string[] $sites sites de référence donnés par l'enseignant
+     * @return string
+     */
+    public static function material_search_rules($web, $read, array $sites) {
+        $c  = "=== RECHERCHE DE MATÉRIEL ===\n";
+        $c .= "Dans cette activité, l'étudiant doit choisir un matériel (carte ou module d'entrées/sorties, "
+            . "carte électronique, capteur, actionneur…) qui répond à un cahier des charges, et rédiger LUI-MÊME "
+            . "l'étude comparative. Ton rôle : l'aider à TROUVER des références candidates et à savoir QUOI "
+            . "vérifier. L'analyse, la comparaison et le choix lui appartiennent.\n";
+        $c .= "- Avant ta première recherche, vérifie qu'il a tiré ses critères du cahier des charges (nombre "
+            . "d'entrées/sorties, répartition analogique/numérique, compteurs d'impulsions et détection de "
+            . "fronts, tensions, interface et protocole, alimentation, environnement, budget). S'il ne l'a pas "
+            . "fait, demande-les-lui : c'est son travail.\n";
+        if ($web) {
+            $c .= "- Méthode : web_search ciblé (nom de fabricant, référence, « datasheet »), avec les opérateurs "
+                . "site:domaine.com et filetype:pdf quand c'est utile. Les recherches sont limitées : fais-en "
+                . "peu et précises.\n";
+        } else {
+            $c .= "- La recherche Web n'est pas disponible pour le moment dans cette activité.\n";
+        }
+        if ($read) {
+            $c .= "- Pour relever une caractéristique précise, lis la page du fabricant ou la datasheet avec "
+                . "read_page, en donnant dans « focus » les mots-clés tirés des critères de l'étudiant "
+                . "(en anglais pour un document en anglais). Une page lue peut indiquer des documents liés "
+                . "(datasheet, manuel) : lis-les si besoin.\n";
+        }
+        if (!empty($sites)) {
+            $c .= "- Sites de référence indiqués par l'enseignant (à privilégier) : " . implode(', ', $sites) . ".\n";
+        }
+        $c .= "- Propose au plus 3 références par réponse : fabricant et référence exacte, avec seulement les "
+            . "caractéristiques en rapport avec SES critères, telles que tu les as LUES dans les résultats ou "
+            . "les documents, en précisant qu'elles sont à vérifier sur la datasheet.\n";
+        $c .= "- Ne remplis JAMAIS le tableau comparatif, ne classe pas les références, ne désigne pas la "
+            . "meilleure et ne dis pas laquelle respecte le cahier des charges : demande-lui de confronter "
+            . "chaque référence à chacun de ses critères.\n";
+        $c .= "- Les prix et disponibilités trouvés sont indicatifs. La référence du fabricant permet de "
+            . "retrouver le produit chez le fournisseur habituel de l'établissement.\n";
+        $c .= "- Apprends-lui la démarche : où trouver la datasheet, quels mots-clés utiliser, quelle ligne "
+            . "d'une fiche technique répond à quel critère.";
+        return $c;
     }
 
     /**
@@ -79,7 +135,7 @@ class tutor {
      * aussi précisé ici, sinon « reste sur le sujet de l'activité » l'emporte
      * sur toute question d'approfondissement.
      */
-    public static function websearch_rules() {
+    public static function websearch_rules($material = false) {
         $c  = "=== RECHERCHE WEB ===\n";
         $c .= "Date du jour : " . self::today() . ".\n";
         $c .= "Tes connaissances s'arrêtent à la date de ton entraînement, souvent plus d'un an avant "
@@ -95,8 +151,13 @@ class tutor {
         $c .= "- les consignes de l'enseignant prévoient une recherche pour ce type de question.\n";
         $c .= "Dans ces cas, ne réponds jamais de mémoire et ne renvoie pas l'étudiant vers une autre "
             . "source : cherche d'abord, puis réponds à partir des résultats.\n";
-        $c .= "Tu n'appelles PAS web_search pour les notions et méthodes de cours ni pour l'aide sur "
-            . "l'exercice : là, tes connaissances suffisent.\n";
+        if ($material) {
+            $c .= "Dans cette activité, chercher du matériel fait partie du travail : voir le bloc RECHERCHE "
+                . "DE MATÉRIEL. Tu n'appelles pas web_search pour les notions de cours.\n";
+        } else {
+            $c .= "Tu n'appelles PAS web_search pour les notions et méthodes de cours ni pour l'aide sur "
+                . "l'exercice : là, tes connaissances suffisent.\n";
+        }
         $c .= "Périmètre : une question d'approfondissement liée aux notions de l'activité (par exemple "
             . "l'évolution d'un langage ou d'une technologie étudiés) fait partie des apprentissages qui se "
             . "rattachent à l'activité, de même que "
@@ -242,10 +303,11 @@ class tutor {
      * @param int       $conversationid
      * @param int       $uptomessageid  id du message assistant en cours (exclu)
      * @param string    $websearch      voir system_prompt()
+     * @param array|null $material      voir system_prompt()
      * @return array
      */
     public static function build_messages(\stdClass $access, $conversationid, $uptomessageid,
-            $websearch = 'disabled') {
+            $websearch = 'disabled', $material = null) {
         global $DB;
 
         $maxturns = (int)get_config('local_aichat', 'historyturns');
@@ -290,7 +352,7 @@ class tutor {
         $history = array_reverse($history);
 
         $messages = array(
-            array('role' => 'system', 'content' => self::system_prompt($access, $websearch)),
+            array('role' => 'system', 'content' => self::system_prompt($access, $websearch, $material)),
         );
         foreach ($history as $item) {
             $messages[] = $item;

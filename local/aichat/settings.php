@@ -198,6 +198,53 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Mode « recherche de matériel » : lecture des pages et datasheets.
+    $settings->add(new admin_setting_heading(
+        'local_aichat/material_heading',
+        new lang_string('material_heading', 'local_aichat'),
+        new lang_string('material_heading_desc', 'local_aichat')
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_toolcalls',
+        new lang_string('setting_wstoolcalls', 'local_aichat'),
+        new lang_string('setting_wstoolcalls_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_TOOLCALLS,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_readsperuser',
+        new lang_string('setting_wsreadsperuser', 'local_aichat'),
+        new lang_string('setting_wsreadsperuser_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_READSPERUSER,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_maxmb',
+        new lang_string('setting_wsmaxmb', 'local_aichat'),
+        new lang_string('setting_wsmaxmb_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_MAXMB,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_readtimeout',
+        new lang_string('setting_wsreadtimeout', 'local_aichat'),
+        new lang_string('setting_wsreadtimeout_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_READTIMEOUT,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_pagecachehours',
+        new lang_string('setting_wspagecachehours', 'local_aichat'),
+        new lang_string('setting_wspagecachehours_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_PAGECACHEHOURS,
+        PARAM_INT
+    ));
+
     // === Interface et conservation ===
     $settings->add(new admin_setting_heading(
         'local_aichat/misc_heading',
