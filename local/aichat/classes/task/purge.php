@@ -4,7 +4,8 @@ namespace local_aichat\task;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Nettoyage quotidien : conversations expirées et messages restés bloqués.
+ * Nettoyage quotidien : conversations expirées, messages restés bloqués et
+ * registre ancien du plafond de recherche Web.
  */
 class purge extends \core\task\scheduled_task {
 
@@ -28,7 +29,12 @@ class purge extends \core\task\scheduled_task {
             mtrace('local_aichat: ' . count($stale) . ' message(s) bloqué(s) libéré(s)');
         }
 
-        // 2. Conservation des conversations.
+        // 2. Registre du plafond de recherche Web : lignes sorties de la
+        //    fenêtre de 31 jours depuis longtemps. Avant le point 3, qui
+        //    s'arrête quand la conservation des conversations est illimitée.
+        \local_aichat\websearch\budget::purge();
+
+        // 3. Conservation des conversations.
         $days = (int)get_config('local_aichat', 'retentiondays');
         if ($days <= 0) {
             return; // conservation illimitée

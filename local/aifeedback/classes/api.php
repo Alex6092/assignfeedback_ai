@@ -172,11 +172,18 @@ class api {
      * on rend alors 0 depuis le write callback de curl, ce qui coupe la connexion
      * et libère immédiatement le serveur LLM.
      *
+     * Appel d'outils : si $options['tools'] est fourni (définitions au format
+     * OpenAI), le modèle peut répondre par des appels d'outils au lieu (ou en
+     * plus) du texte. Ils arrivent en morceaux dans le flux et sont rendus
+     * reconstitués dans 'tool_calls' ; ils ne passent jamais par $ondelta.
+     *
      * @param array    $messages messages OpenAI
-     * @param array    $options  mêmes options que call() ('timeout' défaut 600)
+     * @param array    $options  mêmes options que call() ('timeout' défaut 600),
+     *                           plus 'tools' et 'tool_choice' (facultatifs)
      * @param callable $ondelta  function(string $delta): bool|null — false = arrêter
      * @return array ['content' => string, 'finish_reason' => string|null,
-     *                'usage' => array|null, 'aborted' => bool]
+     *                'usage' => array|null, 'aborted' => bool,
+     *                'tool_calls' => array[] {id, name, arguments (JSON brut)}]
      * @throws \moodle_exception en cas d'erreur réseau ou HTTP
      */
     public static function stream(array $messages, array $options, callable $ondelta) {
@@ -229,6 +236,7 @@ class api {
             'aborted'  => false,
             'errbody'  => '',   // corps de réponse quand le HTTP n'est pas 200
             'httpcode' => 0,
+            'tools'    => array(), // appels d'outils en cours de reconstitution
         );
 
         $curl = new \curl();
@@ -273,6 +281,7 @@ class api {
                 'finish_reason' => 'aborted',
                 'usage'         => $state->usage,
                 'aborted'       => true,
+                'tool_calls'    => self::finish_tool_calls($state),
             );
         }
 
@@ -301,7 +310,10 @@ class api {
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
-        if (trim($state->content) === '') {
+        // Une réponse faite uniquement d'un appel d'outil n'a pas de texte :
+        // elle n'est vide que si l'on n'a reçu ni l'un ni l'autre.
+        $toolcalls = self::finish_tool_calls($state);
+        if (trim($state->content) === '' && empty($toolcalls)) {
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
                 'flux vide (aucun delta reçu) [model=' . $req['model'] . ', url=' . $req['url'] . ']');
         }
@@ -311,6 +323,7 @@ class api {
             'finish_reason' => $state->finish,
             'usage'         => $state->usage,
             'aborted'       => false,
+            'tool_calls'    => $toolcalls,
         );
     }
 
@@ -372,6 +385,11 @@ class api {
                 && $chunk['choices'][0]['finish_reason'] !== null) {
             $state->finish = (string)$chunk['choices'][0]['finish_reason'];
         }
+        // Appel d'outil : jamais montré à l'utilisateur, seulement accumulé.
+        if (isset($chunk['choices'][0]['delta']['tool_calls'])
+                && is_array($chunk['choices'][0]['delta']['tool_calls'])) {
+            self::accumulate_tool_calls($state, $chunk['choices'][0]['delta']['tool_calls']);
+        }
         $delta = null;
         if (isset($chunk['choices'][0]['delta']['content'])) {
             $delta = (string)$chunk['choices'][0]['delta']['content'];
@@ -381,6 +399,104 @@ class api {
         }
         $state->content .= $delta;
         return ($ondelta($delta) !== false);
+    }
+
+    /**
+     * Ajoute un morceau d'appels d'outils au flux en cours de reconstitution.
+     *
+     * Format OpenAI : chaque morceau porte un « index » ; le premier donne l'id
+     * et le nom de la fonction, les suivants des bouts de la chaîne JSON des
+     * arguments. Les serveurs locaux s'en écartent parfois : appel complet en
+     * un seul morceau, index absent, arguments déjà décodés en objet, objet
+     * unique au lieu d'une liste. Tous ces cas sont acceptés.
+     *
+     * @param \stdClass $state
+     * @param array     $calls contenu de delta.tool_calls
+     */
+    private static function accumulate_tool_calls(\stdClass $state, array $calls) {
+        if (isset($calls['function']) || isset($calls['id']) || isset($calls['index'])) {
+            $calls = array($calls); // objet unique au lieu d'une liste
+        }
+        foreach ($calls as $call) {
+            if (!is_array($call)) {
+                continue;
+            }
+            $id   = (isset($call['id']) && is_string($call['id'])) ? $call['id'] : '';
+            $fn   = (isset($call['function']) && is_array($call['function'])) ? $call['function'] : array();
+            $name = (isset($fn['name']) && is_string($fn['name'])) ? $fn['name'] : '';
+
+            if (isset($call['index']) && is_numeric($call['index'])) {
+                $index = (int)$call['index'];
+            } else {
+                // Sans index : un id déjà vu désigne son appel ; un nouvel id,
+                // ou un nom alors que le dernier appel est complet (nom +
+                // arguments JSON entiers), en ouvre un nouveau ; sinon c'est
+                // la suite du dernier (certains serveurs répètent le nom à
+                // chaque morceau).
+                $index = null;
+                if ($id !== '') {
+                    foreach ($state->tools as $i => $known) {
+                        if ($known['id'] === $id) {
+                            $index = $i;
+                            break;
+                        }
+                    }
+                }
+                if ($index === null) {
+                    $last  = empty($state->tools) ? null : max(array_keys($state->tools));
+                    $opens = ($id !== '');
+                    if (!$opens && $name !== '' && $last !== null && $state->tools[$last]['name'] !== '') {
+                        $args  = $state->tools[$last]['arguments'];
+                        $opens = ($args !== '' && json_decode($args) !== null);
+                    }
+                    $index = ($last === null) ? 0 : ($opens ? $last + 1 : $last);
+                }
+            }
+            if (!isset($state->tools[$index])) {
+                $state->tools[$index] = array('id' => '', 'name' => '', 'arguments' => '');
+            }
+            $entry = &$state->tools[$index];
+
+            if ($id !== '' && $entry['id'] === '') {
+                $entry['id'] = $id;
+            }
+            if ($name !== '' && $name !== $entry['name']) {
+                // Le nom arrive normalement d'un bloc ; s'il est découpé, on le recolle.
+                $entry['name'] = ($entry['name'] === '') ? $name : $entry['name'] . $name;
+            }
+            if (isset($fn['arguments'])) {
+                if (is_string($fn['arguments'])) {
+                    $entry['arguments'] .= $fn['arguments'];
+                } else if (is_array($fn['arguments'])) {
+                    $entry['arguments'] = json_encode($fn['arguments'], JSON_UNESCAPED_UNICODE);
+                }
+            }
+            unset($entry);
+        }
+    }
+
+    /**
+     * Appels d'outils reconstitués, dans l'ordre, prêts à être exécutés puis
+     * renvoyés au modèle (un id est inventé si le serveur n'en a pas fourni :
+     * le message « tool » doit y faire référence).
+     *
+     * @param \stdClass $state
+     * @return array[] {id, name, arguments}
+     */
+    private static function finish_tool_calls(\stdClass $state) {
+        if (empty($state->tools)) {
+            return array();
+        }
+        ksort($state->tools);
+        $out = array();
+        foreach ($state->tools as $index => $call) {
+            $out[] = array(
+                'id'        => ($call['id'] !== '') ? $call['id'] : 'call_' . $index . '_' . substr(md5(uniqid('', true)), 0, 8),
+                'name'      => trim($call['name']),
+                'arguments' => ($call['arguments'] !== '') ? $call['arguments'] : '{}',
+            );
+        }
+        return $out;
     }
 
     /**
@@ -511,6 +627,14 @@ class api {
         }
         if (!empty($options['extra_body']) && is_array($options['extra_body'])) {
             $payload['extra_body'] = $options['extra_body'];
+        }
+        // Outils proposés au modèle (appel de fonctions). Absents = payload
+        // strictement identique à celui d'avant cette fonctionnalité.
+        if (!empty($options['tools']) && is_array($options['tools'])) {
+            $payload['tools'] = $options['tools'];
+            if (isset($options['tool_choice'])) {
+                $payload['tool_choice'] = $options['tool_choice'];
+            }
         }
 
         // -------------------------------------------------------------

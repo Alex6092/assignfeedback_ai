@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/aichat/db" VERSION="20260918" COMMENT="AI pedagogical tutor: per-activity configuration and student conversations">
+<XMLDB PATH="local/aichat/db" VERSION="20260919" COMMENT="AI pedagogical tutor: per-activity configuration and student conversations">
   <TABLES>
 
     <TABLE NAME="local_aichat_activity" COMMENT="Per course-module configuration of the AI tutor">
@@ -17,6 +17,7 @@
         <FIELD NAME="customprompt"  TYPE="text"              NOTNULL="false" COMMENT="Extra teacher instructions for the tutor"/>
         <FIELD NAME="quizscope"     TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="all" COMMENT="all|tagged"/>
         <FIELD NAME="quiztag"       TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="websearch"     TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0" COMMENT="Let the tutor search the Web on this activity (also requires the site switch)"/>
         <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timemodified"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
       </FIELDS>
@@ -61,6 +62,8 @@
         <FIELD NAME="slotid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Pool ticket id"/>
         <FIELD NAME="serverid"       TYPE="int"  LENGTH="2"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Exact if reported by the server, estimated otherwise"/>
+        <FIELD NAME="websearches"    TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0" COMMENT="Web searches sent to the provider for this answer (per-student quota)"/>
+        <FIELD NAME="toolcalls"      TYPE="text"             NOTNULL="false" COMMENT="JSON log of the web searches of this answer (query, outcome), for the teacher"/>
         <FIELD NAME="error"          TYPE="text"             NOTNULL="false"/>
         <FIELD NAME="flagstatus"     TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="none" COMMENT="Moderation of student turns: none|pending|retry|clean|flagged|failed"/>
         <FIELD NAME="flagcategory"   TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="" COMMENT="manipulation|menace|chantage|insulte|contenu_inapproprie|detresse"/>
@@ -78,6 +81,20 @@
         <INDEX NAME="user_time"      UNIQUE="false" FIELDS="userid, timecreated"/>
         <INDEX NAME="status"         UNIQUE="false" FIELDS="status"/>
         <INDEX NAME="flagstatus"     UNIQUE="false" FIELDS="flagstatus"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aichat_wsledger" COMMENT="Site-wide register of web searches for the 31-day spending cap. No personal data: never deleted by privacy requests or course resets">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="status"      TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="reserved" COMMENT="reserved|done|refunded|cached (served by the search cache, not counted)"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated"/>
       </INDEXES>
     </TABLE>
 

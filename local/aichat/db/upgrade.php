@@ -39,5 +39,41 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091803, 'local', 'aichat');
     }
 
+    // 2026091900 : recherche Web optionnelle du tuteur (outil web_search).
+    if ($oldversion < 2026091900) {
+        $table = new xmldb_table('local_aichat_activity');
+        $field = new xmldb_field('websearch', XMLDB_TYPE_INTEGER, '1', null,
+            XMLDB_NOTNULL, null, '0', 'quiztag');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $table  = new xmldb_table('local_aichat_message');
+        $fields = array(
+            new xmldb_field('websearches', XMLDB_TYPE_INTEGER, '4', null,
+                XMLDB_NOTNULL, null, '0', 'tokens'),
+            new xmldb_field('toolcalls', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'websearches'),
+        );
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        // Registre du plafond du site (aucune donnée personnelle).
+        $table = new xmldb_table('local_aichat_wsledger');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'reserved');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('timecreated', XMLDB_INDEX_NOTUNIQUE, array('timecreated'));
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091900, 'local', 'aichat');
+    }
+
     return true;
 }

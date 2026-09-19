@@ -123,7 +123,7 @@ class hook_callbacks {
             'widget_placeholder', 'widget_send', 'widget_stop', 'widget_retry',
             'widget_welcome', 'widget_connecting', 'widget_generating',
             'widget_queued_next', 'widget_queued_n', 'widget_interrupted',
-            'widget_quota', 'widget_networkerror', 'widget_sendhint',
+            'widget_quota', 'widget_networkerror', 'widget_sendhint', 'widget_searching',
         );
         $out = array();
         foreach ($keys as $key) {

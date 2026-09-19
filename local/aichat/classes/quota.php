@@ -41,10 +41,7 @@ class quota {
     public static function check($userid) {
         global $DB;
 
-        $windowhours = (int)get_config('local_aichat', 'quota_window_hours');
-        if ($windowhours <= 0) {
-            $windowhours = self::DEFAULT_WINDOW_HOURS;
-        }
+        $windowhours = self::window_hours();
         $tokensmax   = self::limit('quota_tokens', self::DEFAULT_TOKENS);
         $messagesmax = self::limit('quota_messages', self::DEFAULT_MESSAGES);
 
@@ -91,16 +88,25 @@ class quota {
         return $out;
     }
 
+    /** Durée de la fenêtre glissante, en heures (partagée avec la recherche Web). */
+    public static function window_hours() {
+        $windowhours = (int)get_config('local_aichat', 'quota_window_hours');
+        return ($windowhours > 0) ? $windowhours : self::DEFAULT_WINDOW_HOURS;
+    }
+
     /**
      * Enregistre la consommation d'un échange sur le message assistant.
      *
      * @param int        $messageid
      * @param array|null $usage   bloc « usage » renvoyé par le serveur, si fourni
+     *                            (cumulé sur tous les tours s'il y a eu des recherches)
      * @param string     $prompt  texte envoyé (pour l'estimation de repli)
      * @param string     $answer  texte reçu (pour l'estimation de repli)
+     * @param int        $rounds  tours de génération : le serveur relit le prompt à chacun
+     * @param int        $extrachars taille des résultats de recherche ajoutés au prompt
      * @return int tokens comptabilisés
      */
-    public static function record($messageid, $usage, $prompt, $answer) {
+    public static function record($messageid, $usage, $prompt, $answer, $rounds = 1, $extrachars = 0) {
         global $DB;
 
         $tokens = 0;
@@ -112,7 +118,9 @@ class quota {
                     + (int)(isset($usage['completion_tokens']) ? $usage['completion_tokens'] : 0);
         }
         if ($tokens <= 0) {
-            $tokens = self::estimate_tokens($prompt) + self::estimate_tokens($answer);
+            $tokens = self::estimate_tokens($prompt) * max(1, (int)$rounds)
+                + (int)ceil(max(0, (int)$extrachars) / 4)
+                + self::estimate_tokens($answer);
         }
 
         $DB->set_field('local_aichat_message', 'tokens', $tokens, array('id' => (int)$messageid));
