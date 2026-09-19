@@ -16,7 +16,7 @@ defined('MOODLE_INTERNAL') || die();
  * valide → fournisseur suspendu ? → quota de l'élève → plafond du site
  * (réservation sous verrou) → appel au fournisseur.
  */
-class tool {
+class tool implements \local_aichat\toolset {
 
     const NAME = 'web_search';
 
@@ -31,13 +31,11 @@ class tool {
     const MAX_AGE     = 40;
     const MAX_TOTAL   = 6000;  // pour une recherche, résultats compris (~1 500 tokens)
 
-    /** Liens ajoutés au plus en fin de réponse. */
-    const MAX_SOURCES = 8;
-
     /** Raisons d'indisponibilité (une chaîne de langue ws_reason_* chacune). */
     const REASONS = array('not_configured', 'provider_unavailable', 'quota_exhausted',
         'user_quota_exhausted', 'tool_call_limit', 'invalid_query', 'unknown_tool', 'budget_busy',
-        'rate_limited', 'provider_quota', 'auth_error', 'provider_error', 'timeout');
+        'rate_limited', 'provider_quota', 'auth_error', 'provider_error', 'timeout',
+        'activity_quota_exhausted');
 
     /** @var provider */
     private $provider;
@@ -60,6 +58,12 @@ class tool {
     /** @var int plafond du site */
     private $cap;
 
+    /** @var int activité (plafond propre à l'activité, suivi de consommation) */
+    private $cmid;
+
+    /** @var int plafond de l'activité sur 31 jours (0 = aucun) */
+    private $activitycap;
+
     /** @var int appels d'outil traités pour cette réponse (tous, même refusés) */
     public $attempts = 0;
 
@@ -80,16 +84,36 @@ class tool {
      * @param int       $userused
      * @param int       $peruser
      * @param int       $cap
+     * @param int       $cmid        activité (0 = non suivie)
+     * @param int       $activitycap plafond de l'activité sur 31 jours (0 = aucun)
      */
     public function __construct(provider $provider, \stdClass $user, $maxcalls, $maxresults,
-            $userused, $peruser, $cap) {
-        $this->provider   = $provider;
-        $this->user       = $user;
-        $this->maxcalls   = max(1, (int)$maxcalls);
-        $this->maxresults = max(1, (int)$maxresults);
-        $this->userused   = (int)$userused;
-        $this->peruser    = (int)$peruser;
-        $this->cap        = (int)$cap;
+            $userused, $peruser, $cap, $cmid = 0, $activitycap = 0) {
+        $this->provider    = $provider;
+        $this->user        = $user;
+        $this->maxcalls    = max(1, (int)$maxcalls);
+        $this->maxresults  = max(1, (int)$maxresults);
+        $this->userused    = (int)$userused;
+        $this->peruser     = (int)$peruser;
+        $this->cap         = (int)$cap;
+        $this->cmid        = (int)$cmid;
+        $this->activitycap = (int)$activitycap;
+    }
+
+    public function definitions() {
+        return array(self::definition());
+    }
+
+    public function sources() {
+        return array_values($this->sources);
+    }
+
+    public function log() {
+        return $this->log;
+    }
+
+    public function counters() {
+        return array('websearches' => (int)$this->billed, 'pagereads' => 0);
     }
 
     /**
@@ -179,7 +203,7 @@ class tool {
         $cached   = searchcache::get($provider, $query, $this->maxresults);
         if ($cached !== null) {
             $this->notify($onsearch, $query);
-            budget::record_cached();
+            budget::record_cached($this->cmid);
             return $this->deliver($query, $cached['items'], (int)$cached['time']);
         }
 
@@ -189,7 +213,7 @@ class tool {
         if ($this->peruser > 0 && $this->userused + $this->billed >= $this->peruser) {
             return $this->refuse($query, 'user_quota_exhausted');
         }
-        $ticket = budget::reserve($this->cap);
+        $ticket = budget::reserve($this->cap, $this->cmid, $this->activitycap);
         if (!is_int($ticket)) {
             return $this->refuse($query, $ticket);
         }
@@ -245,7 +269,8 @@ class tool {
         }
         $this->log[] = $entry;
         foreach (array_slice($items, 0, $shown) as $item) {
-            $this->sources[$item['url']] = array('title' => $item['title'], 'url' => $item['url']);
+            $this->sources[$item['url']] = array('title' => $item['title'], 'url' => $item['url'],
+                'kind' => 'search');
         }
         return $text;
     }
@@ -260,35 +285,6 @@ class tool {
         } catch (\Throwable $e) {
             // Un statut non affiché ne doit pas empêcher la recherche.
         }
-    }
-
-    /**
-     * Liste des sources ajoutée par le PHP à la fin de la réponse : les pages
-     * réellement transmises au modèle. Garantie à chaque recherche (le modèle
-     * oublie parfois de citer, ou invente une URL), et elle vaut mention de
-     * Brave Search, exigée pour ses crédits gratuits.
-     *
-     * @param array[] $sources {title, url}
-     * @return string markdown ('' s'il n'y a rien à citer)
-     */
-    public static function sources_markdown(array $sources) {
-        if (empty($sources)) {
-            return '';
-        }
-        $lines = array('**' . get_string('ws_sources_heading', 'local_aichat') . '**', '');
-        foreach (array_slice(array_values($sources), 0, self::MAX_SOURCES) as $source) {
-            $title = self::cut(trim(preg_replace('/\s+/u', ' ', (string)$source['title'])), 100);
-            if ($title === '') {
-                $title = (string)parse_url($source['url'], PHP_URL_HOST);
-            }
-            // Crochets du titre et parenthèses de l'URL échappés : ils
-            // casseraient le lien markdown.
-            $title = str_replace(array('\\', '[', ']'), array('\\\\', '\\[', '\\]'), $title);
-            $url   = str_replace(array(' ', '(', ')', '<', '>'), array('%20', '%28', '%29', '%3C', '%3E'),
-                (string)$source['url']);
-            $lines[] = '- [' . $title . '](' . $url . ')';
-        }
-        return implode("\n", $lines);
     }
 
     /**

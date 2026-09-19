@@ -156,9 +156,23 @@ if ($conversationid > 0) {
                         \local_aichat\websearch\manager::reason_label($search['reason']))));
                     continue;
                 }
-                $query = ($search['q'] !== '') ? '« ' . s($search['q']) . ' »'
-                    : html_writer::tag('em', get_string('ws_noquery', 'local_aichat'));
-                if ($search['status'] === 'done') {
+                $isread = (isset($search['tool']) && $search['tool'] === 'read_page');
+                if ($isread) {
+                    // Lecture d'une page : adresse cliquable pour l'enseignant.
+                    $query = get_string('ws_read', 'local_aichat') . ' '
+                        . (($search['q'] !== '') ? html_writer::link($search['q'], s(shorten_text($search['q'], 80)),
+                            array('target' => '_blank', 'rel' => 'noopener noreferrer'))
+                        : html_writer::tag('em', get_string('ws_noquery', 'local_aichat')));
+                } else {
+                    $query = ($search['q'] !== '') ? '« ' . s($search['q']) . ' »'
+                        : html_writer::tag('em', get_string('ws_noquery', 'local_aichat'));
+                }
+                if ($search['status'] === 'done' && $isread) {
+                    $outcome = get_string('ws_read_done', 'local_aichat', (object)array(
+                        'type'  => strtoupper(isset($search['type']) ? $search['type'] : ''),
+                        'chars' => (int)$search['results'],
+                    ));
+                } else if ($search['status'] === 'done') {
                     $outcome = get_string('ws_results', 'local_aichat', (int)$search['results']);
                     if (!empty($search['cached'])) {
                         $outcome .= ' ' . get_string('ws_cached', 'local_aichat');

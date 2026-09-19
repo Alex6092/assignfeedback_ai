@@ -98,15 +98,16 @@ class quota {
      * Enregistre la consommation d'un échange sur le message assistant.
      *
      * @param int        $messageid
-     * @param array|null $usage   bloc « usage » renvoyé par le serveur, si fourni
-     *                            (cumulé sur tous les tours s'il y a eu des recherches)
+     * @param array|null $usage   bloc « usage » renvoyé par le serveur, si fourni. Avec
+     *                            des outils : prompt du dernier tour + tout le texte
+     *                            généré (generator::run) — le début commun des tours est
+     *                            gardé en cache par le serveur, on ne le compte qu'une fois
      * @param string     $prompt  texte envoyé (pour l'estimation de repli)
      * @param string     $answer  texte reçu (pour l'estimation de repli)
-     * @param int        $rounds  tours de génération : le serveur relit le prompt à chacun
-     * @param int        $extrachars taille des résultats de recherche ajoutés au prompt
+     * @param int        $extrachars taille des résultats d'outils ajoutés au prompt
      * @return int tokens comptabilisés
      */
-    public static function record($messageid, $usage, $prompt, $answer, $rounds = 1, $extrachars = 0) {
+    public static function record($messageid, $usage, $prompt, $answer, $extrachars = 0) {
         global $DB;
 
         $tokens = 0;
@@ -118,7 +119,7 @@ class quota {
                     + (int)(isset($usage['completion_tokens']) ? $usage['completion_tokens'] : 0);
         }
         if ($tokens <= 0) {
-            $tokens = self::estimate_tokens($prompt) * max(1, (int)$rounds)
+            $tokens = self::estimate_tokens($prompt)
                 + (int)ceil(max(0, (int)$extrachars) / 4)
                 + self::estimate_tokens($answer);
         }

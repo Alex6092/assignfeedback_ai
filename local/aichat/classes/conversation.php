@@ -109,6 +109,7 @@ class conversation {
             'serverid'       => 0,
             'tokens'         => 0,
             'websearches'    => 0,
+            'pagereads'      => 0,
             'error'          => null,
             'timecreated'    => $now,
             'timemodified'   => $now,
@@ -196,27 +197,42 @@ class conversation {
      * = activée sur l'activité mais indisponible pour cette réponse (raison).
      * Rien n'est écrit quand la recherche n'est pas activée.
      *
-     * @param int                               $messageid
-     * @param \local_aichat\websearch\tool|null $tool
-     * @param string                            $websearch disponibilité (manager::availability())
+     * @param int                        $messageid
+     * @param \local_aichat\toolset|null $tool      outil(s) proposés pour cette réponse
+     * @param string                     $websearch disponibilité (manager::availability())
      */
     public static function record_searches($messageid, $tool, $websearch = 'disabled') {
         global $DB;
         if ($tool !== null) {
-            $log    = $tool->log;
-            $billed = (int)$tool->billed;
+            $log      = $tool->log();
+            $counters = $tool->counters();
         } else if ($websearch !== '' && $websearch !== 'disabled') {
-            $log    = array(array('q' => '', 'status' => 'notoffered', 'reason' => (string)$websearch,
+            $log      = array(array('q' => '', 'status' => 'notoffered', 'reason' => (string)$websearch,
                 'results' => 0, 'time' => time()));
-            $billed = 0;
+            $counters = array('websearches' => 0, 'pagereads' => 0);
         } else {
             return;
         }
         $DB->update_record(self::TABLE_MSG, (object)array(
             'id'          => (int)$messageid,
-            'websearches' => $billed,
+            'websearches' => (int)$counters['websearches'],
+            'pagereads'   => (int)$counters['pagereads'],
             'toolcalls'   => json_encode($log, JSON_UNESCAPED_UNICODE),
         ));
+    }
+
+    /**
+     * Question de l'élève à laquelle répond le message assistant donné.
+     *
+     * @param int $conversationid
+     * @param int $assistantid
+     * @return string
+     */
+    public static function student_question($conversationid, $assistantid) {
+        global $DB;
+        $rows = $DB->get_records_select(self::TABLE_MSG, 'conversationid = ? AND id < ? AND role = ?',
+            array((int)$conversationid, (int)$assistantid, 'user'), 'id DESC', 'id, content', 0, 1);
+        return empty($rows) ? '' : (string)reset($rows)->content;
     }
 
     /**

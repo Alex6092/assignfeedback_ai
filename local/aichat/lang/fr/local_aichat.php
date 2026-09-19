@@ -186,6 +186,9 @@ $string['privacy:metadata:message:websearches']      = 'Le nombre de recherches 
 $string['privacy:metadata:message:toolcalls']        = 'Les requêtes de recherche Web rédigées par le tuteur pour cette réponse, et leur issue.';
 $string['privacy:metadata:websearch']                = 'Si la recherche Web est activée, le tuteur peut interroger un moteur de recherche externe (Brave Search). Seule la requête rédigée par le modèle est envoyée, après retrait du nom, du prénom, de l\'identifiant et de l\'e-mail de l\'élève.';
 $string['privacy:metadata:websearch:query']          = 'Le texte de la requête de recherche.';
+$string['privacy:metadata:message:pagereads']        = 'Le nombre de pages ou documents lus par le tuteur pour cette réponse.';
+$string['privacy:metadata:pagereader']               = 'En mode « recherche de matériel », le serveur télécharge les pages et documents que le tuteur lit, sur le site qui les publie. Seule l\'adresse de la page est transmise ; aucune donnée de l\'élève.';
+$string['privacy:metadata:pagereader:url']           = 'L\'adresse de la page ou du document lu.';
 
 // === Recherche Web ===
 $string['websearch_heading']          = 'Recherche Web';
@@ -210,10 +213,31 @@ $string['setting_wstimeout_help']     = 'Au-delà, la recherche est abandonnée 
 $string['setting_wscachedays']        = 'Durée du cache des recherches (jours)';
 $string['setting_wscachedays_help']   = 'Les résultats d\'une recherche réussie sont gardés et resservis à tout élève qui pose la même requête (casse et espaces ignorés) : gratuit, instantané, et disponible même si le moteur est en panne. Une recherche servie par le cache ne consomme ni le plafond du site ni le quota de l\'élève. Le modèle est informé de la date des résultats. Plus court = informations plus fraîches ; plus long = plus d\'économies. 0 = pas de cache. Entre 0 et 90. Défaut : 7.';
 $string['cachedef_searchcache']       = 'Résultats de recherche Web du tuteur IA';
+$string['cachedef_pagecache']         = 'Pages et datasheets lues par le tuteur IA';
+$string['material_heading']           = 'Recherche de matériel (lecture des pages)';
+$string['material_heading_desc']      = 'Dans les activités en mode « Recherche de matériel », le tuteur peut lire les pages des fabricants et les datasheets PDF trouvées par ses recherches, pour y relever des caractéristiques précises. La lecture est gratuite (aucun budget Brave) ; seules sont lisibles les adresses trouvées par une recherche, les documents liés d\'une page lue et les adresses données par l\'élève. Les adresses internes sont refusées par la politique de sécurité HTTP de Moodle. Les PDF utilisent pdftotext (réglages de la bibliothèque partagée).';
+$string['setting_wstoolcalls']        = 'Appels d\'outils par réponse';
+$string['setting_wstoolcalls_help']   = 'Recherches et lectures au total pour une même réponse du tuteur en mode matériel (les recherches restent aussi limitées par le réglage « Recherches maximales par réponse »). Au-delà, le modèle doit répondre. Chaque appel ajoute un tour de génération. Entre 2 et 8. Défaut : 5.';
+$string['setting_wsreadsperuser']     = 'Lectures de pages par élève et par fenêtre';
+$string['setting_wsreadsperuser_help'] = 'Nombre maximal de pages ou documents lus pour un élève sur la fenêtre du quota élève, toutes activités confondues. Protège le serveur (téléchargement, extraction). 0 = pas de limite. Défaut : 30.';
+$string['setting_wsmaxmb']            = 'Taille maximale d\'un document (Mo)';
+$string['setting_wsmaxmb_help']       = 'Au-delà, la page ou le PDF n\'est pas téléchargé. Entre 1 et 50. Défaut : 8.';
+$string['setting_wsreadtimeout']      = 'Délai de lecture d\'une page (secondes)';
+$string['setting_wsreadtimeout_help'] = 'Délai maximal de téléchargement. L\'élève attend pendant ce temps. Entre 3 et 30. Défaut : 10.';
+$string['setting_wspagecachehours']   = 'Durée du cache des pages lues (heures)';
+$string['setting_wspagecachehours_help'] = 'Le texte extrait d\'une page ou d\'une datasheet est gardé et resservi : une classe qui lit la même datasheet ne la télécharge qu\'une fois. 0 = pas de cache. Entre 0 et 720. Défaut : 24.';
 
-$string['form_websearch']             = 'Autoriser la recherche Web';
-$string['form_websearch_help']        = 'Le tuteur peut chercher sur Internet quand une information récente ou externe est nécessaire (version d\'un logiciel, documentation officielle…), et cite alors ses sources. Il ne cherche jamais la solution de l\'activité. À laisser décoché si l\'activité s\'y prête mal (exercice dont la solution se trouve facilement en ligne, évaluation).';
+$string['form_websearch']             = 'Recherches du tuteur';
+$string['form_websearch_help']        = '<strong>Aucune</strong> : le tuteur répond avec ses seules connaissances.<br><strong>Recherche Web ponctuelle</strong> : il peut chercher sur Internet quand une information récente ou externe est nécessaire (version d\'un logiciel, documentation officielle…) et cite ses sources.<br><strong>Recherche de matériel</strong> : pour une activité où l\'élève choisit un matériel d\'après un cahier des charges (carte d\'entrées/sorties, capteur…). Le tuteur cherche des références, lit les pages des fabricants et les datasheets pour y relever les caractéristiques, propose au plus 3 pistes par réponse, mais ne remplit jamais l\'étude comparative et ne choisit jamais à la place de l\'élève.<br>Dans tous les cas, il ne cherche jamais la solution de l\'activité. À laisser sur « Aucune » si l\'activité s\'y prête mal (exercice dont la solution se trouve facilement en ligne, évaluation).';
+$string['form_websearch_none']        = 'Aucune';
+$string['form_websearch_web']         = 'Recherche Web ponctuelle';
+$string['form_websearch_material']    = 'Recherche de matériel (Web + lecture des pages et datasheets)';
+$string['form_websearchcap']          = 'Plafond de recherches Web de l\'activité (31 jours)';
+$string['form_websearchcap_help']     = 'Nombre maximal de recherches Web (payantes au-delà du budget gratuit du site) pour cette activité, sur 31 jours glissants, toutes classes confondues. Évite qu\'un TP épuise le budget de tout le lycée. Les lectures de pages et les recherches servies par le cache ne comptent pas. Environ 5 recherches par élève suffisent : 150 pour une classe de 30. 0 = seul le plafond du site s\'applique.';
+$string['form_websearchsites']        = 'Sites de référence';
+$string['form_websearchsites_help']   = 'Facultatif, un domaine par ligne (ex. teracomsystems.com, hw-group.com, icpdas-europe.com, gotronic.fr, raspberrypi.com). Le tuteur privilégie ces sites dans ses recherches (opérateur site:) : pages des fabricants et distributeurs habituels, plutôt que places de marché ou blogs.';
 $string['widget_searching']           = 'Recherche sur le Web (Brave Search) : « {$a} »…';
+$string['widget_reading']             = 'Lecture d\'une page : {$a}…';
 $string['ws_sources_heading']         = 'Sources consultées (recherche Web, Brave Search) :';
 
 $string['ws_transcript']              = 'Recherches Web :';
@@ -222,6 +246,16 @@ $string['ws_cached']                  = '(cache)';
 $string['ws_cache_hits']              = '{$a->hits} recherche(s) servie(s) par le cache sur les 31 derniers jours, sans rien décompter (durée du cache : {$a->days} jour(s)).';
 $string['ws_unavailable']             = 'non effectuée ({$a})';
 $string['ws_noquery']                 = 'requête invalide';
+$string['ws_read']                    = 'Lecture :';
+$string['ws_read_done']               = '{$a->type}, {$a->chars} caractères retenus';
+$string['ws_reason_activity_quota_exhausted'] = 'plafond de l\'activité atteint';
+$string['ws_reason_url_not_allowed']      = 'adresse non autorisée';
+$string['ws_reason_fetch_error']          = 'page inaccessible';
+$string['ws_reason_too_large']            = 'document trop volumineux';
+$string['ws_reason_unsupported_type']     = 'format non lisible';
+$string['ws_reason_empty_content']        = 'contenu illisible (JavaScript, PDF scanné…)';
+$string['ws_reason_pdftotext_missing']    = 'lecture des PDF indisponible (pdftotext)';
+$string['ws_reason_reads_exhausted']      = 'quota de lectures de l\'élève atteint';
 $string['ws_offered_unused']          = 'recherche proposée au modèle, non utilisée';
 $string['ws_notoffered']              = 'recherche non proposée au modèle ({$a})';
 $string['ws_reason_not_configured']       = 'clé API absente';
@@ -274,6 +308,17 @@ $string['ws_testtools_verdict_ok']    = 'Ce serveur gère correctement la recher
 $string['ws_testtools_verdict_bad']   = 'Ce serveur ne gère pas correctement l\'appel d\'outil avec ce modèle. N\'activez pas la recherche Web tant qu\'il sert le tuteur : mettez LM Studio à jour, essayez un autre modèle, ou retirez-lui l\'usage « tuteur ».';
 $string['ws_answer1']                 = 'Texte du premier tour (doit être vide ou court, sans balise d\'appel) :';
 $string['ws_answer2']                 = 'Réponse finale après le résultat factice :';
+$string['ws_top_activities']          = 'Activités qui consomment le plus de recherches Web (31 jours) :';
+$string['ws_activity_used']           = '{$a->used} recherche(s), plafond de l\'activité : {$a->cap}';
+$string['ws_testread_heading']        = 'Tester la lecture d\'une page';
+$string['ws_testread_explain']        = 'Lit une page ou un PDF par le même chemin que l\'outil read_page du tuteur (téléchargement, extraction, sélection des passages pertinents pour les mots-clés), sans cache ni appel au moteur de recherche. Le résultat affiché est exactement ce que le modèle recevrait.';
+$string['ws_testread_nopdftotext']    = 'pdftotext est introuvable sur ce serveur : les datasheets PDF ne pourront pas être lues (voir les réglages de la bibliothèque partagée, binaires poppler-utils).';
+$string['ws_testread_url']            = 'Adresse de la page ou du PDF';
+$string['ws_testread_focus']          = 'Mots-clés (focus)';
+$string['ws_testread']                = 'Tester la lecture';
+$string['ws_testread_ok']             = 'Lecture réussie.';
+$string['ws_testread_failed']         = 'Lecture impossible : {$a}.';
+$string['ws_testread_output']         = 'Texte transmis au modèle :';
 $string['diag_step_request']          = 'Requête acceptée par le serveur';
 $string['diag_step_toolcall']         = 'Appel de l\'outil web_search reconnu dans le flux (tool_calls)';
 $string['diag_step_noleak']           = 'Aucune balise d\'appel d\'outil dans le texte du premier tour';

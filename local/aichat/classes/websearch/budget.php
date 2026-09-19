@@ -63,12 +63,51 @@ class budget {
     }
 
     /**
+     * Recherches décomptées pour une activité sur la fenêtre de 31 jours
+     * (plafond propre à l'activité : un TP ne vide pas le budget du site).
+     *
+     * @param int $cmid
+     * @return int
+     */
+    public static function activity_used($cmid) {
+        global $DB;
+        return (int)$DB->count_records_select(self::LEDGER,
+            'cmid = ? AND timecreated > ? AND status IN (?, ?)',
+            array((int)$cmid, time() - self::WINDOW, 'reserved', 'done'));
+    }
+
+    /**
+     * Activités qui consomment le plus sur la fenêtre (page de diagnostic).
+     *
+     * @param int $limit
+     * @return int[] cmid => nombre de recherches décomptées
+     */
+    public static function top_activities($limit = 5) {
+        global $DB;
+        $rows = $DB->get_records_sql(
+            "SELECT cmid, COUNT(1) AS used
+               FROM {" . self::LEDGER . "}
+              WHERE cmid > 0 AND timecreated > ? AND status IN (?, ?)
+           GROUP BY cmid
+           ORDER BY COUNT(1) DESC",
+            array(time() - self::WINDOW, 'reserved', 'done'), 0, (int)$limit);
+        $out = array();
+        foreach ($rows as $row) {
+            $out[(int)$row->cmid] = (int)$row->used;
+        }
+        return $out;
+    }
+
+    /**
      * Inscrit une recherche servie par le cache (suivi des économies ; hors
      * de tout compteur de budget).
+     *
+     * @param int $cmid
      */
-    public static function record_cached() {
+    public static function record_cached($cmid = 0) {
         global $DB;
-        $DB->insert_record(self::LEDGER, (object)array('status' => 'cached', 'timecreated' => time()));
+        $DB->insert_record(self::LEDGER, (object)array('status' => 'cached', 'cmid' => (int)$cmid,
+            'timecreated' => time()));
     }
 
     /** Recherches servies par le cache sur la fenêtre de 31 jours. */
@@ -82,11 +121,13 @@ class budget {
      * Réserve une recherche dans le plafond du site, AVANT l'appel au
      * fournisseur.
      *
-     * @param int $cap plafond sur la fenêtre (0 = aucune recherche)
+     * @param int $cap         plafond du site sur la fenêtre (0 = aucune recherche)
+     * @param int $cmid        activité (0 = non suivie)
+     * @param int $activitycap plafond de l'activité sur la fenêtre (0 = aucun)
      * @return int|string id de la réservation, ou raison du refus
-     *                    ('quota_exhausted' | 'budget_busy')
+     *                    ('quota_exhausted' | 'activity_quota_exhausted' | 'budget_busy')
      */
-    public static function reserve($cap) {
+    public static function reserve($cap, $cmid = 0, $activitycap = 0) {
         global $DB;
         if ((int)$cap <= 0) {
             return 'quota_exhausted';
@@ -100,8 +141,12 @@ class budget {
             if (self::used() >= (int)$cap) {
                 return 'quota_exhausted';
             }
+            if ((int)$cmid > 0 && (int)$activitycap > 0 && self::activity_used($cmid) >= (int)$activitycap) {
+                return 'activity_quota_exhausted';
+            }
             return (int)$DB->insert_record(self::LEDGER, (object)array(
                 'status'      => 'reserved',
+                'cmid'        => (int)$cmid,
                 'timecreated' => time(),
             ));
         } finally {
@@ -130,10 +175,26 @@ class budget {
      * @return int
      */
     public static function user_used($userid) {
+        return self::user_sum($userid, 'websearches');
+    }
+
+    /**
+     * Pages lues pour un élève sur la fenêtre de son quota (mode « recherche
+     * de matériel ») : gratuites, mais elles occupent le serveur.
+     *
+     * @param int $userid
+     * @return int
+     */
+    public static function user_reads($userid) {
+        return self::user_sum($userid, 'pagereads');
+    }
+
+    /** Somme d'un compteur des messages d'un élève sur la fenêtre de son quota. */
+    private static function user_sum($userid, $field) {
         global $DB;
         $since = time() - \local_aichat\quota::window_hours() * HOURSECS;
         $sum = $DB->get_field_sql(
-            "SELECT COALESCE(SUM(websearches), 0) FROM {local_aichat_message}
+            "SELECT COALESCE(SUM($field), 0) FROM {local_aichat_message}
               WHERE userid = ? AND timecreated >= ?",
             array((int)$userid, $since));
         return (int)$sum;

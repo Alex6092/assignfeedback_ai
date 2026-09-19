@@ -96,16 +96,35 @@ local_aichat_sse('start', array('messageid' => (int)$messageid));
 // Recherche Web : proposée au modèle seulement si elle est possible pour cette
 // réponse ; sinon (activité sans recherche) la requête est celle d'avant.
 // Capacité optionnelle : un incident ici ne doit jamais empêcher la réponse.
+$material = null;
 try {
     $websearch = websearch::availability($access->config, (int)$USER->id);
-    $tool      = ($websearch === '') ? websearch::new_tool($USER) : null;
+    $webtool   = ($websearch === '') ? websearch::new_tool($USER, $access->config) : null;
+    $tool      = $webtool;
+    if (websearch::mode($access->config) === websearch::MODE_MATERIAL) {
+        // Recherche de matériel : web_search + read_page. Sont lisibles les
+        // pages trouvées, les documents liés d'une page lue, et les adresses
+        // données par l'élève dans sa question.
+        $allowlist = new \local_aichat\reader\allowlist();
+        $allowlist->add_from_text(conversation::student_question((int)$conv->id, (int)$messageid));
+        $reader = null;
+        if (websearch::reader_availability((int)$USER->id) === ''
+                && ($webtool !== null || $allowlist->count() > 0)) {
+            $reader = websearch::new_reader($allowlist, $USER);
+        }
+        $tools    = array_values(array_filter(array($webtool, $reader)));
+        $tool     = empty($tools) ? null
+            : new \local_aichat\toolbox($tools, websearch::toolcalls(), $allowlist);
+        $material = array('read' => $reader !== null, 'sites' => websearch::sites($access->config));
+    }
 } catch (\Throwable $e) {
     debugging('local_aichat: recherche Web indisponible — ' . $e->getMessage(), DEBUG_DEVELOPER);
     $websearch = websearch::activity_enabled($access->config) ? 'provider_unavailable' : 'disabled';
     $tool      = null;
+    $material  = null;
 }
 
-$messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch);
+$messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
 $prompttext  = '';
 foreach ($messages as $m) {
     if (is_string($m['content'])) {
@@ -121,9 +140,10 @@ $buffer    = '';
 $lastsave  = time();
 $aborted   = false;
 
-// Recherche lancée : le widget l'affiche (sinon quelques secondes de silence).
-$onsearch = function($query) {
-    local_aichat_sse('search', array('q' => (string)$query));
+// Recherche ou lecture lancée : le widget l'affiche (sinon quelques secondes
+// de silence). $kind : 'web' (requête) ou 'read' (domaine de la page lue).
+$onsearch = function($label, $kind = 'web') {
+    local_aichat_sse('search', array('q' => (string)$label, 'tool' => (string)$kind));
 };
 
 try {
@@ -169,7 +189,7 @@ try {
 
     conversation::finish_message($messageid, $result['content'], $access->context, 'done');
     quota::record($messageid, isset($result['usage']) ? $result['usage'] : null,
-        $prompttext, (string)$result['content'], $result['rounds'], $result['toolchars']);
+        $prompttext, (string)$result['content'], $result['toolchars']);
     pool::release(pool::current_slot(), 'done');
     pool::clear_current();
 
