@@ -2,7 +2,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 use local_aichat\activity;
-use local_aichat\brief;
 use local_aichat\websearch\manager as websearch;
 
 /**
@@ -127,11 +126,8 @@ function local_aichat_coursemodule_edit_post_actions($moduleinfo, $course) {
         }
     }
     activity::save($cmid, (int)$course->id, $data);
-
-    if ($enabled) {
-        // Génère (ou régénère) le brief si l'énoncé ou le corrigé ont changé.
-        brief::schedule_if_stale($cmid);
-    }
+    // Le brief est mis en file par observer::course_module_saved(), une fois
+    // le corrigé de la correction IA enregistré (voir son commentaire).
 
     return $moduleinfo;
 }

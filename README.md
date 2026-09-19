@@ -216,6 +216,28 @@ différent.
 
 ---
 
+## Tuteur IA — duplication, sauvegarde, réinitialisation
+
+La section « Tuteur IA » d'un devoir suit l'activité :
+
+- **Duplication**, **importation** (« Réutilisation de cours »), **copie de cours**,
+  **sauvegarde et restauration** : tous les réglages de la section sont recopiés
+  (`backup/moodle2/*_local_aichat_plugin.class.php`). Cela inclut l'activation, l'énoncé,
+  le brief, les consignes, le mode de recherche et les sites de référence. Le brief est
+  repris s'il est prêt et correspond toujours au corrigé restauré ; sinon, il est
+  régénéré en file.
+- **Réinitialisation du cours** : la configuration et le brief sont conservés. Seules les
+  conversations sont effacées, et seulement si l'enseignant efface les remises des
+  devoirs.
+- Les **conversations** des élèves ne sont jamais sauvegardées : ce sont des échanges
+  personnels, liés à une cohorte.
+
+À la **création** d'un devoir, le brief part automatiquement, une fois le corrigé de la
+correction IA enregistré (observateur `course_module_created`, qui passe après celui de
+`assignfeedback_ai`).
+
+---
+
 ## Tuteur IA — recherche Web
 
 Le tuteur (`local_aichat`) peut chercher sur Internet quand une information est
