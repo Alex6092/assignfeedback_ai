@@ -224,84 +224,107 @@ décide** d'appeler l'outil `web_search` (tool calling de l'API compatible OpenA
 **le PHP exécute** la recherche. Le modèle n'a jamais accès à Internet, ni à l'URL,
 ni à la clé : il ne fournit qu'un texte de requête.
 
+**Chaque élève cherche avec SES propres clés d'API**, dans l'ordre :
+1. **Tavily** : 1 000 recherches gratuites par mois, **sans carte bancaire** ;
+2. **Brave Search** en secours, si l'élève a aussi une clé Brave.
+
+Sans clé, le tuteur ne va pas sur Internet pour cet élève (ni recherche, ni lecture de
+pages). Le lycée ne paie rien. Les clés du plugin ne servent qu'aux tests de la page de
+diagnostic.
+
 ### Architecture
 
 ```
+Préférences > « Tuteur IA : mes clés de recherche » (mykeys.php)
+   clés Tavily / Brave chiffrées dans les préférences, jamais réaffichées, « Tester »
+
 stream.php (SSE, ticket du pool tenu pendant toute la réponse)
   └─ generator::run()
        tour 1 : api::stream(messages, tools=[web_search]) ──▶ LM Studio / Gemma
           ├─ delta.content     → SSE « delta » vers l'élève (inchangé)
           └─ delta.tool_calls  → accumulés (index, id, nom, arguments en morceaux)
        appel reçu → websearch\tool::execute()
-          limite par réponse → requête valide → moteur suspendu ? → quota élève
-          → plafond du site (réservation sous verrou) → brave_provider::search()
+          limite par réponse → requête valide → cache commun → quota élève
+          → pour chaque moteur de l'élève (Tavily, puis Brave) :
+              moteur en panne ? clé suspendue ? plafond de la clé (réservation sous verrou)
+              → appel ; échec du moteur ou de la clé → moteur suivant
           → résultats compacts, ou WEB_SEARCH_UNAVAILABLE + reason
        SSE « search » (statut du widget) ; messages += assistant(tool_calls) + tool(résultat)
        tour 2 : api::stream(...) — sans tools si la limite est atteinte — réponse streamée
 ```
 
-Une activité où la recherche n'est pas autorisée envoie **exactement la même
-requête qu'avant** (aucun champ `tools`, aucun bloc de prompt).
+Une activité où la recherche n'est pas autorisée, ou un élève sans clé, envoie
+**exactement la même requête qu'avant** (aucun champ `tools`, aucun bloc de prompt).
+Dans le second cas, le widget indique à l'élève où ajouter sa clé.
 
 ### Configuration
 
-1. **Brave Search API** : créer un compte sur <https://api-dashboard.search.brave.com>,
-   générer une clé. Depuis février 2026, Brave offre 5 $ de crédits par mois (environ
-   1 000 recherches), puis **facture** la carte enregistrée au lieu de refuser, et exige
-   d'être cité comme source (le widget affiche « Recherche sur le Web (Brave Search) »).
-   Vérifiez dans le tableau de bord s'il existe un plafond de dépense.
-2. **Moodle**, *Administration > Plugins > Plugins locaux > Tuteur IA*, rubrique
+1. **Moodle**, *Administration > Plugins > Plugins locaux > Tuteur IA*, rubrique
    « Recherche Web » :
 
    | Réglage | Défaut | Rôle |
    |---|---|---|
    | Activer la recherche Web | non | interrupteur du site |
-   | Moteur de recherche | Brave | fournisseur (abstraction `websearch\provider`) |
-   | Clé API | — | chiffrée en base (`admin_setting_encryptedpassword`), jamais réaffichée |
-   | Plafond du site | 900 | recherches sur **31 jours glissants** (0 = aucune) |
+   | Clé Tavily de test / clé Brave de test | — | **page de diagnostic uniquement**, chiffrées, jamais réaffichées |
+   | Plafond par clé Tavily | 1 000 | sur 31 jours glissants ; 0 = pas de plafond local (Tavily sans carte ne facture jamais) |
+   | Plafond par clé Brave | 900 | sur 31 jours glissants ; 0 = Brave jamais utilisé (il débite la carte au-delà des crédits) |
    | Recherches par élève | 10 | par fenêtre du quota élève (4 h), 0 = pas de limite |
    | Recherches par réponse | 2 | protection contre les boucles (1 à 5) |
    | Résultats par recherche | 5 | 1 à 10 |
    | Délai d'une recherche | 6 s | 2 à 20 |
    | Durée du cache des recherches | 7 jours | 0 à 90, 0 = pas de cache |
 
-3. **Page « Tuteur IA : recherche Web »** (lien dans la rubrique) : lancer d'abord
-   **« Tester l'appel d'outil »** sur chaque serveur du tuteur (aucun appel à Brave),
-   puis **« Tester la recherche »** (une vraie recherche, décomptée).
+2. **Page « Tuteur IA : recherche Web »** (lien dans la rubrique) :
+   - lancer d'abord **« Tester l'appel d'outil »** sur chaque serveur du tuteur (aucun
+     appel aux moteurs) ;
+   - puis **« Tester Tavily »** et **« Tester Brave »**, avec les clés de test ;
+   - la page indique aussi le nombre d'élèves ayant une clé et les recherches par
+     moteur.
+3. **Élèves**, dans *Préférences > Compte utilisateur > « Tuteur IA : mes clés de
+   recherche »* :
+   - créer un compte gratuit sur <https://app.tavily.com> (sans carte), coller la clé
+     (`tvly-…`), puis « Tester ma clé » : les crédits utilisés s'affichent, sans
+     consommer de recherche ;
+   - clé Brave facultative : Brave exige une carte et facture au-delà de 5 $ de
+     crédits par mois, mais le tuteur s'arrête au plafond par clé.
 4. **Par activité**, dans la section « Tuteur IA » des réglages de l'activité, le menu
    « Recherches du tuteur » propose trois choix :
    - **Aucune** (défaut) ;
    - **Recherche Web ponctuelle** ;
-   - **Recherche de matériel** (voir la section suivante).
-
-   Deux champs l'accompagnent :
-   - le **plafond de recherches Web de l'activité** sur 31 jours (150 par défaut,
-     0 = seul le plafond du site) ;
-   - les **sites de référence**, pour le mode matériel.
+   - **Recherche de matériel** (voir plus bas), avec des **sites de référence**
+     facultatifs.
 
 ### Quota
 
-- **Plafond du site, fenêtre glissante de 31 jours.** Un cycle de facturation Brave
-  dure au plus 31 jours, donc aucun cycle ne peut dépasser le plafond, quelle que
-  soit sa date de début : pas de date de réinitialisation à caler. Les en-têtes
-  `X-RateLimit-*` de Brave décrivent la limite du *plan*, pas les crédits gratuits.
-  Ils sont affichés pour le diagnostic et servent à détecter la limite par seconde,
-  mais **seul le plafond Moodle protège d'une facture**.
-- **Réservation avant l'appel, sous verrou Moodle** : lecture du compteur et
-  inscription dans le registre `local_aichat_wsledger` (aucune donnée personnelle,
-  jamais effacé par une demande RGPD ni une réinitialisation de cours). Deux requêtes
-  simultanées à 899/900 sont sérialisées : la seconde est refusée. La réservation
-  est remboursée seulement si Brave répond une erreur HTTP (non facturée) ; un délai
+- **Plafond par clé, fenêtre glissante de 31 jours.** Un cycle de facturation dure au
+  plus 31 jours, donc aucun cycle ne peut dépasser le plafond d'une clé, quelle que
+  soit sa date de début. C'est vital pour Brave, qui facture la carte de l'élève
+  au-delà de ses crédits au lieu de refuser ; ses en-têtes `X-RateLimit-*` décrivent le
+  plan, pas les crédits. Tavily (sans carte) refuse au lieu de facturer (HTTP 432) :
+  le tuteur passe alors à Brave.
+- **Réservation avant l'appel, sous verrou Moodle.** Le registre
+  `local_aichat_wsledger` contient le moteur, une **empreinte** de la clé (`sha1`,
+  jamais la clé ni l'élève), l'activité et la date. Il n'est jamais effacé par une
+  demande RGPD ni par une réinitialisation de cours. Deux réponses simultanées avec la
+  même clé à 899/900 sont sérialisées : la seconde est refusée. La réservation est
+  remboursée seulement si le moteur répond une erreur HTTP (non décomptée) ; un délai
   dépassé après connexion reste compté.
+- **Suspensions :**
+  - **clé refusée** (401/403) : la clé de l'élève est suspendue jusqu'à ce qu'il la
+    modifie ou la teste avec succès ;
+  - **crédits épuisés** : Tavily 24 h, Brave jusqu'à la réinitialisation annoncée ;
+  - **panne d'un moteur** (5xx, réseau, délai) : le moteur est suspendu 60 s pour tout
+    le monde.
 - **Par élève** : somme des recherches de ses réponses sur la fenêtre du quota élève.
 - **Par réponse** : au-delà de la limite, le modèle reçoit `tool_call_limit`, puis le
   dernier tour est envoyé sans outil : la boucle se termine forcément.
 - **Cache des recherches** (cache Moodle `searchcache`, 7 jours par défaut) : une requête
-  déjà faite par n'importe quel élève est resservie sans appeler Brave. La casse et les
-  espaces sont ignorés, les opérateurs `site:` et `filetype:` conservés.
+  déjà faite par n'importe quel élève, **avec n'importe quel moteur**, est resservie sans
+  appel. La casse et les espaces sont ignorés, les opérateurs `site:` et `filetype:`
+  conservés.
   - Le cache est consulté **avant** le budget. Une recherche servie par le cache est
-    gratuite et instantanée : elle ne consomme ni le plafond du site ni le quota de l'élève,
-    et elle reste disponible si Brave est en panne.
+    gratuite et instantanée : elle ne consomme ni la clé de l'élève ni son quota, et elle
+    reste disponible si les moteurs sont en panne.
   - Elle compte toujours dans la limite par réponse, et le modèle voit la date de mise en
     cache.
   - Seules les recherches réussies sont gardées. La clé est un hachage ; on ne stocke que
@@ -315,37 +338,49 @@ requête qu'avant** (aucun champ `tools`, aucun bloc de prompt).
 La recherche est optionnelle : **aucune situation ne transforme une indisponibilité
 en erreur pour l'élève**.
 
-| Situation | Outil proposé ? | Brave appelé ? | Le modèle reçoit |
+| Situation | Outil proposé ? | Moteur appelé ? | Le modèle reçoit |
 |---|---|---|---|
-| Désactivée (site ou activité) | non | non | rien |
-| Clé absente, moteur suspendu, plafond du site ou de l'élève atteint | non | non | une note « recherche indisponible » dans le prompt |
+| Désactivée (site ou activité), ou élève sans clé | non | non | rien |
+| Clés présentes mais toutes suspendues, en panne ou à leur plafond ; quota de l'élève atteint | non | non | une note « recherche indisponible » dans le prompt |
+| Tavily refuse (crédits, clé) ou est en panne, l'élève a une clé Brave | oui | Tavily, puis Brave | les résultats de Brave (secours invisible) |
 | Plafond atteint pendant la génération | oui | non | `quota_exhausted` / `user_quota_exhausted` |
 | Limite par réponse atteinte | puis non | non | `tool_call_limit` |
 | Requête vide ou invalide, outil inconnu | oui | non | `invalid_query` / `unknown_tool` |
 | Verrou du budget indisponible (3 s) | oui | non | `budget_busy` |
-| Brave : 429, 5xx, réseau, délai, clé refusée | oui | oui | `rate_limited`, `provider_error`, `timeout`, `auth_error`… |
+| Tous les moteurs de l'élève échouent | oui | oui | `rate_limited`, `provider_error`, `timeout`, `auth_error`… |
 
-Coupe-circuit : panne ou délai dépassé → moteur suspendu 60 s ; clé refusée (401/403)
-→ suspendu jusqu'à « Remettre en service » ; 429 avec quota mensuel du plan à 0 →
-suspendu jusqu'à la réinitialisation annoncée. Pendant une suspension, l'outil n'est
-pas proposé et le tuteur répond avec ses connaissances.
+Pendant une suspension, l'outil n'est pas proposé et le tuteur répond avec ses
+connaissances. L'administrateur peut remettre un moteur en service depuis la page de
+diagnostic ; l'élève débloque sa clé en la modifiant ou en la testant.
 
 ### Sécurité et vie privée
 
-- Paramètres Brave fixés par le PHP : `safesearch=strict`, `result_filter=web`,
-  `extra_snippets=true`, nombre de résultats ; le modèle ne fournit que `query`
-  (200 caractères max, JSON borné, autres clés ignorées). Si Brave refuse
-  `extra_snippets`, la requête est relancée sans lui (une erreur n'est pas facturée).
+- Paramètres fixés par le PHP ; le modèle ne fournit que `query` (200 caractères max,
+  JSON borné, autres clés ignorées) :
+  - **Tavily** : `safe_search: true`, `search_depth: basic` (1 crédit), nombre de
+    résultats ; les opérateurs `site:` deviennent `include_domains` ;
+  - **Brave** : `safesearch=strict`, `result_filter=web`, `extra_snippets=true` ; si
+    Brave refuse `extra_snippets`, la requête est relancée sans lui (une erreur n'est
+    pas facturée).
+- **Clés des élèves** :
+  - chiffrées dans les préférences (`\core\encryption`) ;
+  - jamais réaffichées (4 derniers caractères seulement), jamais envoyées au navigateur
+    ni au modèle, jamais écrites dans un journal ;
+  - l'export RGPD indique « clé configurée (…a1b2) ».
+
+  Les recherches partent sous le compte de l'élève chez le moteur, ce que la page des
+  clés lui explique.
 - Nom, prénom, identifiant, e-mail et téléphone de l'élève sont retirés de la requête
-  avant l'envoi à Brave.
-- Ce que le modèle reçoit : **uniquement la réponse de Brave**, aucune page n'est
+  avant l'envoi au moteur.
+- Ce que le modèle reçoit : **uniquement la réponse du moteur**, aucune page n'est
   téléchargée. Par résultat : titre (≤ 120), URL http/https (≤ 300), date, extrait
   principal (≤ 400) et jusqu'à 5 extraits supplémentaires (≤ 300 chacun). Le total est
   borné à 6 000 caractères par recherche et réparti équitablement entre les résultats.
   L'ensemble est présenté comme des **données non fiables**, jamais comme des
   instructions.
 - **Sources ajoutées par le PHP** en fin de réponse : les pages transmises au modèle
-  (8 liens au plus), ce qui vaut aussi mention de Brave Search. Le modèle a la
+  (8 liens au plus), avec le nom du ou des moteurs utilisés (ce qui vaut mention de
+  Brave Search quand il a servi). Le modèle a la
   consigne de ne pas écrire lui-même de liste de sources ni d'URL, et de ne donner
   aucun chiffre ou caractéristique absent des résultats.
 - Le prompt interdit de chercher la solution de l'activité ; les règles d'intégrité du
@@ -356,14 +391,17 @@ pas proposé et le tuteur répond avec ses connaissances.
 
 - **Créés** (`local/aichat`) :
   - `classes/generator.php` (boucle de tours) ;
-  - `classes/websearch/` : `provider` (interface), `brave_provider`, `result`, `budget`,
-    `tool`, `manager`, `searchcache`, `diagnostic` ;
+  - `classes/websearch/` : `provider` (interface), `tavily_provider`, `brave_provider`,
+    `userkeys` (clés des élèves), `result`, `budget`, `tool`, `manager`, `searchcache`,
+    `diagnostic` ;
+  - `mykeys.php` et `classes/form/mykeys_form.php` (page « mes clés de recherche ») ;
   - `websearch.php` (page d'état et de tests).
 - **Modifiés** :
   - `local/aifeedback/classes/api.php` : `tools` / `tool_choice` transmis, `tool_calls`
     reconstitués dans le flux ;
   - `local/aichat` : `stream.php`, `tutor.php` (bloc de prompt, date du jour),
-    `quota.php`, `conversation.php`, `lib.php` et `activity.php` (case par activité),
+    `quota.php`, `conversation.php`, `lib.php` et `activity.php` (menu par activité, lien
+    « mes clés » dans les Préférences),
     `manage.php`, `js/chat.js` (statut de recherche), `settings.php`,
     `privacy/provider.php`, `task/purge.php`, `db/*`, chaînes fr/en.
 - **Aucune nouvelle dépendance** : HTTP par la classe `curl` de Moodle (proxy du site,
@@ -383,15 +421,23 @@ Hors Moodle, sur le vrai code (base SQLite, réseau simulé) :
 - boucle d'appels ;
 - nettoyage des requêtes ;
 - clé jamais exposée ;
-- cache des recherches (requête identique d'un autre élève, Brave en panne, expiration, échec jamais gardé).
+- cache des recherches (requête identique d'un autre élève, même avec un autre moteur,
+  moteurs en panne, expiration, échec jamais gardé) ;
+- clés personnelles : stockage chiffré, ordre Tavily → Brave, secours dans le même appel
+  (Tavily 432 → Brave), clé refusée ou crédits épuisés (clé suspendue), panne (moteur
+  suspendu), élève sans clé (aucune recherche), clés de test jamais utilisées pour un
+  élève, export RGPD sans la clé ;
+- **deux processus PHP réels** sur la même clé à 899/900 → une seule réservation ; clés
+  différentes → plafonds indépendants.
 
 Sur le site :
-1. page de diagnostic, sur chaque serveur ;
-2. « dernière version de Python ? » → statut de recherche et sources citées ;
-3. « explique une boucle for » → aucune recherche ;
-4. plafond réglé au nombre déjà utilisé + 1, deux élèves en même temps → une seule
-   recherche ;
-5. clé erronée → réponse sans le Web, suspension affichée.
+1. page de diagnostic : appel d'outil sur chaque serveur, « Tester Tavily » ;
+2. avec un compte élève : ajouter une clé Tavily dans ses Préférences, puis « Tester ma
+   clé » ;
+3. « dernière version de Python ? » → statut de recherche, sources citées (Tavily) ;
+4. « explique une boucle for » → aucune recherche ;
+5. compte élève sans clé → le widget propose d'ajouter une clé, le tuteur ne cherche pas ;
+6. clé erronée → réponse sans le Web, clé signalée suspendue sur la page des clés.
 
 ### Limites connues
 
@@ -405,6 +451,11 @@ Sur le site :
 - En mode ponctuel : extraits seulement (principal + supplémentaires), pas de lecture de
   pages. La lecture de pages n'existe que dans le mode « Recherche de matériel ».
 - Le retrait de l'identité peut effacer un mot identique au nom de l'élève (« Martin »).
+- Clés personnelles :
+  - les conditions de Tavily et de Brave imposent en général d'avoir 18 ans ;
+  - le plafond par clé ne compte que les recherches faites **via Moodle** ;
+  - Tavily ne documente pas les opérateurs de recherche : `site:` est converti,
+    `filetype:` reste dans le texte.
 
 ### Mode « Recherche de matériel »
 
@@ -421,12 +472,14 @@ leurs datasheets. Le tuteur dispose donc de deux outils :
 
 | Outil | Coût | Rôle |
 |---|---|---|
-| `web_search` | Brave (budget) | trouver la page du fabricant ou la datasheet (`site:`, `filetype:pdf`) |
+| `web_search` | clé de l'élève (Tavily, puis Brave) | trouver la page du fabricant ou la datasheet (`site:`, `filetype:pdf`) |
 | `read_page` | gratuit | lire cette page ou ce PDF et relever les caractéristiques |
+
+Comme pour la recherche ponctuelle, un élève **sans clé** n'a ni recherche ni lecture.
 
 ```
 stream.php → toolbox (limite globale d'appels par réponse, 5 par défaut)
-  ├─ websearch\tool  → Brave (plafonds du site et de l'activité, cache)
+  ├─ websearch\tool  → Tavily, puis Brave (clés de l'élève, plafond par clé, cache)
   └─ reader\tool     → reader\fetcher (curl Moodle) → reader\extractor
                         HTML : texte visible + liens de documents (datasheet, manuel)
                         PDF  : pdftotext (content_extractor de local_aifeedback)
@@ -456,8 +509,8 @@ dernier) :
 - le texte lu est présenté au modèle comme des données, jamais comme des instructions.
 
 **Budget :**
-- le plafond de recherches **par activité** est vérifié sous le même verrou que celui
-  du site, et les recherches sont rattachées à l'activité dans le registre ;
+- les recherches consomment la clé de l'élève (plafond par clé) et sont rattachées à
+  l'activité dans le registre, pour les statistiques de la page de diagnostic ;
 - les lectures sont gratuites, mais limitées par élève (30 par fenêtre de 4 h) ;
 - le **cache des pages** (24 h) évite de retélécharger une datasheet que toute la
   classe lit ;

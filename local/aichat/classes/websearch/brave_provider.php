@@ -41,7 +41,7 @@ class brave_provider implements provider {
      * @param int|null    $timeout secondes (null = réglage du plugin)
      */
     public function __construct($apikey = null, $timeout = null) {
-        $this->apikey  = ($apikey !== null) ? trim((string)$apikey) : manager::apikey();
+        $this->apikey  = ($apikey !== null) ? trim((string)$apikey) : manager::site_key('brave');
         $this->timeout = ($timeout !== null) ? (int)$timeout : manager::timeout();
     }
 

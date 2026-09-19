@@ -141,7 +141,7 @@ class tutor {
         $c .= "Tes connaissances s'arrêtent à la date de ton entraînement, souvent plus d'un an avant "
             . "aujourd'hui : sur tout ce qui évolue (versions, normes, nouveautés, actualité), elles sont "
             . "probablement dépassées.\n";
-        $c .= "Tu disposes d'un outil web_search qui interroge un moteur de recherche (Brave Search) et "
+        $c .= "Tu disposes d'un outil web_search qui interroge un moteur de recherche et "
             . "renvoie quelques résultats (titre, URL, extrait).\n";
         $c .= "Tu DOIS appeler web_search AVANT de répondre quand :\n";
         $c .= "- la question porte sur la version actuelle ou la dernière version de quelque chose "

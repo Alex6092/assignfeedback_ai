@@ -101,7 +101,9 @@ try {
     $websearch = websearch::availability($access->config, (int)$USER->id);
     $webtool   = ($websearch === '') ? websearch::new_tool($USER, $access->config) : null;
     $tool      = $webtool;
-    if (websearch::mode($access->config) === websearch::MODE_MATERIAL) {
+    // 'disabled' : activité sans recherche, ou élève sans clé personnelle —
+    // sans clé, le tuteur ne va pas sur Internet (ni recherche, ni lecture).
+    if (websearch::mode($access->config) === websearch::MODE_MATERIAL && $websearch !== 'disabled') {
         // Recherche de matériel : web_search + read_page. Sont lisibles les
         // pages trouvées, les documents liés d'une page lue, et les adresses
         // données par l'élève dans sa question.

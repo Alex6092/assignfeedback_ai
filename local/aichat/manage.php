@@ -174,6 +174,10 @@ if ($conversationid > 0) {
                     ));
                 } else if ($search['status'] === 'done') {
                     $outcome = get_string('ws_results', 'local_aichat', (int)$search['results']);
+                    if (!empty($search['provider'])) {
+                        $outcome .= ' (' . $search['provider']
+                            . (!empty($search['fallback']) ? ', ' . get_string('ws_fallback', 'local_aichat') : '') . ')';
+                    }
                     if (!empty($search['cached'])) {
                         $outcome .= ' ' . get_string('ws_cached', 'local_aichat');
                     }

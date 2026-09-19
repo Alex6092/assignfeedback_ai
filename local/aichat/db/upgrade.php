@@ -112,5 +112,39 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091904, 'local', 'aichat');
     }
 
+    // 2026091905 : clés de recherche personnelles des élèves (Tavily, puis
+    // Brave). Plafond PAR CLÉ : le plafond par activité disparaît ; le registre
+    // retient le moteur et une empreinte de la clé.
+    if ($oldversion < 2026091905) {
+        $table = new xmldb_table('local_aichat_activity');
+        $field = new xmldb_field('websearchcap');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->drop_field($table, $field);
+        }
+
+        $table  = new xmldb_table('local_aichat_wsledger');
+        $fields = array(
+            new xmldb_field('provider', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'brave', 'status'),
+            new xmldb_field('keyhash', XMLDB_TYPE_CHAR, '40', null, XMLDB_NOTNULL, null, '', 'provider'),
+        );
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        $index = new xmldb_index('keyhash_time', XMLDB_INDEX_NOTUNIQUE, array('keyhash', 'timecreated'));
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        // Anciens réglages : suspension globale (désormais par moteur) et menu
+        // du moteur (l'ordre Tavily → Brave est fixe).
+        foreach (array('ws_blockeduntil', 'ws_blockedreason', 'ws_blockeddetail', 'websearch_provider') as $name) {
+            unset_config($name, 'local_aichat');
+        }
+
+        upgrade_plugin_savepoint(true, 2026091905, 'local', 'aichat');
+    }
+
     return true;
 }
