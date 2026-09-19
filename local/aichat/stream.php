@@ -23,9 +23,10 @@ require_once(__DIR__ . '/../../config.php');
 
 use local_aichat\activity;
 use local_aichat\conversation;
+use local_aichat\generator;
 use local_aichat\quota;
 use local_aichat\tutor;
-use local_aifeedback\api;
+use local_aichat\websearch\manager as websearch;
 use local_aifeedback\pool;
 
 /** Émet un événement SSE et pousse immédiatement vers le navigateur. */
@@ -92,7 +93,19 @@ ignore_user_abort(true);
 
 local_aichat_sse('start', array('messageid' => (int)$messageid));
 
-$messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid);
+// Recherche Web : proposée au modèle seulement si elle est possible pour cette
+// réponse ; sinon (activité sans recherche) la requête est celle d'avant.
+// Capacité optionnelle : un incident ici ne doit jamais empêcher la réponse.
+try {
+    $websearch = websearch::availability($access->config, (int)$USER->id);
+    $tool      = ($websearch === '') ? websearch::new_tool($USER) : null;
+} catch (\Throwable $e) {
+    debugging('local_aichat: recherche Web indisponible — ' . $e->getMessage(), DEBUG_DEVELOPER);
+    $websearch = websearch::activity_enabled($access->config) ? 'provider_unavailable' : 'disabled';
+    $tool      = null;
+}
+
+$messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch);
 $prompttext  = '';
 foreach ($messages as $m) {
     if (is_string($m['content'])) {
@@ -102,24 +115,19 @@ foreach ($messages as $m) {
 
 // Pas d'URL imposée : le serveur vient du contexte du pool, ce qui autorise
 // le basculement.
-$options = array(
-    'temperature' => (float)get_config('local_aichat', 'temperature'),
-    'max_tokens'  => (int)get_config('local_aichat', 'maxtokens'),
-    'extra_body'  => array('enable_thinking' => false),
-);
-if ($options['temperature'] <= 0) {
-    $options['temperature'] = 0.4;
-}
-if ($options['max_tokens'] <= 0) {
-    $options['max_tokens'] = 700;
-}
+$options = tutor::generation_options();
 
 $buffer    = '';
 $lastsave  = time();
 $aborted   = false;
 
+// Recherche lancée : le widget l'affiche (sinon quelques secondes de silence).
+$onsearch = function($query) {
+    local_aichat_sse('search', array('q' => (string)$query));
+};
+
 try {
-    $result = api::stream($messages, $options,
+    $result = generator::run($messages, $options,
         function($delta) use (&$buffer, &$lastsave, &$aborted, $messageid) {
             $buffer .= $delta;
             local_aichat_sse('delta', array('t' => $delta));
@@ -139,7 +147,10 @@ try {
                 conversation::store_partial($messageid, $buffer);
             }
             return true;
-        });
+        }, $onsearch, $tool);
+
+    // Recherches de cette réponse : quota de l'élève et transcription.
+    conversation::record_searches($messageid, $tool, $websearch);
 
     // Serveur finalement utilisé (différent du premier en cas de basculement).
     $final = pool::current();
@@ -158,7 +169,7 @@ try {
 
     conversation::finish_message($messageid, $result['content'], $access->context, 'done');
     quota::record($messageid, isset($result['usage']) ? $result['usage'] : null,
-        $prompttext, (string)$result['content']);
+        $prompttext, (string)$result['content'], $result['rounds'], $result['toolchars']);
     pool::release(pool::current_slot(), 'done');
     pool::clear_current();
 
@@ -177,6 +188,8 @@ try {
         ? (string)$e->debuginfo : (string)$e->getMessage();
     debugging('local_aichat: échec du flux — ' . $detail, DEBUG_DEVELOPER);
 
+    // Les recherches déjà faites comptent, même si la réponse a échoué.
+    conversation::record_searches($messageid, $tool, $websearch);
     conversation::store_partial($messageid, $buffer);
     conversation::fail_message($messageid, 'failed',
         get_string('error_llm', 'local_aichat'), $access->context);

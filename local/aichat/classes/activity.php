@@ -67,6 +67,7 @@ class activity {
                 'customprompt' => null,
                 'quizscope'    => 'all',
                 'quiztag'      => '',
+                'websearch'    => 0,
                 'timecreated'  => $now,
                 'timemodified' => $now,
             );

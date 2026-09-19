@@ -364,6 +364,15 @@
             setStatus('');
             return;
         }
+        if (name === 'search') {
+            // Recherche Web en cours : effacée par le fragment de texte suivant.
+            // (remplacement par fonction : une requête contenant « $& » ne doit
+            // pas être interprétée comme un motif de remplacement)
+            setStatus((S.widget_searching || '').replace('{$a}', function () {
+                return data.q || '';
+            }), 'queue');
+            return;
+        }
         if (name === 'done') {
             finishFromServer(data.html);
             if (data.quota) {

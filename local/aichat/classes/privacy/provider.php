@@ -38,6 +38,8 @@ class provider implements
             'role'        => 'privacy:metadata:message:role',
             'content'     => 'privacy:metadata:message:content',
             'tokens'      => 'privacy:metadata:message:tokens',
+            'websearches' => 'privacy:metadata:message:websearches',
+            'toolcalls'   => 'privacy:metadata:message:toolcalls',
             'flagstatus'   => 'privacy:metadata:message:flagstatus',
             'flagcategory' => 'privacy:metadata:message:flagcategory',
             'flagreason'   => 'privacy:metadata:message:flagreason',
@@ -47,6 +49,12 @@ class provider implements
         $collection->add_external_location_link('llm', array(
             'message' => 'privacy:metadata:llm:message',
         ), 'privacy:metadata:llm');
+
+        // Recherche Web (si activée) : seule la requête rédigée par le modèle
+        // part chez le moteur, après retrait de l'identité de l'élève.
+        $collection->add_external_location_link('websearch', array(
+            'query' => 'privacy:metadata:websearch:query',
+        ), 'privacy:metadata:websearch');
 
         return $collection;
     }
@@ -107,6 +115,13 @@ class provider implements
                     if ($message->flagstatus === 'flagged') {
                         $row['flagcategory'] = $message->flagcategory;
                         $row['flagreason']   = $message->flagreason;
+                    }
+                    // Recherches Web faites par le tuteur pour cette réponse.
+                    $searches = \local_aichat\conversation::searches($message);
+                    if (!empty($searches)) {
+                        $row['websearches'] = array_map(function($search) {
+                            return array('query' => $search['q'], 'status' => $search['status']);
+                        }, $searches);
                     }
                     $rows[] = $row;
                 }

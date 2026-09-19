@@ -108,6 +108,7 @@ class conversation {
             'slotid'         => 0,
             'serverid'       => 0,
             'tokens'         => 0,
+            'websearches'    => 0,
             'error'          => null,
             'timecreated'    => $now,
             'timemodified'   => $now,
@@ -183,6 +184,53 @@ class conversation {
             $update->contenthtml = content::markdown_to_html($partial, $context);
         }
         $DB->update_record(self::TABLE_MSG, $update);
+    }
+
+    /**
+     * Enregistre les recherches Web d'une réponse : leur nombre (quota de
+     * l'élève, toutes issues confondues) et leur journal (transcription
+     * enseignant).
+     *
+     * Le journal dit aussi à l'enseignant si la recherche était proposée au
+     * modèle : « [] » = proposée mais non utilisée ; une entrée « notoffered »
+     * = activée sur l'activité mais indisponible pour cette réponse (raison).
+     * Rien n'est écrit quand la recherche n'est pas activée.
+     *
+     * @param int                               $messageid
+     * @param \local_aichat\websearch\tool|null $tool
+     * @param string                            $websearch disponibilité (manager::availability())
+     */
+    public static function record_searches($messageid, $tool, $websearch = 'disabled') {
+        global $DB;
+        if ($tool !== null) {
+            $log    = $tool->log;
+            $billed = (int)$tool->billed;
+        } else if ($websearch !== '' && $websearch !== 'disabled') {
+            $log    = array(array('q' => '', 'status' => 'notoffered', 'reason' => (string)$websearch,
+                'results' => 0, 'time' => time()));
+            $billed = 0;
+        } else {
+            return;
+        }
+        $DB->update_record(self::TABLE_MSG, (object)array(
+            'id'          => (int)$messageid,
+            'websearches' => $billed,
+            'toolcalls'   => json_encode($log, JSON_UNESCAPED_UNICODE),
+        ));
+    }
+
+    /**
+     * Journal des recherches Web d'un message.
+     *
+     * @param \stdClass $row
+     * @return array[] {q, status, reason, results, time}
+     */
+    public static function searches(\stdClass $row) {
+        if (empty($row->toolcalls)) {
+            return array();
+        }
+        $log = json_decode((string)$row->toolcalls, true);
+        return is_array($log) ? $log : array();
     }
 
     /** Enregistre le texte partiel reçu jusqu'ici (reprise après coupure). */

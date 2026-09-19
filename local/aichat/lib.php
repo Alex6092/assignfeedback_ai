@@ -67,6 +67,16 @@ function local_aichat_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->addHelpButton('aichatcustomprompt', 'form_customprompt', 'local_aichat');
     $mform->setDefault('aichatcustomprompt', ($config !== null) ? (string)$config->customprompt : '');
     $mform->hideIf('aichatcustomprompt', 'aichatenabled', 'notchecked');
+
+    // Recherche Web : proposée seulement si l'administrateur l'a activée
+    // pour le site. Décochée par défaut : c'est un choix de l'enseignant.
+    if (\local_aichat\websearch\manager::site_enabled()) {
+        $mform->addElement('advcheckbox', 'aichatwebsearch',
+            get_string('form_websearch', 'local_aichat'));
+        $mform->addHelpButton('aichatwebsearch', 'form_websearch', 'local_aichat');
+        $mform->setDefault('aichatwebsearch', ($config !== null && !empty($config->websearch)) ? 1 : 0);
+        $mform->hideIf('aichatwebsearch', 'aichatenabled', 'notchecked');
+    }
 }
 
 /**
@@ -89,13 +99,18 @@ function local_aichat_coursemodule_edit_post_actions($moduleinfo, $course) {
     $cmid    = (int)$moduleinfo->coursemodule;
     $enabled = !empty($moduleinfo->aichatenabled) ? 1 : 0;
 
-    activity::save($cmid, (int)$course->id, array(
+    $data = array(
         'enabled'      => $enabled,
         'includeintro' => !empty($moduleinfo->aichatincludeintro) ? 1 : 0,
         'includebrief' => !empty($moduleinfo->aichatincludebrief) ? 1 : 0,
         'customprompt' => isset($moduleinfo->aichatcustomprompt)
             ? (string)$moduleinfo->aichatcustomprompt : null,
-    ));
+    );
+    // Case absente (recherche désactivée pour le site) : valeur conservée.
+    if (isset($moduleinfo->aichatwebsearch)) {
+        $data['websearch'] = !empty($moduleinfo->aichatwebsearch) ? 1 : 0;
+    }
+    activity::save($cmid, (int)$course->id, $data);
 
     if ($enabled) {
         // Génère (ou régénère) le brief si l'énoncé ou le corrigé ont changé.

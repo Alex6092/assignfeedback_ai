@@ -144,6 +144,39 @@ if ($conversationid > 0) {
         }
         $body .= $flaghtml;
 
+        // Recherches Web faites par le tuteur pour cette réponse.
+        if (!$isuser) {
+            $items = array();
+            if ((string)$message->toolcalls === '[]') {
+                $items[] = html_writer::tag('li', s(get_string('ws_offered_unused', 'local_aichat')));
+            }
+            foreach (conversation::searches($message) as $search) {
+                if ($search['status'] === 'notoffered') {
+                    $items[] = html_writer::tag('li', s(get_string('ws_notoffered', 'local_aichat',
+                        \local_aichat\websearch\manager::reason_label($search['reason']))));
+                    continue;
+                }
+                $query = ($search['q'] !== '') ? '« ' . s($search['q']) . ' »'
+                    : html_writer::tag('em', get_string('ws_noquery', 'local_aichat'));
+                if ($search['status'] === 'done') {
+                    $outcome = get_string('ws_results', 'local_aichat', (int)$search['results']);
+                    if (!empty($search['cached'])) {
+                        $outcome .= ' ' . get_string('ws_cached', 'local_aichat');
+                    }
+                } else {
+                    $outcome = get_string('ws_unavailable', 'local_aichat',
+                        \local_aichat\websearch\manager::reason_label($search['reason']));
+                }
+                $items[] = html_writer::tag('li', $query . ' — ' . s($outcome));
+            }
+            if (!empty($items)) {
+                $body .= html_writer::div(
+                    html_writer::tag('strong', get_string('ws_transcript', 'local_aichat'))
+                    . html_writer::tag('ul', implode('', $items), array('class' => 'mb-0')),
+                    'text-muted small mt-2');
+            }
+        }
+
         echo html_writer::div(
             html_writer::tag('div',
                 html_writer::tag('strong', $isuser

@@ -119,6 +119,85 @@ if ($hassiteconfig) {
         1
     ));
 
+    // === Recherche Web ===
+    $settings->add(new admin_setting_heading(
+        'local_aichat/websearch_heading',
+        new lang_string('websearch_heading', 'local_aichat'),
+        get_string('websearch_heading_desc', 'local_aichat') . ' '
+            . html_writer::link(new moodle_url('/local/aichat/websearch.php'),
+                get_string('websearch_link', 'local_aichat'))
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/websearch_enabled',
+        new lang_string('setting_websearch', 'local_aichat'),
+        new lang_string('setting_websearch_help', 'local_aichat'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_aichat/websearch_provider',
+        new lang_string('setting_wsprovider', 'local_aichat'),
+        new lang_string('setting_wsprovider_help', 'local_aichat'),
+        'brave',
+        array('brave' => 'Brave Search')
+    ));
+
+    // Chiffrée en base, jamais réaffichée dans le formulaire.
+    $settings->add(new admin_setting_encryptedpassword(
+        'local_aichat/websearch_apikey',
+        new lang_string('setting_wsapikey', 'local_aichat'),
+        new lang_string('setting_wsapikey_help', 'local_aichat')
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_cap',
+        new lang_string('setting_wscap', 'local_aichat'),
+        new lang_string('setting_wscap_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_CAP,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_peruser',
+        new lang_string('setting_wsperuser', 'local_aichat'),
+        new lang_string('setting_wsperuser_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_PERUSER,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_maxcalls',
+        new lang_string('setting_wsmaxcalls', 'local_aichat'),
+        new lang_string('setting_wsmaxcalls_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_MAXCALLS,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_maxresults',
+        new lang_string('setting_wsmaxresults', 'local_aichat'),
+        new lang_string('setting_wsmaxresults_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_MAXRESULTS,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_timeout',
+        new lang_string('setting_wstimeout', 'local_aichat'),
+        new lang_string('setting_wstimeout_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_TIMEOUT,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_cachedays',
+        new lang_string('setting_wscachedays', 'local_aichat'),
+        new lang_string('setting_wscachedays_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_CACHEDAYS,
+        PARAM_INT
+    ));
+
     // === Interface et conservation ===
     $settings->add(new admin_setting_heading(
         'local_aichat/misc_heading',
@@ -151,4 +230,12 @@ if ($hassiteconfig) {
     ));
 
     $ADMIN->add('localplugins', $settings);
+
+    // État et tests de la recherche Web (lien depuis la rubrique ci-dessus).
+    $ADMIN->add('localplugins', new admin_externalpage(
+        'local_aichat_websearch',
+        new lang_string('ws_page', 'local_aichat'),
+        new moodle_url('/local/aichat/websearch.php'),
+        'moodle/site:config'
+    ));
 }
