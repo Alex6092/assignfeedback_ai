@@ -8,9 +8,9 @@ defined('MOODLE_INTERNAL') || die();
  *
  * Tout ce qui est propre à un moteur (URL, authentification, format de
  * réponse, codes d'erreur, en-têtes de quota) reste dans son implémentation :
- * le reste du tuteur ne manipule que des result. Pour changer de moteur, il
- * suffit d'une nouvelle implémentation et d'une entrée dans
- * manager::provider().
+ * le reste du tuteur ne manipule que des result. Pour ajouter un moteur, il
+ * suffit d'une nouvelle implémentation, d'une entrée dans manager::provider()
+ * et dans userkeys::PROVIDERS (ordre d'essai).
  */
 interface provider {
 

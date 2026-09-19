@@ -129,34 +129,87 @@ class diagnostic {
     }
 
     /**
-     * Une vraie recherche, par le chemin normal (réservation du budget,
-     * suspension en cas d'échec). Ignore une suspension en cours : c'est le
-     * moyen de vérifier une clé corrigée. Un succès lève la suspension.
+     * Une vraie recherche avec la clé de TEST du site pour un moteur, décomptée
+     * dans le plafond de cette clé. Ignore une suspension du moteur en cours :
+     * c'est le moyen de vérifier qu'il répond de nouveau. Un succès lève la
+     * suspension du moteur.
      *
+     * @param string $providerid tavily|brave
      * @param string $query
      * @return result
      */
-    public static function test_search($query = 'Moodle LMS') {
-        $provider = manager::provider();
-        if (!$provider->is_configured()) {
+    public static function test_search($providerid, $query = 'Moodle LMS') {
+        $key = manager::site_key($providerid);
+        if ($key === '') {
             return result::failure('not_configured', false);
         }
-        $ticket = budget::reserve(manager::cap());
+        $ticket = budget::reserve($providerid, userkeys::keyhash($providerid, $key), manager::keycap($providerid));
         if (!is_int($ticket)) {
             return result::failure($ticket, false);
         }
-        $result = $provider->search($query, manager::maxresults());
+        $result = manager::provider($providerid, $key)->search($query, manager::maxresults());
         budget::settle($ticket, $result->billable);
         budget::record_ratelimit($result->ratelimit);
         if ($result->ok) {
-            budget::unblock();
+            budget::unblock($providerid);
         } else {
-            budget::record_error($result->reason, $result->detail);
-            if ($result->blockfor !== 0) {
-                budget::block($result->reason, $result->blockfor, $result->detail);
+            budget::record_error($providerid, $result->reason, $result->detail);
+            if ($result->blockfor !== 0 && !in_array($result->reason, tool::KEY_FAILURES, true)) {
+                budget::block($providerid, $result->reason, $result->blockfor, $result->detail);
             }
         }
         return $result;
+    }
+
+    /**
+     * Test d'une clé personnelle (page « mes clés de recherche »).
+     *
+     * - Tavily : consultation des crédits (endpoint /usage), sans recherche ;
+     * - Brave : une vraie recherche, décomptée dans le plafond de la clé (Brave
+     *   n'a pas d'endpoint de vérification gratuit).
+     * Un test réussi efface l'état de la clé (suspension, crédits épuisés) ;
+     * un refus du moteur le mémorise, comme pendant une conversation.
+     *
+     * @param int    $userid
+     * @param string $providerid tavily|brave
+     * @return \stdClass {ok, reason, detail, usage, limit, results}
+     */
+    public static function test_user_key($userid, $providerid) {
+        $out = (object)array('ok' => false, 'reason' => '', 'detail' => '', 'usage' => null, 'limit' => null,
+            'results' => 0);
+        $key = userkeys::get($userid, $providerid);
+        if ($key === '') {
+            $out->reason = 'not_configured';
+            return $out;
+        }
+        if ($providerid === 'tavily') {
+            $usage = (new tavily_provider($key, manager::timeout()))->usage();
+            $out->ok     = $usage->ok;
+            $out->reason = $usage->reason;
+            $out->detail = $usage->detail;
+            $out->usage  = $usage->usage;
+            $out->limit  = $usage->limit;
+            $blockfor    = ($usage->reason === 'auth_error') ? result::BLOCK_MANUAL : 0;
+        } else {
+            $ticket = budget::reserve($providerid, userkeys::keyhash($providerid, $key), manager::keycap($providerid));
+            if (!is_int($ticket)) {
+                $out->reason = $ticket;
+                return $out;
+            }
+            $result = manager::provider($providerid, $key)->search('Moodle LMS', 3);
+            budget::settle($ticket, $result->billable);
+            $out->ok      = $result->ok;
+            $out->reason  = $result->reason;
+            $out->detail  = $result->detail;
+            $out->results = count($result->items);
+            $blockfor     = $result->blockfor;
+        }
+        if ($out->ok) {
+            userkeys::clear_state($userid, $providerid);
+        } else if (in_array($out->reason, tool::KEY_FAILURES, true)) {
+            userkeys::set_state($userid, $providerid, $out->reason, $blockfor !== 0 ? $blockfor : 3600, $out->detail);
+        }
+        return $out;
     }
 
     /**

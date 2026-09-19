@@ -17,14 +17,16 @@ use core_privacy\local\request\writer;
  * Fournisseur de confidentialité pour local_aichat.
  *
  * Données personnelles : les conversations des élèves avec le tuteur et leurs
- * messages. Rattachées au CONTEXTE MODULE de l'activité concernée. La
+ * messages, rattachées au CONTEXTE MODULE de l'activité concernée ; et les
+ * clés de recherche personnelles (préférences utilisateur, chiffrées). La
  * configuration du tuteur (table ..._activity) est une donnée d'enseignement,
  * pas une donnée personnelle.
  */
 class provider implements
         \core_privacy\local\metadata\provider,
         \core_privacy\local\request\plugin\provider,
-        \core_privacy\local\request\core_userlist_provider {
+        \core_privacy\local\request\core_userlist_provider,
+        \core_privacy\local\request\user_preference_provider {
 
     public static function get_metadata(collection $collection): collection {
         $collection->add_database_table('local_aichat_conversation', array(
@@ -63,7 +65,33 @@ class provider implements
             'url' => 'privacy:metadata:pagereader:url',
         ), 'privacy:metadata:pagereader');
 
+        // Clés de recherche personnelles de l'élève (chiffrées) et leur état.
+        foreach (\local_aichat\websearch\userkeys::PROVIDERS as $id) {
+            $collection->add_user_preference(\local_aichat\websearch\userkeys::PREF_KEY . $id,
+                'privacy:metadata:preference:key');
+            $collection->add_user_preference(\local_aichat\websearch\userkeys::PREF_STATE . $id,
+                'privacy:metadata:preference:keystate');
+        }
+
         return $collection;
+    }
+
+    /**
+     * Préférences exportées : on indique qu'une clé est configurée et ses 4
+     * derniers caractères, JAMAIS la clé elle-même.
+     *
+     * @param int $userid
+     */
+    public static function export_user_preferences(int $userid) {
+        foreach (\local_aichat\websearch\userkeys::PROVIDERS as $id) {
+            $key = \local_aichat\websearch\userkeys::get($userid, $id);
+            if ($key === '') {
+                continue;
+            }
+            writer::export_user_preference('local_aichat', \local_aichat\websearch\userkeys::PREF_KEY . $id,
+                get_string('privacy:keyconfigured', 'local_aichat', \local_aichat\websearch\userkeys::masked($key)),
+                get_string('privacy:metadata:preference:key', 'local_aichat'));
+        }
     }
 
     public static function get_contexts_for_userid(int $userid): contextlist {

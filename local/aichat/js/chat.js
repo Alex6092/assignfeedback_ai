@@ -78,6 +78,14 @@
     if (CFG.notice) {
         panel.appendChild(el('p', 'local-aichat-notice', CFG.notice));
     }
+    if (CFG.needkeys && CFG.keysurl) {
+        // Recherche Web autorisée sur l'activité, mais aucune clé personnelle.
+        var keysnote = el('p', 'local-aichat-notice', (S.widget_needkeys || '') + ' ');
+        var keyslink = el('a', '', S.widget_needkeys_link || '');
+        keyslink.href = CFG.keysurl;
+        keysnote.appendChild(keyslink);
+        panel.appendChild(keysnote);
+    }
 
     var list = el('div', 'local-aichat-messages');
     list.setAttribute('aria-live', 'polite');

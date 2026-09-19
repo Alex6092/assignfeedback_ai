@@ -145,14 +145,23 @@ class toolbox implements toolset {
      * citer, ou invente une URL — et elle vaut mention de Brave Search,
      * exigée pour ses crédits gratuits.
      *
-     * @param array[] $sources {title, url}
+     * @param array[] $sources {title, url, provider?}
      * @return string markdown ('' s'il n'y a rien à citer)
      */
     public static function sources_markdown(array $sources) {
         if (empty($sources)) {
             return '';
         }
-        $lines = array('**' . get_string('ws_sources_heading', 'local_aichat') . '**', '');
+        // Moteurs réellement utilisés (Brave exige d'être cité pour ses crédits).
+        $engines = array();
+        foreach ($sources as $source) {
+            if (!empty($source['provider'])) {
+                $engines[$source['provider']] = $source['provider'];
+            }
+        }
+        $heading = empty($engines) ? get_string('ws_sources_heading_plain', 'local_aichat')
+            : get_string('ws_sources_heading', 'local_aichat', implode(', ', $engines));
+        $lines = array('**' . $heading . '**', '');
         foreach (array_slice(array_values($sources), 0, self::MAX_SOURCES) as $source) {
             $title = trim(preg_replace('/\s+/u', ' ', (string)$source['title']));
             if (\core_text::strlen($title) > 100) {

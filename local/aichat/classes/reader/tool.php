@@ -10,7 +10,7 @@ use local_aichat\websearch\tool as websearch_tool;
  * fabricant ou une datasheet PDF trouvée par une recherche, pour y relever
  * les caractéristiques précises (répartition des E/S, compteurs, tensions…).
  *
- * Gratuit (aucun budget Brave), mais borné : adresses autorisées seulement
+ * Gratuit (aucune clé de recherche consommée), mais borné : adresses autorisées seulement
  * (allowlist), limite par réponse, quota de lectures par élève, taille et
  * délai de téléchargement. Le texte d'un document est gardé en cache : une
  * classe qui lit la même datasheet ne la télécharge qu'une fois. Ne lève

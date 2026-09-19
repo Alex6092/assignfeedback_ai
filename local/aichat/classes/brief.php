@@ -78,8 +78,13 @@ class brief {
             return false;
         }
 
-        list($course, $cm) = get_course_and_cm_from_cmid((int)$cmid);
-        unset($course);
+        // Lecture directe en base plutôt que par le cache des activités du
+        // cours : à la fin d'une restauration (duplication, import), ce cache
+        // ne connaît pas encore forcément le nouveau module.
+        $cm = get_coursemodule_from_id('', (int)$cmid);
+        if (!$cm) {
+            return false;
+        }
         $fbcfg = self::source_config($cm);
         if ($fbcfg === null) {
             return false;

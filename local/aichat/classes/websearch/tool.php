@@ -13,8 +13,10 @@ defined('MOODLE_INTERNAL') || die();
  * la conduite à tenir.
  *
  * Contrôles, dans l'ordre : nom de l'outil → limite par réponse → requête
- * valide → fournisseur suspendu ? → quota de l'élève → plafond du site
- * (réservation sous verrou) → appel au fournisseur.
+ * valide → cache commun → quota de l'élève → puis, pour chaque moteur de
+ * l'élève (Tavily, puis Brave) : moteur en panne ? clé suspendue ? plafond de
+ * la clé (réservation sous verrou) → appel. Un échec lié au moteur ou à la
+ * clé fait passer au moteur suivant, sans que le modèle le voie.
  */
 class tool implements \local_aichat\toolset {
 
@@ -34,11 +36,13 @@ class tool implements \local_aichat\toolset {
     /** Raisons d'indisponibilité (une chaîne de langue ws_reason_* chacune). */
     const REASONS = array('not_configured', 'provider_unavailable', 'quota_exhausted',
         'user_quota_exhausted', 'tool_call_limit', 'invalid_query', 'unknown_tool', 'budget_busy',
-        'rate_limited', 'provider_quota', 'auth_error', 'provider_error', 'timeout',
-        'activity_quota_exhausted');
+        'rate_limited', 'provider_quota', 'auth_error', 'provider_error', 'timeout');
 
-    /** @var provider */
-    private $provider;
+    /** Échecs propres à la CLÉ de l'élève : mémorisés sur la clé (userkeys::set_state). */
+    const KEY_FAILURES = array('auth_error', 'provider_quota');
+
+    /** @var \stdClass[] moteurs de l'élève, dans l'ordre d'essai (manager::engines()) */
+    private $engines;
 
     /** @var \stdClass l'élève */
     private $user;
@@ -55,14 +59,8 @@ class tool implements \local_aichat\toolset {
     /** @var int plafond par élève (0 = pas de limite) */
     private $peruser;
 
-    /** @var int plafond du site */
-    private $cap;
-
-    /** @var int activité (plafond propre à l'activité, suivi de consommation) */
+    /** @var int activité (statistiques de consommation) */
     private $cmid;
-
-    /** @var int plafond de l'activité sur 31 jours (0 = aucun) */
-    private $activitycap;
 
     /** @var int appels d'outil traités pour cette réponse (tous, même refusés) */
     public $attempts = 0;
@@ -77,27 +75,23 @@ class tool implements \local_aichat\toolset {
     public $sources = array();
 
     /**
-     * @param provider  $provider
-     * @param \stdClass $user
-     * @param int       $maxcalls
-     * @param int       $maxresults
-     * @param int       $userused
-     * @param int       $peruser
-     * @param int       $cap
-     * @param int       $cmid        activité (0 = non suivie)
-     * @param int       $activitycap plafond de l'activité sur 31 jours (0 = aucun)
+     * @param \stdClass[] $engines    moteurs de l'élève (manager::engines())
+     * @param \stdClass   $user
+     * @param int         $maxcalls
+     * @param int         $maxresults
+     * @param int         $userused
+     * @param int         $peruser
+     * @param int         $cmid       activité (0 = non suivie)
      */
-    public function __construct(provider $provider, \stdClass $user, $maxcalls, $maxresults,
-            $userused, $peruser, $cap, $cmid = 0, $activitycap = 0) {
-        $this->provider    = $provider;
-        $this->user        = $user;
-        $this->maxcalls    = max(1, (int)$maxcalls);
-        $this->maxresults  = max(1, (int)$maxresults);
-        $this->userused    = (int)$userused;
-        $this->peruser     = (int)$peruser;
-        $this->cap         = (int)$cap;
-        $this->cmid        = (int)$cmid;
-        $this->activitycap = (int)$activitycap;
+    public function __construct(array $engines, \stdClass $user, $maxcalls, $maxresults,
+            $userused, $peruser, $cmid = 0) {
+        $this->engines    = array_values($engines);
+        $this->user       = $user;
+        $this->maxcalls   = max(1, (int)$maxcalls);
+        $this->maxresults = max(1, (int)$maxresults);
+        $this->userused   = (int)$userused;
+        $this->peruser    = (int)$peruser;
+        $this->cmid       = (int)$cmid;
     }
 
     public function definitions() {
@@ -126,7 +120,7 @@ class tool implements \local_aichat\toolset {
             'type'     => 'function',
             'function' => array(
                 'name'        => self::NAME,
-                'description' => "Recherche sur Internet (moteur Brave Search). Renvoie quelques résultats "
+                'description' => "Recherche sur Internet. Renvoie quelques résultats "
                     . "textuels : titre, URL et court extrait de chaque page. À appeler AVANT de répondre à "
                     . "toute question sur une version actuelle, la dernière version ou les nouveautés d'un "
                     . "langage, d'une norme ou d'un logiciel, sur l'actualité, ou quand l'étudiant demande "
@@ -196,58 +190,80 @@ class tool implements \local_aichat\toolset {
             return $this->refuse('', 'invalid_query');
         }
 
-        // Déjà cherché récemment (par n'importe quel élève) : gratuit et
-        // instantané. Avant le coupe-circuit et le budget : servi même si le
-        // moteur est en panne, sans rien décompter (ni site, ni élève).
-        $provider = $this->provider->name();
-        $cached   = searchcache::get($provider, $query, $this->maxresults);
+        // Déjà cherché récemment (par n'importe quel élève, avec n'importe
+        // quel moteur) : gratuit et instantané. Avant le coupe-circuit et le
+        // budget : servi même si les moteurs sont en panne, sans rien décompter.
+        $cached = searchcache::get($query, $this->maxresults);
         if ($cached !== null) {
             $this->notify($onsearch, $query);
             budget::record_cached($this->cmid);
-            return $this->deliver($query, $cached['items'], (int)$cached['time']);
+            return $this->deliver($query, $cached['items'], $cached['source'], (int)$cached['time'], false);
         }
 
-        if (budget::blocked() !== null) {
-            return $this->refuse($query, 'provider_unavailable');
-        }
         if ($this->peruser > 0 && $this->userused + $this->billed >= $this->peruser) {
             return $this->refuse($query, 'user_quota_exhausted');
         }
-        $ticket = budget::reserve($this->cap, $this->cmid, $this->activitycap);
-        if (!is_int($ticket)) {
-            return $this->refuse($query, $ticket);
-        }
 
-        $this->notify($onsearch, $query);
-
-        // Le ticket du pool reste tenu pendant la recherche (quelques
-        // secondes) : on entretient son battement de cœur.
-        \local_aifeedback\pool::heartbeat_current();
-        try {
-            $result = $this->provider->search($query, $this->maxresults);
-        } catch (\Throwable $e) {
-            // Un fournisseur ne doit pas lever d'exception ; si cela arrive
-            // quand même, la conversation continue.
-            $result = result::failure('provider_error', true, 60, get_class($e));
-        }
-        \local_aifeedback\pool::heartbeat_current();
-
-        budget::settle($ticket, $result->billable);
-        if ($result->billable) {
-            $this->billed++;
-        }
-        budget::record_ratelimit($result->ratelimit);
-
-        if (!$result->ok) {
-            budget::record_error($result->reason, $result->detail);
-            if ($result->blockfor !== 0) {
-                budget::block($result->reason, $result->blockfor, $result->detail);
+        // Moteurs de l'élève dans l'ordre (Tavily, puis Brave) : un échec lié
+        // au moteur ou à la clé fait passer au suivant.
+        $last     = 'provider_unavailable';
+        $notified = false;
+        $tried    = 0;
+        foreach ($this->engines as $engine) {
+            $why = manager::engine_unavailable($engine);
+            if ($why !== '') {
+                $last = $why;
+                continue;
             }
-            return $this->refuse($query, $result->reason);
-        }
+            $ticket = budget::reserve($engine->id, $engine->keyhash, $engine->cap, $this->cmid);
+            if (!is_int($ticket)) {
+                $last = $ticket;
+                continue;
+            }
+            if (!$notified) {
+                $this->notify($onsearch, $query);
+                $notified = true;
+            }
+            $tried++;
 
-        searchcache::set($provider, $query, $this->maxresults, $result->items);
-        return $this->deliver($query, $result->items, 0);
+            // Le ticket du pool reste tenu pendant la recherche (quelques
+            // secondes) : on entretient son battement de cœur.
+            \local_aifeedback\pool::heartbeat_current();
+            try {
+                $result = $engine->provider->search($query, $this->maxresults);
+            } catch (\Throwable $e) {
+                // Un moteur ne doit pas lever d'exception ; si cela arrive
+                // quand même, la conversation continue.
+                $result = result::failure('provider_error', true, 60, get_class($e));
+            }
+            \local_aifeedback\pool::heartbeat_current();
+
+            budget::settle($ticket, $result->billable);
+            if ($result->billable) {
+                $this->billed++;
+            }
+            budget::record_ratelimit($result->ratelimit);
+
+            if ($result->ok) {
+                searchcache::set($query, $this->maxresults, $result->items, $engine->name);
+                return $this->deliver($query, $result->items, $engine->name, 0, $tried > 1);
+            }
+
+            budget::record_error($engine->id, $result->reason, $result->detail);
+            if (in_array($result->reason, self::KEY_FAILURES, true)) {
+                // Clé refusée, crédits épuisés : c'est la clé de CET élève.
+                userkeys::set_state($engine->userid, $engine->id, $result->reason,
+                    ($result->blockfor !== 0) ? $result->blockfor : 3600, $result->detail);
+            } else if ($result->blockfor !== 0) {
+                // Panne du moteur : suspendu pour tout le monde, brièvement.
+                budget::block($engine->id, $result->reason, $result->blockfor, $result->detail);
+            }
+            if ($result->reason === 'invalid_query') {
+                return $this->refuse($query, 'invalid_query'); // inutile d'essayer ailleurs
+            }
+            $last = $result->reason;
+        }
+        return $this->refuse($query, $last);
     }
 
     /**
@@ -256,21 +272,25 @@ class tool implements \local_aichat\toolset {
      *
      * @param string  $query
      * @param array[] $items
+     * @param string  $source   moteur qui a fourni les résultats (Tavily, Brave Search)
      * @param int     $cachedat date de mise en cache (0 = recherche fraîche)
+     * @param bool    $fallback le moteur prioritaire a échoué, un autre a répondu
      * @return string
      */
-    private function deliver($query, array $items, $cachedat) {
-        $text = self::format_results($query, $items, $this->maxresults,
-            $this->provider->name(), $shown, $cachedat);
+    private function deliver($query, array $items, $source, $cachedat, $fallback) {
+        $text = self::format_results($query, $items, $this->maxresults, $source, $shown, $cachedat);
         $entry = array('q' => $query, 'status' => 'done', 'reason' => '',
-            'results' => $shown, 'time' => time());
+            'results' => $shown, 'provider' => (string)$source, 'time' => time());
         if ($cachedat > 0) {
             $entry['cached'] = 1;
+        }
+        if ($fallback) {
+            $entry['fallback'] = 1;
         }
         $this->log[] = $entry;
         foreach (array_slice($items, 0, $shown) as $item) {
             $this->sources[$item['url']] = array('title' => $item['title'], 'url' => $item['url'],
-                'kind' => 'search');
+                'kind' => 'search', 'provider' => (string)$source);
         }
         return $text;
     }

@@ -18,7 +18,6 @@
         <FIELD NAME="quizscope"     TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="all" COMMENT="all|tagged"/>
         <FIELD NAME="quiztag"       TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
         <FIELD NAME="websearch"     TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0" COMMENT="Tutor searches: 0 none, 1 occasional web search, 2 material search (web + page reading). Also requires the site switch"/>
-        <FIELD NAME="websearchcap"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Web searches allowed for this activity over 31 days (0 = site cap only)"/>
         <FIELD NAME="websearchsites" TYPE="text"             NOTNULL="false" COMMENT="Reference sites given to the tutor, one domain per line (material search)"/>
         <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="timemodified"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
@@ -87,11 +86,13 @@
       </INDEXES>
     </TABLE>
 
-    <TABLE NAME="local_aichat_wsledger" COMMENT="Site-wide register of web searches for the 31-day spending cap. No personal data: never deleted by privacy requests or course resets">
+    <TABLE NAME="local_aichat_wsledger" COMMENT="Register of web searches for the per-key 31-day caps. No personal data (only a hash of the key): never deleted by privacy requests or course resets">
       <FIELDS>
         <FIELD NAME="id"          TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="status"      TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="reserved" COMMENT="reserved|done|refunded|cached (served by the search cache, not counted)"/>
-        <FIELD NAME="cmid"        TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Activity that made the search (per-activity cap), 0 if none"/>
+        <FIELD NAME="provider"    TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="brave" COMMENT="Search engine: tavily|brave ('' for cache hits)"/>
+        <FIELD NAME="keyhash"     TYPE="char" LENGTH="40" NOTNULL="true" DEFAULT="" COMMENT="sha1 of provider|key: counts one key's usage without storing it"/>
+        <FIELD NAME="cmid"        TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Activity that made the search (statistics), 0 if none"/>
         <FIELD NAME="timecreated" TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0"/>
       </FIELDS>
       <KEYS>
@@ -100,6 +101,7 @@
       <INDEXES>
         <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated"/>
         <INDEX NAME="cmid_time"   UNIQUE="false" FIELDS="cmid, timecreated"/>
+        <INDEX NAME="keyhash_time" UNIQUE="false" FIELDS="keyhash, timecreated"/>
       </INDEXES>
     </TABLE>
 

@@ -2,7 +2,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 use local_aichat\activity;
-use local_aichat\brief;
 use local_aichat\websearch\manager as websearch;
 
 /**
@@ -82,15 +81,6 @@ function local_aichat_coursemodule_standard_elements($formwrapper, $mform) {
         $mform->setDefault('aichatwebsearch', ($config !== null) ? (int)$config->websearch : 0);
         $mform->hideIf('aichatwebsearch', 'aichatenabled', 'notchecked');
 
-        $mform->addElement('text', 'aichatwebsearchcap', get_string('form_websearchcap', 'local_aichat'),
-            array('size' => 6));
-        $mform->setType('aichatwebsearchcap', PARAM_INT);
-        $mform->addHelpButton('aichatwebsearchcap', 'form_websearchcap', 'local_aichat');
-        $mform->setDefault('aichatwebsearchcap', ($config !== null && (int)$config->websearch > 0)
-            ? (int)$config->websearchcap : websearch::DEFAULT_ACTIVITYCAP);
-        $mform->hideIf('aichatwebsearchcap', 'aichatenabled', 'notchecked');
-        $mform->hideIf('aichatwebsearchcap', 'aichatwebsearch', 'eq', websearch::MODE_NONE);
-
         $mform->addElement('textarea', 'aichatwebsearchsites', get_string('form_websearchsites', 'local_aichat'),
             array('rows' => 4, 'cols' => 40));
         $mform->setType('aichatwebsearchsites', PARAM_TEXT);
@@ -131,19 +121,13 @@ function local_aichat_coursemodule_edit_post_actions($moduleinfo, $course) {
     // Champs absents (recherche désactivée pour le site) : valeurs conservées.
     if (isset($moduleinfo->aichatwebsearch)) {
         $data['websearch'] = max(0, min(2, (int)$moduleinfo->aichatwebsearch));
-        if (isset($moduleinfo->aichatwebsearchcap)) {
-            $data['websearchcap'] = max(0, (int)$moduleinfo->aichatwebsearchcap);
-        }
         if (isset($moduleinfo->aichatwebsearchsites)) {
             $data['websearchsites'] = trim((string)$moduleinfo->aichatwebsearchsites);
         }
     }
     activity::save($cmid, (int)$course->id, $data);
-
-    if ($enabled) {
-        // Génère (ou régénère) le brief si l'énoncé ou le corrigé ont changé.
-        brief::schedule_if_stale($cmid);
-    }
+    // Le brief est mis en file par observer::course_module_saved(), une fois
+    // le corrigé de la correction IA enregistré (voir son commentaire).
 
     return $moduleinfo;
 }
@@ -178,4 +162,29 @@ function local_aichat_extend_settings_navigation(settings_navigation $settingsna
         'localaichat',
         new pix_icon('i/chat_topic', '')
     );
+}
+
+/**
+ * Lien « Tuteur IA : mes clés de recherche » dans les Préférences de
+ * l'utilisateur (section « Compte utilisateur »), comme le fait auth_oauth2
+ * pour ses comptes liés. Seulement pour son propre compte, et si la recherche
+ * Web est activée pour le site.
+ *
+ * @param navigation_node $useraccount
+ * @param stdClass        $user
+ * @param context_user    $context
+ * @param stdClass        $course
+ * @param context_course  $coursecontext
+ */
+function local_aichat_extend_navigation_user_settings(navigation_node $useraccount, stdClass $user,
+        context_user $context, stdClass $course, context_course $coursecontext) {
+    global $USER;
+    if (!websearch::site_enabled() || (int)$user->id !== (int)$USER->id
+            || \core\session\manager::is_loggedinas() || isguestuser()) {
+        return;
+    }
+    $parent = $useraccount->parent ? $useraccount->parent->find('useraccount', navigation_node::TYPE_CONTAINER) : false;
+    $target = $parent ? $parent : $useraccount;
+    $target->add(get_string('mykeys_page', 'local_aichat'), new moodle_url('/local/aichat/mykeys.php'),
+        navigation_node::TYPE_SETTING, null, 'localaichatkeys');
 }

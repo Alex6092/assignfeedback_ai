@@ -135,19 +135,27 @@ if ($hassiteconfig) {
         0
     ));
 
-    $settings->add(new admin_setting_configselect(
-        'local_aichat/websearch_provider',
-        new lang_string('setting_wsprovider', 'local_aichat'),
-        new lang_string('setting_wsprovider_help', 'local_aichat'),
-        'brave',
-        array('brave' => 'Brave Search')
+    // Clés de TEST du site (page de diagnostic uniquement) : les élèves
+    // cherchent avec leurs propres clés. Chiffrées, jamais réaffichées.
+    $settings->add(new admin_setting_encryptedpassword(
+        'local_aichat/websearch_tavilykey',
+        new lang_string('setting_wstavilykey', 'local_aichat'),
+        new lang_string('setting_wstavilykey_help', 'local_aichat')
     ));
 
-    // Chiffrée en base, jamais réaffichée dans le formulaire.
     $settings->add(new admin_setting_encryptedpassword(
         'local_aichat/websearch_apikey',
         new lang_string('setting_wsapikey', 'local_aichat'),
         new lang_string('setting_wsapikey_help', 'local_aichat')
+    ));
+
+    // Plafonds PAR CLÉ, sur 31 jours glissants.
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/websearch_tavilycap',
+        new lang_string('setting_wstavilycap', 'local_aichat'),
+        new lang_string('setting_wstavilycap_help', 'local_aichat'),
+        \local_aichat\websearch\manager::DEFAULT_TAVILYCAP,
+        PARAM_INT
     ));
 
     $settings->add(new admin_setting_configtext(

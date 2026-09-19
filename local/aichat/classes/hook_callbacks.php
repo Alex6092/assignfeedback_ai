@@ -69,6 +69,10 @@ class hook_callbacks {
             'maxchars'     => self::setting('maxmessagechars', 2000),
             'notice'       => self::student_notice(),
             'strings'      => self::strings(),
+            // Activité avec recherche Web, mais l'élève n'a pas de clé : le
+            // widget lui indique où en ajouter une (sinon le tuteur ne cherche pas).
+            'needkeys'     => \local_aichat\websearch\manager::needs_keys(activity::get($cmid), (int)$USER->id),
+            'keysurl'      => (new \moodle_url('/local/aichat/mykeys.php'))->out(false),
         );
 
         // La feuille de style ne peut plus être ajoutée par $PAGE->requires->css()
@@ -124,6 +128,7 @@ class hook_callbacks {
             'widget_welcome', 'widget_connecting', 'widget_generating',
             'widget_queued_next', 'widget_queued_n', 'widget_interrupted',
             'widget_quota', 'widget_networkerror', 'widget_sendhint', 'widget_searching', 'widget_reading',
+            'widget_needkeys', 'widget_needkeys_link',
         );
         $out = array();
         foreach ($keys as $key) {
