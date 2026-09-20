@@ -133,6 +133,7 @@ $string['widget_title']        = 'Tuteur IA';
 $string['widget_open']         = 'Ouvrir le tuteur IA';
 $string['widget_close']        = 'Fermer';
 $string['widget_new']          = 'Nouvelle discussion';
+$string['widget_resize']       = 'Redimensionner la fenêtre (flèches du clavier, Origine pour la taille par défaut)';
 $string['widget_placeholder']  = 'Posez votre question…';
 $string['widget_send']         = 'Envoyer';
 $string['widget_stop']         = 'Arrêter';

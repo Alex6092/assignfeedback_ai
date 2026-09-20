@@ -238,6 +238,30 @@ correction IA enregistré (observateur `course_module_created`, qui passe après
 
 ---
 
+## Tuteur IA — affichage du chat
+
+- **Fenêtre redimensionnable** sur ordinateur et tablette : une poignée dans le coin
+  haut-gauche (la fenêtre est ancrée en bas à droite). La taille est bornée par l'écran,
+  retenue dans le navigateur de l'élève et commune à toutes les activités. Au clavier :
+  flèches pour ajuster, **Origine** pour revenir à la taille par défaut (double-clic à la
+  souris). En dessous de 600 px de large, la fenêtre occupe l'écran et la poignée disparaît.
+- **Markdown réparé avant affichage** (`content::tidy_markdown`, côté serveur, donc pour le
+  chat comme pour la transcription enseignant). Les petits modèles produisent deux défauts
+  que le widget ne sait pas montrer :
+  - **formules LaTeX** (`$\pm 500\text{ mV}$`) → texte lisible (`±500 mV`). Les délimiteurs
+    `$…$`, `$$…$$`, `\(…\)`, `\[…\]`, `\text{}`, `\frac{}{}` et les symboles courants sont
+    convertis. Un prix (`50 $`), une variable de shell entre accents graves et les blocs de
+    code ne sont jamais touchés ;
+  - **puces enchaînées sur une même ligne** (`plages : * Tension… * Courant…`) → une puce par
+    ligne, précédée d'une ligne vide. Il faut au moins deux puces, entourées d'espaces et
+    précédées d'autre chose qu'un chiffre : `2 * 3 * 4` et `**gras**` restent intacts.
+
+  Le texte brut enregistré n'est pas modifié, et le prompt demande en plus au modèle de ne
+  pas produire ces deux formes (`tutor::format_rules()`, ajouté même quand l'administrateur a
+  remplacé le prompt de base).
+
+---
+
 ## Tuteur IA — recherche Web
 
 Le tuteur (`local_aichat`) peut chercher sur Internet quand une information est

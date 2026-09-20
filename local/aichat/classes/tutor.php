@@ -72,7 +72,23 @@ class tutor {
             $prompt .= "\n\n" . self::material_search_rules($websearch === '', !empty($material['read']),
                 isset($material['sites']) ? $material['sites'] : array());
         }
-        return $prompt . "\n\n" . self::integrity_rules();
+        return $prompt . "\n\n" . self::format_rules() . "\n\n" . self::integrity_rules();
+    }
+
+    /**
+     * Forme des réponses. Bloc toujours ajouté, même quand l'administrateur a
+     * remplacé le prompt de base : le widget affiche du markdown simple, pas
+     * des mathématiques, et les puces écrites à la suite ne se voient pas.
+     * L'affichage répare déjà les deux (content::tidy_markdown) ; mieux vaut
+     * néanmoins que le modèle n'en produise pas.
+     */
+    public static function format_rules() {
+        $c  = "=== FORME DES RÉPONSES ===\n";
+        $c .= "Pas de notation mathématique LaTeX : n'écris ni \$…\$, ni \\text{…}, ni \\pm, ni \\dots. "
+            . "Les valeurs et les unités s'écrivent en clair : ±10 V, 0-20 mA, 4-20 mA, 24 V, 10 kΩ.\n";
+        $c .= "Une puce par ligne, chacune en début de ligne. N'enchaîne jamais plusieurs puces sur la "
+            . "même ligne (« : * Tension… * Courant… » ne s'affiche pas comme une liste).";
+        return $c;
     }
 
     /**

@@ -75,6 +75,41 @@
     overflow: hidden;
 }
 
+/*
+ * Redimensionnement (ordinateur et tablette) : la fenêtre est ancrée en bas à
+ * droite, on tire donc son coin haut-gauche. Les max-width/max-height de la
+ * règle ci-dessus continuent de borner la taille demandée.
+ */
+.local-aichat-resize {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    cursor: nwse-resize;
+    touch-action: none;
+    opacity: 0.8;
+}
+
+.local-aichat-resize:hover,
+.local-aichat-resize:focus {
+    opacity: 1;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.local-aichat-panel.local-aichat-resizing {
+    user-select: none;
+}
+
 .local-aichat-header {
     display: flex;
     align-items: center;
@@ -290,6 +325,11 @@
 /* Sur téléphone, le volet occupe l'écran : une fenêtre de 400 px y serait
    inutilisable, et le clavier virtuel masquerait la zone de saisie. */
 @media (max-width: 600px) {
+    /* Téléphone : la fenêtre occupe l'écran, il n'y a rien à redimensionner. */
+    .local-aichat-resize {
+        display: none;
+    }
+
     .local-aichat-panel {
         right: 0;
         bottom: 0;
