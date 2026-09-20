@@ -279,6 +279,28 @@ Une activité où la recherche n'est pas autorisée, ou un élève sans clé, en
 **exactement la même requête qu'avant** (aucun champ `tools`, aucun bloc de prompt).
 Dans le second cas, le widget indique à l'élève où ajouter sa clé.
 
+#### Appel imposé quand l'élève le demande
+
+C'est le modèle qui décide d'appeler l'outil, et les modèles locaux annoncent volontiers
+une recherche sans la faire (« je lance la recherche… », puis une réponse de mémoire).
+Deux garde-fous :
+
+- **Consignes** : il est interdit d'annoncer une recherche (l'interface le signale déjà),
+  de dire qu'on a cherché sans résultat reçu, de renvoyer l'élève vers un moteur de
+  recherche, et — en mode matériel — de citer une référence de produit qui ne vient pas
+  d'un résultat ou d'une page lue.
+- **Forçage** : quand le message de l'élève demande explicitement une recherche (« lance
+  une recherche », « peux-tu chercher… », « trouve la datasheet ») ou contient une adresse,
+  `toolbox::requested_tool()` le détecte et `generator::run()` **impose** l'appel au premier
+  tour (`tool_choice`). Le modèle ne peut alors plus se contenter d'en parler. Si le serveur
+  ne connaît pas `tool_choice`, un nouvel essai part sans lui : l'élève a toujours sa
+  réponse. Les tours suivants restent libres, sinon le modèle ne pourrait pas répondre à
+  partir des résultats.
+
+En mode matériel, le forçage ne s'applique pas au tout premier message de la conversation :
+le tuteur garde ce tour pour demander à l'élève les critères tirés du cahier des charges.
+Une adresse collée, elle, est lue tout de suite.
+
 ### Configuration
 
 1. **Moodle**, *Administration > Plugins > Plugins locaux > Tuteur IA*, rubrique

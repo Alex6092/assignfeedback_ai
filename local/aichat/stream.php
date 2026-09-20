@@ -96,11 +96,13 @@ local_aichat_sse('start', array('messageid' => (int)$messageid));
 // Recherche Web : proposée au modèle seulement si elle est possible pour cette
 // réponse ; sinon (activité sans recherche) la requête est celle d'avant.
 // Capacité optionnelle : un incident ici ne doit jamais empêcher la réponse.
-$material = null;
+$material  = null;
+$forcetool = null;
 try {
     $websearch = websearch::availability($access->config, (int)$USER->id);
     $webtool   = ($websearch === '') ? websearch::new_tool($USER, $access->config) : null;
     $tool      = $webtool;
+    $question  = conversation::student_question((int)$conv->id, (int)$messageid);
     // 'disabled' : activité sans recherche, ou élève sans clé personnelle —
     // sans clé, le tuteur ne va pas sur Internet (ni recherche, ni lecture).
     if (websearch::mode($access->config) === websearch::MODE_MATERIAL && $websearch !== 'disabled') {
@@ -108,7 +110,7 @@ try {
         // pages trouvées, les documents liés d'une page lue, et les adresses
         // données par l'élève dans sa question.
         $allowlist = new \local_aichat\reader\allowlist();
-        $allowlist->add_from_text(conversation::student_question((int)$conv->id, (int)$messageid));
+        $allowlist->add_from_text($question);
         $reader = null;
         if (websearch::reader_availability((int)$USER->id) === ''
                 && ($webtool !== null || $allowlist->count() > 0)) {
@@ -119,11 +121,23 @@ try {
             : new \local_aichat\toolbox($tools, websearch::toolcalls(), $allowlist);
         $material = array('read' => $reader !== null, 'sites' => websearch::sites($access->config));
     }
+    // Demande explicite de l'élève (« lance une recherche », adresse collée) :
+    // l'appel est imposé au premier tour, sinon le modèle se contente souvent
+    // de l'annoncer.
+    $forcetool = \local_aichat\toolbox::requested_tool($question, $tool);
+    // Recherche de matériel : au tout premier message, le tuteur garde son
+    // tour pour demander les critères du cahier des charges. Une adresse
+    // donnée par l'élève reste lue tout de suite.
+    if ($material !== null && $forcetool === \local_aichat\websearch\tool::NAME
+            && conversation::student_turns((int)$conv->id, (int)$messageid) <= 1) {
+        $forcetool = null;
+    }
 } catch (\Throwable $e) {
     debugging('local_aichat: recherche Web indisponible — ' . $e->getMessage(), DEBUG_DEVELOPER);
     $websearch = websearch::activity_enabled($access->config) ? 'provider_unavailable' : 'disabled';
     $tool      = null;
     $material  = null;
+    $forcetool = null;
 }
 
 $messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
@@ -169,7 +183,7 @@ try {
                 conversation::store_partial($messageid, $buffer);
             }
             return true;
-        }, $onsearch, $tool);
+        }, $onsearch, $tool, $forcetool);
 
     // Recherches de cette réponse : quota de l'élève et transcription.
     conversation::record_searches($messageid, $tool, $websearch);
