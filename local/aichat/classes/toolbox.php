@@ -4,6 +4,7 @@ namespace local_aichat;
 defined('MOODLE_INTERNAL') || die();
 
 use local_aichat\reader\allowlist;
+use local_aichat\reader\tool as reader_tool;
 use local_aichat\websearch\tool as websearch_tool;
 
 /**
@@ -115,6 +116,66 @@ class toolbox implements toolset {
         }
         // Pages lues d'abord : ce sont elles qui ont nourri la réponse.
         return array_values($read + $search);
+    }
+
+    /**
+     * L'élève demande-t-il explicitement un appel d'outil ?
+     *
+     * Les modèles locaux annoncent volontiers une recherche sans l'appeler
+     * (« je lance la recherche… » puis une réponse de mémoire). Quand la
+     * demande est explicite, l'appel est IMPOSÉ au premier tour
+     * (generator::run) : le modèle ne peut plus se contenter d'en parler.
+     * Le coût reste borné par les limites d'appels et le plafond de la clé.
+     *
+     * @param string       $text texte du message de l'élève
+     * @param toolset|null $tool outils réellement proposés pour cette réponse
+     * @return string|null nom de la fonction à imposer, ou null
+     */
+    public static function requested_tool($text, toolset $tool = null) {
+        $text = trim((string)$text);
+        if ($tool === null || $text === '') {
+            return null;
+        }
+        $names = array();
+        foreach ($tool->definitions() as $definition) {
+            $names[$definition['function']['name']] = true;
+        }
+        $text = \core_text::strtolower($text);
+        // Une adresse donnée par l'élève est là pour être lue.
+        if (isset($names[reader_tool::NAME]) && preg_match('~https?://~u', $text)) {
+            return reader_tool::NAME;
+        }
+        if (isset($names[websearch_tool::NAME]) && self::asks_search($text)) {
+            return websearch_tool::NAME;
+        }
+        return null;
+    }
+
+    /**
+     * Demande de recherche formulée au tuteur : « lance une recherche »,
+     * « peux-tu chercher… », « trouve la datasheet ». Une phrase comme « je
+     * cherche à comprendre » n'en est pas une.
+     *
+     * @param string $text message de l'élève, en minuscules
+     * @return bool
+     */
+    private static function asks_search($text) {
+        $verb = '(?:cherche|cherches|chercher|recherche|recherches|rechercher|trouve|trouves|trouver'
+            . '|renseigne|renseigner|v[eé]rifie|v[eé]rifier|consulte|consulter|regarde|regarder'
+            . '|lis|lire|google)';
+        // « lance une recherche », « as-tu lancé la recherche », « fais une recherche internet »
+        if (preg_match('~\b(?:lanc|fai[st]|faire|effectu|refai|relanc|men)\w*\b[^.!?]{0,40}\brecherche~u', $text)) {
+            return true;
+        }
+        // Demande adressée au tuteur : « peux-tu chercher… », « j\'aimerais que tu trouves… »
+        $ask = '(?:peux[- ]tu|peux tu|pourrais[- ]tu|tu peux|tu pourrais|j\'aimerai|j\'aimerais'
+            . '|je (?:te )?(?:demande|voudrais|veux|souhaite)|il faut que tu|merci de|pense [aà]'
+            . '|stp|s\'il te pla[iî]t)';
+        if (preg_match('~' . $ask . '[^.!?]{0,60}\b' . $verb . '~u', $text)) {
+            return true;
+        }
+        // Impératif en tête de phrase : « Cherche la datasheet », « Trouve-moi… »
+        return (bool)preg_match('~(?:^|[.!?]\s*|\n)\s*' . $verb . '\b~u', $text);
     }
 
     public function log() {

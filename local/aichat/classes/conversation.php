@@ -236,6 +236,21 @@ class conversation {
     }
 
     /**
+     * Nombre de messages déjà envoyés par l'élève dans cette conversation,
+     * réponse en cours comprise.
+     *
+     * @param int $conversationid
+     * @param int $assistantid id du message assistant en cours (exclu)
+     * @return int
+     */
+    public static function student_turns($conversationid, $assistantid) {
+        global $DB;
+        return (int)$DB->count_records_select(self::TABLE_MSG,
+            'conversationid = ? AND id < ? AND role = ?',
+            array((int)$conversationid, (int)$assistantid, 'user'));
+    }
+
+    /**
      * Journal des recherches Web d'un message.
      *
      * @param \stdClass $row

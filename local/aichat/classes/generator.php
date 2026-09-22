@@ -29,6 +29,10 @@ class generator {
      * @param callable      $ondelta  function(string): bool — false = arrêter
      * @param callable|null $onsearch function(string $label, string $kind) avant chaque appel d'outil
      * @param toolset|null  $tool     null = aucun outil proposé
+     * @param string|null   $forcefirst nom d'une fonction dont l'appel est IMPOSÉ au
+     *                                premier tour (l'élève a demandé explicitement une
+     *                                recherche ou la lecture d'une adresse). Repli
+     *                                automatique si le serveur refuse tool_choice.
      * @return array ['content', 'finish_reason', 'usage', 'aborted', 'rounds',
      *               'toolchars' (taille des résultats injectés)]. Avec des outils,
      *               'usage' vaut : prompt du DERNIER tour (le contexte réel,
@@ -38,7 +42,7 @@ class generator {
      * @throws \moodle_exception comme api::stream (serveur indisponible)
      */
     public static function run(array $messages, array $options, callable $ondelta,
-            $onsearch = null, toolset $tool = null) {
+            $onsearch = null, toolset $tool = null, $forcefirst = null) {
         if ($tool === null) {
             $result = api::stream($messages, $options, $ondelta);
             $result['rounds']    = 1;
@@ -58,6 +62,13 @@ class generator {
             $opts  = $options;
             if ($offer) {
                 $opts['tools'] = $tool->definitions();
+                // Appel imposé : le modèle ne peut plus annoncer une recherche
+                // sans la faire. Seulement au premier tour — ensuite il doit
+                // pouvoir répondre à partir des résultats.
+                if ($round === 1 && $forcefirst !== null) {
+                    $opts['tool_choice'] = array('type' => 'function',
+                        'function' => array('name' => $forcefirst));
+                }
             }
 
             // Le texte d'un nouveau tour est séparé de celui du précédent
@@ -65,7 +76,9 @@ class generator {
             // flux, pour que le texte enregistré soit celui que l'élève a vu.
             $separator = ($content !== '' && !preg_match('/\s$/u', $content)) ? "\n\n" : '';
             $sent      = '';
-            $wrapped   = function($delta) use ($ondelta, &$separator, &$sent) {
+            $streamed  = false;
+            $wrapped   = function($delta) use ($ondelta, &$separator, &$sent, &$streamed) {
+                $streamed = true;
                 if ($separator !== '') {
                     $sent      = $separator;
                     $separator = '';
@@ -76,7 +89,21 @@ class generator {
                 return $ondelta($delta);
             };
 
-            $result   = api::stream($messages, $opts, $wrapped);
+            try {
+                $result = api::stream($messages, $opts, $wrapped);
+            } catch (\moodle_exception $e) {
+                // Serveur qui ne connaît pas tool_choice : on réessaie sans
+                // imposer l'appel, plutôt que de priver l'élève de réponse.
+                // Une panne du serveur, elle, reste traitée par le pool.
+                if (!isset($opts['tool_choice']) || $streamed
+                        || $e instanceof \local_aifeedback\server_unavailable_exception) {
+                    throw $e;
+                }
+                debugging('local_aichat: appel d\'outil imposé refusé par le serveur — '
+                    . $e->getMessage(), DEBUG_DEVELOPER);
+                unset($opts['tool_choice']);
+                $result = api::stream($messages, $opts, $wrapped);
+            }
             $content .= $sent . $result['content'];
             if (is_array($result['usage']) && isset($result['usage']['prompt_tokens'])) {
                 $lastprompt   = (int)$result['usage']['prompt_tokens'];

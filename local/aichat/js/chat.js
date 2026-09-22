@@ -29,6 +29,9 @@
     }
     var S = CFG.strings || {};
     var STORAGE_KEY = 'local_aichat_open_' + CFG.cmid;
+    var SIZE_KEY = 'local_aichat_size';   // taille choisie, commune aux activités
+    var MIN_W = 320;
+    var MIN_H = 320;
 
     // --- État ---------------------------------------------------------------
     var state = 'idle';        // idle | sending | queued | streaming
@@ -74,6 +77,13 @@
     header.appendChild(btnNew);
     header.appendChild(btnClose);
     panel.appendChild(header);
+
+    // Poignée de redimensionnement, dans le coin opposé à l'ancrage.
+    var resizer = el('button', 'local-aichat-resize', '⤡');
+    resizer.type = 'button';
+    resizer.title = S.widget_resize || '';
+    resizer.setAttribute('aria-label', S.widget_resize || '');
+    panel.appendChild(resizer);
 
     if (CFG.notice) {
         panel.appendChild(el('p', 'local-aichat-notice', CFG.notice));
@@ -501,11 +511,124 @@
         });
     }
 
+    // --- Taille de la fenêtre ----------------------------------------------
+    // Sous 600 px de large, la feuille de style occupe tout l'écran : il n'y a
+    // rien à redimensionner, et une taille en dur y serait gênante.
+    function canResize() {
+        return window.innerWidth > 600;
+    }
+
+    function applySize(size) {
+        if (!size || !canResize()) {
+            return;
+        }
+        var maxw = Math.max(MIN_W, window.innerWidth - 40);
+        var maxh = Math.max(MIN_H, window.innerHeight - 40);
+        panel.style.width = Math.min(Math.max(size.w, MIN_W), maxw) + 'px';
+        panel.style.height = Math.min(Math.max(size.h, MIN_H), maxh) + 'px';
+    }
+
+    function storedSize() {
+        try {
+            var size = JSON.parse(window.localStorage.getItem(SIZE_KEY));
+            return (size && size.w > 0 && size.h > 0) ? size : null;
+        } catch (e) {
+            return null;   // stockage bloqué ou valeur abîmée
+        }
+    }
+
+    function storeSize() {
+        var rect = panel.getBoundingClientRect();
+        try {
+            window.localStorage.setItem(SIZE_KEY,
+                JSON.stringify({w: Math.round(rect.width), h: Math.round(rect.height)}));
+        } catch (e) {
+            // simple confort
+        }
+    }
+
+    function resetSize() {
+        panel.style.width = '';
+        panel.style.height = '';
+        try {
+            window.localStorage.removeItem(SIZE_KEY);
+        } catch (e) {
+            // idem
+        }
+    }
+
+    var drag = null;
+
+    resizer.addEventListener('pointerdown', function (event) {
+        if (!canResize()) {
+            return;
+        }
+        var rect = panel.getBoundingClientRect();
+        drag = {x: event.clientX, y: event.clientY, w: rect.width, h: rect.height};
+        panel.classList.add('local-aichat-resizing');
+        if (resizer.setPointerCapture) {
+            resizer.setPointerCapture(event.pointerId);
+        }
+        event.preventDefault();
+    });
+
+    resizer.addEventListener('pointermove', function (event) {
+        if (drag) {
+            // Coin haut-gauche : vers le haut et vers la gauche, ça agrandit.
+            applySize({w: drag.w + (drag.x - event.clientX), h: drag.h + (drag.y - event.clientY)});
+        }
+    });
+
+    function endDrag() {
+        if (!drag) {
+            return;
+        }
+        drag = null;
+        panel.classList.remove('local-aichat-resizing');
+        storeSize();
+        scrollDown();
+    }
+
+    resizer.addEventListener('pointerup', endDrag);
+    resizer.addEventListener('pointercancel', endDrag);
+    resizer.addEventListener('dblclick', resetSize);
+
+    // Au clavier : flèches pour ajuster, Origine pour la taille par défaut.
+    resizer.addEventListener('keydown', function (event) {
+        var rect = panel.getBoundingClientRect();
+        var size = {w: rect.width, h: rect.height};
+        if (event.key === 'Home') {
+            resetSize();
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            size.w += (event.key === 'ArrowLeft') ? 40 : -40;
+            applySize(size);
+            storeSize();
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            size.h += (event.key === 'ArrowUp') ? 40 : -40;
+            applySize(size);
+            storeSize();
+        } else {
+            return;
+        }
+        event.preventDefault();
+        scrollDown();
+    });
+
+    window.addEventListener('resize', function () {
+        if (!canResize()) {
+            panel.style.width = '';
+            panel.style.height = '';
+            return;
+        }
+        applySize(storedSize());
+    });
+
     // --- Ouverture / fermeture ---------------------------------------------
     var loaded = false;
 
     function openPanel() {
         panel.hidden = false;
+        applySize(storedSize());
         toggle.classList.add('local-aichat-hidden');
         try {
             window.localStorage.setItem(STORAGE_KEY, '1');

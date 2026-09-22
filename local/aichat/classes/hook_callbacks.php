@@ -123,7 +123,7 @@ class hook_callbacks {
      */
     private static function strings() {
         $keys = array(
-            'widget_title', 'widget_open', 'widget_close', 'widget_new',
+            'widget_title', 'widget_open', 'widget_close', 'widget_new', 'widget_resize',
             'widget_placeholder', 'widget_send', 'widget_stop', 'widget_retry',
             'widget_welcome', 'widget_connecting', 'widget_generating',
             'widget_queued_next', 'widget_queued_n', 'widget_interrupted',

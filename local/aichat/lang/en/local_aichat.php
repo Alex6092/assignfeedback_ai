@@ -133,6 +133,7 @@ $string['widget_title']        = 'AI tutor';
 $string['widget_open']         = 'Open the AI tutor';
 $string['widget_close']        = 'Close';
 $string['widget_new']          = 'New conversation';
+$string['widget_resize']       = 'Resize the window (arrow keys, Home to reset)';
 $string['widget_placeholder']  = 'Ask your question...';
 $string['widget_send']         = 'Send';
 $string['widget_stop']         = 'Stop';
