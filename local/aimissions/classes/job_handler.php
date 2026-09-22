@@ -13,10 +13,12 @@ defined('MOODLE_INTERNAL') || die();
  *   1. charge/crée le projet (l'entreprise fictive persistante du groupe) ;
  *   2. lit le dossier projet et demande au LLM la mission suivante (cohérente,
  *      progressive, ton du persona) — schéma JSON strict ;
- *   3. crée un DEVOIR caché, restreint au groupe, avec soumission texte+fichier
- *      et la correction IA (assignfeedback_ai) activée et PRÉ-CONFIGURÉE ;
- *   4. pose la compétence EFE sur le devoir (via efe_bridge, no-op si absent) ;
- *   5. met à jour le dossier du projet et le numéro de sprint.
+ *   3. crée le DEVOIR caché, restreint au groupe (assign_factory) : correction IA
+ *      pré-configurée, compétences EFE, Tuteur IA si demandé ;
+ *   4. met à jour le dossier du projet et le numéro de sprint.
+ *
+ * Un job peut aussi ADAPTER la mission d'un autre groupe (params.adaptfrom) :
+ * même besoin et même grille, réécrits pour l'entreprise du groupe.
  */
 class job_handler implements \local_aifeedback\job_handler {
 
@@ -125,6 +127,15 @@ class job_handler implements \local_aifeedback\job_handler {
 
         $params = json_decode((string)$job->params, true) ?: array();
 
+        // Adaptation d'un sprint d'un autre groupe (duplication « Adapter par l'IA »).
+        $source = null;
+        if (!empty($params['adaptfrom'])) {
+            $source = $DB->get_record(self::TABLE_MISSION, array('id' => (int)$params['adaptfrom']));
+            if (!$source) {
+                throw new \moodle_exception('error_adapt_nosource', 'local_aimissions');
+            }
+        }
+
         // --- 1. Projet (entreprise fictive du groupe) -------------------
         $project = $this->load_or_create_project($job, $params);
         $this->log($job, 'Projet : « ' . $project->companyname . ' » (groupe '
@@ -137,36 +148,35 @@ class job_handler implements \local_aifeedback\job_handler {
         }
 
         // --- 2. Appel LLM : la mission suivante -------------------------
-        $this->log($job, 'Appel LLM (Agent 1) pour générer la mission…');
-        $spec = $this->generate_mission($project, $sprint, $params);
+        if ($source) {
+            $this->log($job, 'Appel LLM (Agent 1) pour adapter la mission « ' . $source->title
+                . ' » à cette entreprise…');
+        } else {
+            $this->log($job, 'Appel LLM (Agent 1) pour générer la mission…');
+        }
+        $spec = $this->generate_mission($project, $sprint, $params, $source);
+        $spec['title']         = $this->truncate((string)$spec['title'], 250);
+        $spec['clientrequest'] = $this->ensure_html((string)$spec['clientrequest']);
         $this->log($job, 'Mission reçue : « ' . $spec['title'] . ' »');
 
-        // --- 3. Devoir caché, restreint au groupe -----------------------
-        $name = $this->truncate($spec['title'], 250);
-        $intro = $this->ensure_html($spec['clientrequest']);
+        // --- 3. Devoir caché, restreint au groupe, puis correction IA,
+        //        compétences EFE et tuteur ---------------------------------
+        $codes = self::job_efe_codes($params);
         $this->log($job, 'Création du devoir caché…');
-        $cm = $this->create_assign_module($job, $project, $name, $intro);
-        $assignid = (int)$cm->instance;
-        $cmid     = (int)$cm->id;
+        $cm = assign_factory::create((int)$job->courseid, $project, $spec, array(
+            'efe_codes'    => $codes,
+            'profid'       => (int)$job->userid,
+            'aichat'       => !empty($params['aichat']),
+            'aichatsearch' => (int)($params['aichatsearch'] ?? 0),
+        ), function($line) use ($job) {
+            $this->log($job, $line);
+        });
+        $cmid = (int)$cm->id;
 
-        // --- 4. Pré-config de la correction IA (Agent 3) ----------------
-        $this->prefill_feedback_config($assignid, $project, $spec);
-        $this->log($job, 'Correction IA pré-configurée sur le devoir.');
-
-        // --- 5. Compétence EFE positionnée sur le devoir ----------------
-        $codes = array(
-            'n1' => (string)($params['efe_n1'] ?? ''),
-            'n2' => (string)($params['efe_n2'] ?? ''),
-            'n3' => (string)($params['efe_n3'] ?? ''),
-        );
-        if (efe_bridge::attach_competency($cmid, (int)$job->courseid, $codes, (int)$job->userid)) {
-            $this->log($job, 'Compétence EFE rattachée (report automatique à la correction).');
-        } else if (!efe_bridge::is_available()) {
-            $this->log($job, 'local_efenotes absent : report de compétence ignoré.');
-        }
-
-        // --- 6. Enregistre la mission + met à jour le dossier -----------
-        $missionid = $this->store_mission($project, $sprint, $spec, $cmid, $codes);
+        // --- 4. Enregistre la mission + met à jour le dossier -----------
+        $context = (string)($params['pedagogicalcontext'] ?? ($params['module'] ?? ''));
+        $missionid = $this->store_mission($project, $sprint, $spec, $cmid, $codes, $context,
+            $source ? (int)$source->id : 0);
         $this->update_project_dossier($project, $spec, $sprint);
 
         $DB->set_field(self::TABLE_JOB, 'resultmissionid', $missionid, array('id' => $job->id));
@@ -475,10 +485,15 @@ class job_handler implements \local_aifeedback\job_handler {
      * @return array spec validée : title, clientrequest, rubric, competencies[],
      *               deliverables[], companyname, sector, persona, dossier_update.
      */
-    private function generate_mission(\stdClass $project, int $sprint, array $params): array {
+    private function generate_mission(\stdClass $project, int $sprint, array $params,
+            ?\stdClass $source = null): array {
+        $system = $this->system_prompt($project, $sprint, $params);
+        if ($source) {
+            $system .= "\n\n" . $this->adaptation_rules($sprint);
+        }
         $messages = array(
-            array('role' => 'system', 'content' => $this->system_prompt($project, $sprint, $params)),
-            array('role' => 'user',   'content' => $this->user_prompt($project, $sprint, $params)),
+            array('role' => 'system', 'content' => $system),
+            array('role' => 'user',   'content' => $this->user_prompt($project, $sprint, $params, $source)),
         );
 
         $options = array(
@@ -511,7 +526,8 @@ class job_handler implements \local_aifeedback\job_handler {
     private function system_prompt(\stdClass $project, int $sprint, array $params): string {
         $level      = (string)($params['level'] ?? 'BTS CIEL 1ère année');
         $complexity = (string)($params['complexity'] ?? 'Intermédiaire');
-        $module     = (string)($params['module'] ?? '');
+        // « module » : ancien champ « Module / matière », jobs mis en file avant 0.8.0.
+        $context    = trim((string)($params['pedagogicalcontext'] ?? ($params['module'] ?? '')));
         $complabel  = (string)($params['competencylabel'] ?? '');
         $nbcontr    = (int)($params['constraints'] ?? 3);
 
@@ -528,8 +544,12 @@ class job_handler implements \local_aifeedback\job_handler {
             $p .= "Compétence(s) à faire travailler (NE PAS la nommer dans l'énoncé) : "
                 . $complabel . ".\n";
         }
-        if ($module !== '') {
-            $p .= "Module / matière : " . $module . ".\n";
+        if ($context !== '') {
+            $p .= "\nCONTEXTE PÉDAGOGIQUE DONNÉ PAR L'ENSEIGNANT (à respecter) :\n" . $context . "\n";
+            $p .= "Les choix technologiques que ce contexte IMPOSE font exception à la règle ci-dessus : ";
+            $p .= "le client les exprime comme une contrainte de son entreprise (« notre service ";
+            $p .= "informatique impose… », « nous travaillons déjà avec… »), sans jamais en faire la ";
+            $p .= "solution ni expliquer comment s'en servir.\n\n";
         }
         $p .= "Niveau : " . $level . ". Complexité visée : " . $complexity . ". ";
         $p .= "Nombre de contraintes à intégrer : environ " . $nbcontr . ".\n\n";
@@ -554,7 +574,8 @@ class job_handler implements \local_aifeedback\job_handler {
     /**
      * Prompt utilisateur : le dossier projet (mémoire) + la demande.
      */
-    private function user_prompt(\stdClass $project, int $sprint, array $params): string {
+    private function user_prompt(\stdClass $project, int $sprint, array $params,
+            ?\stdClass $source = null): string {
         $u = "DOSSIER PROJET (mémoire — à respecter pour la cohérence) :\n";
         if ($sprint <= 1) {
             $u .= "(projet neuf, aucune histoire pour l'instant)\n";
@@ -581,8 +602,61 @@ class job_handler implements \local_aifeedback\job_handler {
                 $u .= 'Contraintes connues : ' . implode(', ', (array)$dossier['constraints']) . "\n";
             }
         }
+        if ($source) {
+            $u .= "\nMISSION D'ORIGINE À ADAPTER (rédigée pour une autre entreprise) :\n";
+            $u .= 'Titre : ' . $source->title . "\n";
+            $u .= "Demande client :\n"
+                . \core_text::substr(trim(html_to_text((string)$source->clientrequest, 0, false)), 0, 6000) . "\n";
+            $u .= "Grille d'évaluation :\n" . \core_text::substr(trim((string)$source->rubric), 0, 4000) . "\n";
+            if (trim((string)$source->competencies) !== '') {
+                $u .= "Compétences évaluées :\n" . trim((string)$source->competencies) . "\n";
+            }
+            $u .= "\nGénère la demande client du sprint n°" . $sprint
+                . " : la même mission, adaptée à l'entreprise de ce projet.";
+            return $u;
+        }
         $u .= "\nGénère la demande client du sprint n°" . $sprint . ".";
         return $u;
+    }
+
+    /**
+     * Consignes de la duplication « Adapter par l'IA » : même mission, autre
+     * entreprise. Les textes diffèrent d'un groupe à l'autre, le travail
+     * demandé et la grille restent équivalents.
+     */
+    private function adaptation_rules(int $sprint): string {
+        $p  = "=== ADAPTATION D'UNE MISSION EXISTANTE ===\n";
+        $p .= "L'enseignant réutilise pour ce groupe une mission déjà rédigée pour une AUTRE ";
+        $p .= "entreprise (fournie dans le message). Réécris-la pour l'entreprise de ce projet : ";
+        $p .= "mêmes besoins fonctionnels, mêmes contraintes, même difficulté, même périmètre et ";
+        $p .= "mêmes critères d'évaluation (la grille « rubric » reste équivalente, dans le ";
+        $p .= "vocabulaire de cette entreprise ; les compétences restent les mêmes). Change le ";
+        $p .= "contexte métier, les noms, les exemples et les données pour qu'ils correspondent à ";
+        $p .= "l'entreprise ; ne reprends jamais le nom ni les détails de l'entreprise d'origine.\n";
+        if ($sprint <= 1) {
+            $p .= "Le projet de ce groupe est neuf : invente son entreprise (nom, secteur, contact), ";
+            $p .= "dans un domaine où ce besoin a du sens, différente de l'entreprise d'origine.\n";
+        }
+        return $p;
+    }
+
+    /**
+     * Codes EFE d'un job : liste (0.8.0), ou ancien trio N1/N2/N3 des jobs mis
+     * en file avant (la compétence effective d'EFE : N3, sinon N2, sinon N1).
+     *
+     * @return string[]
+     */
+    private static function job_efe_codes(array $params): array {
+        if (isset($params['efe_codes']) && is_array($params['efe_codes'])) {
+            return assign_factory::clean_codes($params['efe_codes']);
+        }
+        foreach (array('efe_n3', 'efe_n2', 'efe_n1') as $key) {
+            $code = trim((string)($params[$key] ?? ''));
+            if ($code !== '') {
+                return array($code);
+            }
+        }
+        return array();
     }
 
     /**
@@ -626,290 +700,38 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     // =====================================================================
-    //  CRÉATION DU DEVOIR (Stratégie INSERT direct, cf. local_aiquizgen)
-    // =====================================================================
-
-    /**
-     * Crée un module « assign » caché, restreint au groupe du projet, avec
-     * soumission texte + fichier et la correction IA activée.
-     *
-     * INSERT direct (comme local_aiquizgen pour les quiz) : on NE PASSE PAS par
-     * assign_add_instance() qui attend une structure form complète. On assemble
-     * nous-mêmes le record {assign}, on active les plugins voulus via
-     * {assign_plugin_config}, et on inscrit l'activité au carnet de notes.
-     *
-     * @return \stdClass course module final (avec ->instance = assign.id).
-     */
-    private function create_assign_module(\stdClass $job, \stdClass $project,
-                                          string $name, string $intro): \stdClass {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/course/lib.php');
-        require_once($CFG->dirroot . '/mod/assign/lib.php');
-
-        $course   = get_course((int)$job->courseid);
-        $moduleid = (int)$DB->get_field('modules', 'id', array('name' => 'assign'));
-        $now      = time();
-        $groupid  = (int)$project->groupid;
-
-        // Restriction d'accès au groupe (caché aux autres) si un groupe est défini.
-        $availability = null;
-        if ($groupid > 0) {
-            $availability = json_encode(array(
-                'op'    => '&',
-                'c'     => array(array('type' => 'group', 'id' => $groupid)),
-                'showc' => array(false), // masqué aux non-membres
-            ));
-        }
-
-        // --- 1. {course_modules} (sans instance encore) -----------------
-        $newcm = new \stdClass();
-        $newcm->course                    = (int)$job->courseid;
-        $newcm->module                    = $moduleid;
-        $newcm->instance                  = 0;
-        $newcm->visible                   = 0; // caché : l'enseignant relit avant
-        $newcm->visibleoncoursepage       = 1;
-        $newcm->groupmode                 = 0;
-        $newcm->groupingid                = 0;
-        $newcm->completion                = 0;
-        $newcm->completiongradeitemnumber = null;
-        $newcm->completionpassgrade       = 0;
-        $newcm->completionview            = 0;
-        $newcm->completionexpected        = 0;
-        $newcm->availability              = $availability;
-        $newcm->showdescription           = 0;
-        $cmid = (int)add_course_module($newcm);
-        if (!$cmid) {
-            throw new \moodle_exception('error_assign_creation', 'local_aimissions');
-        }
-        // Force la création du contexte module (sinon « Invalid context id »).
-        \context_module::instance($cmid);
-
-        // --- 2. INSERT direct dans {assign} -----------------------------
-        $assign = new \stdClass();
-        $assign->course                      = (int)$job->courseid;
-        $assign->name                        = $name;
-        $assign->intro                       = $intro;
-        $assign->introformat                 = FORMAT_HTML;
-        $assign->alwaysshowdescription       = 1;
-        $assign->nosubmissions               = 0;
-        $assign->submissiondrafts            = 0;
-        $assign->sendnotifications           = 0;
-        $assign->sendlatenotifications       = 0;
-        $assign->duedate                     = 0;
-        $assign->allowsubmissionsfromdate    = 0;
-        $assign->grade                       = 100; // points : la correction IA mappe 0–100
-        $assign->timemodified                = $now;
-        $assign->requiresubmissionstatement  = 0;
-        $assign->completionsubmit            = 0;
-        $assign->cutoffdate                  = 0;
-        $assign->gradingduedate              = 0;
-        $assign->teamsubmission              = 0; // Phase 1 : soumission individuelle (restreinte au groupe)
-        $assign->requireallteammemberssubmit = 0;
-        $assign->teamsubmissiongroupingid    = 0;
-        $assign->blindmarking                = 0;
-        $assign->hidegrader                  = 0;
-        $assign->revealidentities            = 0;
-        $assign->attemptreopenmethod         = 'none';
-        $assign->maxattempts                 = -1; // illimité
-        $assign->markingworkflow             = 0;
-        $assign->markingallocation           = 0;
-        $assign->markercount                 = 1;
-        $assign->markinganonymous            = 0;
-        $assign->sendstudentnotifications    = 1;
-        $assign->preventsubmissionnotingroup = 0;
-        $assign->activity                    = null;
-        $assign->activityformat              = 0;
-        $assign->timelimit                   = 0;
-        $assign->submissionattachments       = 0;
-        $assign->gradepenalty                = 0;
-
-        try {
-            $assignid = (int)$DB->insert_record('assign', $assign);
-        } catch (\Throwable $e) {
-            \context_helper::delete_instance(CONTEXT_MODULE, $cmid);
-            $DB->delete_records('course_modules', array('id' => $cmid));
-            throw $e;
-        }
-        $assign->id = $assignid;
-
-        // --- 3. cm.instance ← assign.id ---------------------------------
-        $DB->set_field('course_modules', 'instance', $assignid, array('id' => $cmid));
-
-        // --- 4. Section générale ----------------------------------------
-        course_add_cm_to_section($course, $cmid, 0);
-
-        // --- 5. Activation des plugins (soumission + correction IA) -----
-        // is_enabled() lit {assign_plugin_config}.name='enabled' ; absent = off.
-        $this->enable_plugin($assignid, 'assignsubmission', 'onlinetext', array('enabled' => '1'));
-        $this->enable_plugin($assignid, 'assignsubmission', 'file', array(
-            'enabled'                => '1',
-            'maxfilesubmissions'     => '5',
-            'maxsubmissionsizebytes' => '0', // 0 = limite du cours
-            'filetypeslist'          => '',
-        ));
-        $this->enable_plugin($assignid, 'assignfeedback', 'ai', array('enabled' => '1'));
-
-        // --- 6. Carnet de notes -----------------------------------------
-        $assign->cmidnumber = '';
-        $assign->cmid       = $cmid;
-        $assign->coursemodule = $cmid;
-        try {
-            assign_grade_item_update($assign);
-        } catch (\Throwable $e) {
-            $DB->delete_records('assign_plugin_config', array('assignment' => $assignid));
-            $DB->delete_records('assign', array('id' => $assignid));
-            \context_helper::delete_instance(CONTEXT_MODULE, $cmid);
-            $DB->delete_records('course_modules', array('id' => $cmid));
-            throw $e;
-        }
-
-        // --- 7. Reconstruit le cache du cours ---------------------------
-        rebuild_course_cache((int)$job->courseid, true);
-
-        $cm = get_coursemodule_from_instance('assign', $assignid);
-        if (!$cm) {
-            throw new \moodle_exception('error_assign_creation', 'local_aimissions');
-        }
-        return $cm;
-    }
-
-    /**
-     * Pose les lignes {assign_plugin_config} d'un plugin (active + réglages).
-     */
-    private function enable_plugin(int $assignid, string $subtype, string $plugin, array $settings): void {
-        global $DB;
-        foreach ($settings as $name => $value) {
-            $rec = new \stdClass();
-            $rec->assignment = $assignid;
-            $rec->subtype    = $subtype;
-            $rec->plugin     = $plugin;
-            $rec->name       = $name;
-            $rec->value      = (string)$value;
-            $DB->insert_record('assign_plugin_config', $rec);
-        }
-    }
-
-    /**
-     * Pré-remplit la ligne {assignfeedback_ai} : la correction IA tourne au
-     * dépôt sans aucune saisie de l'enseignant (Agent 3 = plugin existant).
-     */
-    private function prefill_feedback_config(int $assignid, \stdClass $project, array $spec): void {
-        global $DB;
-
-        if (!$DB->get_manager()->table_exists('assignfeedback_ai')) {
-            return; // plugin de correction absent : devoir créé quand même
-        }
-
-        $competencies = '';
-        if (!empty($spec['competencies']) && is_array($spec['competencies'])) {
-            $competencies = implode("\n", array_map('strval', $spec['competencies']));
-        }
-        $now = time();
-
-        $cfg = new \stdClass();
-        $cfg->assignment             = $assignid;
-        $cfg->systemprompt           = $this->correction_system_prompt($project);
-        $cfg->exercise               = $this->ensure_html((string)$spec['clientrequest']);
-        $cfg->expectedanswer         = (string)$spec['rubric'];
-        $cfg->competencies           = $competencies;
-        $cfg->apiurl                 = '';
-        $cfg->apiurl_override        = 0;
-        $cfg->model                  = '';
-        $cfg->model_override         = 0;
-        $cfg->apikey                 = '';
-        $cfg->apikey_override        = 0;
-        $cfg->vision_enabled         = 0;
-        $cfg->vision_enabled_override = 0;
-        $cfg->timecreated            = $now;
-        $cfg->timemodified           = $now;
-
-        // La clé unique est sur 'assignment' : insert simple (devoir neuf).
-        if (!$DB->record_exists('assignfeedback_ai', array('assignment' => $assignid))) {
-            $DB->insert_record('assignfeedback_ai', $cfg);
-        }
-    }
-
-    /**
-     * Système de correction (Agent 3) : l'IA évalue en se mettant à la place
-     * du client, sur plusieurs dimensions.
-     */
-    private function correction_system_prompt(\stdClass $project): string {
-        // Ajout d'éléments de contexte (BTS CIEL, barème, compétences)
-        $p  = "Tu es un correcteur pédagogique spécialisé dans l'enseignement supérieur technologique français";
-        $p .= " (BTS Informatique / BTS CIEL).\n";
-        $p .= "Ton rôle est d'évaluer objectivement les réponses d'étudiants à partir :\n";
-        $p .= "- d'un exercice,\n- des compétences visées,\n- des attentes pédagogiques.\n";
-
-
-        $p .= "Tu dois :\n";
-        $p .= "1. analyser la réponse de l'étudiant,\n";
-        $p .= "2. identifier les éléments corrects,\n";
-        $p .= "3. identifier les erreurs, oublis ou imprécisions,\n";
-        $p .= "4. produire un retour pédagogique constructif,\n";
-        $p .= "5. déterminer un niveau de maîtrise.\n\n";
-        $p .= "Les niveaux possibles sont STRICTEMENT :\n";
-        $p .= "- \"Maîtrise insuffisante\"\n- \"Maîtrise fragile\"\n";
-        $p .= "- \"Maîtrise satisfaisante\"\n- \"Très bonne maîtrise\"\n\n";
-        $p .= "Règles importantes :\n";
-        $p .= "- Rester factuel et pédagogique.\n";
-        $p .= "- Ne jamais humilier l'étudiant.\n";
-        $p .= "- Expliquer précisément ce qui est correct et incorrect.\n";
-        $p .= "- Valoriser les éléments réussis même si la réponse est incomplète.\n";
-        $p .= "- Ne jamais inventer des connaissances absentes du corrigé ou du sujet.\n";
-        $p .= "- Privilégier la cohérence pédagogique.\n";
-        $p .= "- Tenir compte du niveau attendu en BTS.\n";
-        $p .= "- Une réponse partiellement correcte n'est pas totalement fausse.\n";
-        $p .= "- Les fautes mineures de français ne pénalisent pas si les concepts techniques sont corrects.\n";
-        $p .= "- Distinguer : erreur de compréhension, oubli, imprécision, confusion technique.\n\n";
-        $p .= "Critères :\n";
-        $p .= "- Très bonne maîtrise (80-100) : réponse complète, concepts corrects, vocabulaire maîtrisé.\n";
-        $p .= "- Maîtrise satisfaisante (50-79) : notions principales comprises, quelques imprécisions.\n";
-        $p .= "- Maîtrise fragile (25-49) : compréhension partielle, plusieurs oublis, erreurs techniques.\n";
-        $p .= "- Maîtrise insuffisante (0-24) : hors sujet, erreurs majeures, concepts non compris.\n\n";
-        $p .= "La structure de ta réponse JSON est imposée par le schéma fourni dans la requête.";
-
-        // Existant :
-        $p .= "Tu corriges le livrable d'une équipe d'étudiants BTS CIEL répondant à une demande ";
-        $p .= "client. Tu joues le rôle du client « " . $project->companyname . " » : "
-            . $this->persona_instruction((string)$project->personaprofile) . "\n\n";
-        $p .= "Évalue le livrable sur : (1) la RÉPONSE AU BESOIN exprimé par le client, ";
-        $p .= "(2) la QUALITÉ TECHNIQUE, (3) la DOCUMENTATION/clarté du rapport, ";
-        $p .= "(4) la COMMUNICATION (le livrable est-il présenté comme à un client ?). ";
-        $p .= "Sois bienveillant mais exigeant, et justifie tes points d'amélioration en te ";
-        $p .= "référant à la demande initiale. Le barème suit le schéma JSON imposé.";
-        return $p;
-    }
-
-    // =====================================================================
     //  PERSISTANCE
     // =====================================================================
 
     /**
      * Enregistre la mission générée (statut draft).
      *
+     * @param string[] $codes     compétences EFE rattachées au devoir
+     * @param string   $context   contexte pédagogique (réutilisé par la duplication)
+     * @param int      $sourceid  mission d'origine (adaptation), 0 sinon
      * @return int mission id
      */
     private function store_mission(\stdClass $project, int $sprint, array $spec,
-                                   int $cmid, array $codes): int {
+                                   int $cmid, array $codes, string $context = '', int $sourceid = 0): int {
         global $DB;
 
-        $competencies = '';
-        if (!empty($spec['competencies']) && is_array($spec['competencies'])) {
-            $competencies = implode("\n", array_map('strval', $spec['competencies']));
-        }
         $m = new \stdClass();
-        $m->projectid         = (int)$project->id;
-        $m->sprint            = $sprint;
-        $m->title             = $this->truncate((string)$spec['title'], 250);
-        $m->clientrequest     = $this->ensure_html((string)$spec['clientrequest']);
-        $m->rubric            = (string)$spec['rubric'];
-        $m->competencies      = $competencies;
-        $m->efe_competence_n1 = ($codes['n1'] !== '') ? $codes['n1'] : null;
-        $m->efe_competence_n2 = ($codes['n2'] !== '') ? $codes['n2'] : null;
-        $m->efe_competence_n3 = ($codes['n3'] !== '') ? $codes['n3'] : null;
-        $m->assigncmid        = $cmid;
-        $m->status            = 'draft';
-        $m->timecreated       = time();
+        $m->projectid          = (int)$project->id;
+        $m->sprint             = $sprint;
+        $m->title              = $this->truncate((string)$spec['title'], 250);
+        $m->clientrequest      = $this->ensure_html((string)$spec['clientrequest']);
+        $m->rubric             = (string)$spec['rubric'];
+        $m->competencies       = assign_factory::competencies_text($spec['competencies'] ?? array());
+        $m->pedagogicalcontext = (trim($context) !== '') ? $context : null;
+        $m->efe_competences    = !empty($codes) ? json_encode(array_values($codes), JSON_UNESCAPED_UNICODE) : null;
+        // Ancien format (une compétence) : la première, pour les lecteurs d'avant 0.8.0.
+        $m->efe_competence_n1  = !empty($codes) ? $codes[0] : null;
+        $m->efe_competence_n2  = null;
+        $m->efe_competence_n3  = null;
+        $m->sourcemissionid    = $sourceid;
+        $m->assigncmid         = $cmid;
+        $m->status             = 'draft';
+        $m->timecreated        = time();
         return (int)$DB->insert_record(self::TABLE_MISSION, $m);
     }
 
@@ -977,32 +799,13 @@ class job_handler implements \local_aifeedback\job_handler {
         $DB->update_record(self::TABLE_JOB, $job);
     }
 
-    /**
-     * Garantit du HTML (enveloppe le texte brut dans des <p>).
-     */
+    /** Garantit du HTML (enveloppe le texte brut dans des <p>). */
     private function ensure_html(string $text): string {
-        $text = trim($text);
-        if ($text === '') {
-            return '';
-        }
-        if (strip_tags($text) === $text) {
-            // Texte brut : on transforme les sauts de ligne en paragraphes.
-            $parts = preg_split('/\n{2,}/', $text);
-            return implode('', array_map(function($pp) {
-                return '<p>' . nl2br(s(trim($pp))) . '</p>';
-            }, $parts));
-        }
-        return $text;
+        return assign_factory::ensure_html($text);
     }
 
-    /**
-     * Tronque proprement une chaîne.
-     */
+    /** Tronque proprement une chaîne. */
     private function truncate(string $s, int $max): string {
-        $s = trim($s);
-        if (\core_text::strlen($s) <= $max) {
-            return $s;
-        }
-        return \core_text::substr($s, 0, $max - 1) . '…';
+        return assign_factory::truncate($s, $max);
     }
 }

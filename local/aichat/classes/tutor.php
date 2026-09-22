@@ -274,13 +274,10 @@ class tutor {
             array('context' => $access->context));
 
         if (!empty($config->includeintro)) {
-            $record = activity::module_record($cm);
-            if ($record && trim((string)$record->intro) !== '') {
-                $intro = content::to_plain_text((string)$record->intro,
-                    (int)$record->introformat, $access->context);
-                if ($intro !== '') {
-                    $parts[] = "Consigne donnée aux étudiants :\n" . $intro;
-                }
+            // Description + « Instructions de l'activité » du devoir.
+            $instructions = activity::student_instructions($cm, $access->context);
+            if ($instructions !== '') {
+                $parts[] = "Consigne donnée aux étudiants :\n" . $instructions;
             }
         }
 

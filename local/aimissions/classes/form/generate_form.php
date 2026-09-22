@@ -7,15 +7,23 @@ global $CFG;
 require_once($CFG->libdir . '/formslib.php');
 
 /**
- * Formulaire de génération de missions client.
+ * Formulaire de génération d'un sprint (une demande client par groupe).
  *
  * customdata attendu :
- *   - courseid      (int)
- *   - groups        (array idgroup => nom)
- *   - competences   (array : sortie de efe_bridge::get_competences())
- *   - efeconfigured (bool)
+ *   - courseid          (int)
+ *   - groups            (array idgroup => nom)
+ *   - competences       (array code => libellé : efe_bridge::competence_options())
+ *   - efeconfigured     (bool)
+ *   - efeloaderror      (string|null) référentiel EFE injoignable
+ *   - canmanagegroups   (bool) moodle/course:managegroups
+ *   - aichat            (bool) Tuteur IA installé
+ *   - checked           (int[]) groupes à cocher d'office (juste créés)
+ *   - defaultcontext    (string) contexte pédagogique du dernier sprint du cours
  */
 class generate_form extends \moodleform {
+
+    /** Longueur maximale du contexte pédagogique. */
+    const MAXCONTEXT = 4000;
 
     protected function definition() {
         $mform = $this->_form;
@@ -26,30 +34,28 @@ class generate_form extends \moodleform {
 
         $mform->addElement('header', 'h_target', get_string('form_target', 'local_aimissions'));
 
-        // Module / matière.
-        $mform->addElement('text', 'module', get_string('form_module', 'local_aimissions'),
-            array('size' => 50, 'maxlength' => 200));
-        $mform->setType('module', PARAM_TEXT);
-        $mform->addHelpButton('module', 'form_module', 'local_aimissions');
+        // Contexte pédagogique : attentes, contraintes, choix technologiques imposés.
+        $mform->addElement('textarea', 'pedagogicalcontext',
+            get_string('form_pedagogicalcontext', 'local_aimissions'),
+            array('rows' => 6, 'cols' => 70));
+        $mform->setType('pedagogicalcontext', PARAM_RAW_TRIMMED);
+        $mform->addHelpButton('pedagogicalcontext', 'form_pedagogicalcontext', 'local_aimissions');
+        if (!empty($custom['defaultcontext'])) {
+            $mform->setDefault('pedagogicalcontext', (string)$custom['defaultcontext']);
+        }
 
-        // Compétence évaluée.
+        // Compétences évaluées : plusieurs codes EFE, ou un libellé libre.
         if (!empty($custom['efeconfigured']) && !empty($custom['competences'])) {
-            $options = array('' => get_string('form_competency_choose', 'local_aimissions'));
-            foreach (array('n1', 'n2', 'n3') as $lvl) {
-                foreach (($custom['competences'][$lvl] ?? array()) as $c) {
-                    $code = (string)($c['code'] ?? '');
-                    $nom  = (string)($c['nom'] ?? '');
-                    if ($code === '') {
-                        continue;
-                    }
-                    $options[$lvl . ':' . $code] = strtoupper($lvl) . ' · ' . $code . ' — ' . $nom;
-                }
-            }
-            $mform->addElement('select', 'competency',
-                get_string('form_competency', 'local_aimissions'), $options);
-            $mform->addHelpButton('competency', 'form_competency', 'local_aimissions');
+            $mform->addElement('autocomplete', 'competencies',
+                get_string('form_competency', 'local_aimissions'), $custom['competences'],
+                array('multiple' => true,
+                      'noselectionstring' => get_string('form_competency_choose', 'local_aimissions')));
+            $mform->addHelpButton('competencies', 'form_competency', 'local_aimissions');
         } else {
-            if (empty($custom['efeconfigured'])) {
+            if (!empty($custom['efeloaderror'])) {
+                $mform->addElement('static', 'efe_note', '',
+                    \html_writer::span(s($custom['efeloaderror']), 'text-danger'));
+            } else if (empty($custom['efeconfigured'])) {
                 $mform->addElement('static', 'efe_note', '',
                     get_string('efe_unavailable', 'local_aimissions'));
             }
@@ -90,17 +96,46 @@ class generate_form extends \moodleform {
         ));
         $mform->addHelpButton('personaprofile', 'form_persona', 'local_aimissions');
 
+        // Tuteur IA sur les devoirs de ce sprint.
+        if (!empty($custom['aichat'])) {
+            $mform->addElement('header', 'h_aichat', get_string('form_aichat_heading', 'local_aimissions'));
+            $mform->addElement('advcheckbox', 'aichat', get_string('form_aichat', 'local_aimissions'));
+            $mform->addHelpButton('aichat', 'form_aichat', 'local_aimissions');
+            $mform->setDefault('aichat', 0);
+            $mform->addElement('select', 'aichatsearch', get_string('form_aichatsearch', 'local_aimissions'), array(
+                \local_aimissions\aichat_bridge::SEARCH_NONE     => get_string('aichatsearch_none', 'local_aimissions'),
+                \local_aimissions\aichat_bridge::SEARCH_WEB      => get_string('aichatsearch_web', 'local_aimissions'),
+                \local_aimissions\aichat_bridge::SEARCH_MATERIAL => get_string('aichatsearch_material', 'local_aimissions'),
+            ));
+            $mform->addHelpButton('aichatsearch', 'form_aichatsearch', 'local_aimissions');
+            $mform->hideIf('aichatsearch', 'aichat', 'notchecked');
+        }
+
         // Groupes cibles.
         $mform->addElement('header', 'h_groups', get_string('form_groups_heading', 'local_aimissions'));
+        $mform->setExpanded('h_groups');
+        $checked = array_map('intval', (array)($custom['checked'] ?? array()));
         if (empty($custom['groups'])) {
-            $mform->addElement('static', 'nogroups', '',
-                get_string('form_nogroups', 'local_aimissions'));
+            $mform->addElement('static', 'nogroups', '', get_string(
+                !empty($custom['canmanagegroups']) ? 'form_nogroups_create' : 'form_nogroups',
+                'local_aimissions'));
         } else {
             foreach ($custom['groups'] as $gid => $gname) {
                 $mform->addElement('advcheckbox', 'group_' . (int)$gid, '', $gname);
+                if (in_array((int)$gid, $checked, true)) {
+                    $mform->setDefault('group_' . (int)$gid, 1);
+                }
             }
             $mform->addElement('static', 'groups_help', '',
                 get_string('form_groups_help', 'local_aimissions'));
+        }
+        if (!empty($custom['canmanagegroups'])) {
+            $mform->addElement('textarea', 'newgroups', get_string('form_newgroups', 'local_aimissions'),
+                array('rows' => 3, 'cols' => 40));
+            $mform->setType('newgroups', PARAM_TEXT);
+            $mform->addHelpButton('newgroups', 'form_newgroups', 'local_aimissions');
+            $mform->registerNoSubmitButton('creategroups');
+            $mform->addElement('submit', 'creategroups', get_string('form_creategroups', 'local_aimissions'));
         }
 
         $this->add_action_buttons(true, get_string('form_submit', 'local_aimissions'));
@@ -109,8 +144,8 @@ class generate_form extends \moodleform {
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
 
-        // Au moins un groupe coché.
-        $hasgroup = false;
+        // Au moins un groupe coché, ou un groupe à créer.
+        $hasgroup = trim((string)($data['newgroups'] ?? '')) !== '';
         foreach ($data as $k => $v) {
             if (strpos($k, 'group_') === 0 && !empty($v)) {
                 $hasgroup = true;
@@ -121,10 +156,15 @@ class generate_form extends \moodleform {
             $errors['h_groups'] = get_string('error_nogroup', 'local_aimissions');
         }
 
-        // Compétence : code EFE ou libellé libre requis.
-        if (isset($data['competency']) && trim((string)$data['competency']) === ''
-                && empty($data['competencylabel'])) {
-            $errors['competency'] = get_string('error_nocompetency', 'local_aimissions');
+        // Compétences EFE : au moins une (le libellé libre reste facultatif).
+        if (!empty($this->_customdata['efeconfigured']) && !empty($this->_customdata['competences'])
+                && empty($data['competencies'])) {
+            $errors['competencies'] = get_string('error_nocompetency', 'local_aimissions');
+        }
+
+        if (\core_text::strlen((string)($data['pedagogicalcontext'] ?? '')) > self::MAXCONTEXT) {
+            $errors['pedagogicalcontext'] = get_string('error_contexttoolong', 'local_aimissions',
+                self::MAXCONTEXT);
         }
         return $errors;
     }

@@ -25,6 +25,7 @@ require_login($course);
 
 $context = context_course::instance($courseid);
 require_capability('local/aimissions:review', $context);
+$cangenerate = has_capability('local/aimissions:generate', $context);
 
 $baseurl = new moodle_url('/local/aimissions/manage.php', array('courseid' => $courseid));
 $PAGE->set_url($baseurl);
@@ -140,6 +141,69 @@ if ($action === 'forcereply' && $projectid > 0 && confirm_sesskey()) {
     }
     redirect($baseurl, get_string('forcereply_done', 'local_aimissions'), null,
         \core\output\notification::NOTIFY_SUCCESS);
+}
+
+// --- Action dupliquer un sprint vers d'autres groupes ---------------------
+if ($action === 'duplicate' && $missionid > 0) {
+    require_capability('local/aimissions:generate', $context);
+    $mission = $load_mission_in_course($missionid);
+    if (!$mission || (int)$mission->assigncmid <= 0
+            || !$DB->record_exists('course_modules', array('id' => (int)$mission->assigncmid))) {
+        redirect($baseurl);
+    }
+    $sourceproject = $DB->get_record('local_aimissions_project', array('id' => (int)$mission->projectid));
+
+    // Tous les groupes du cours sauf celui du sprint source, avec la raison
+    // pour laquelle une copie à l'identique serait impossible.
+    $targets = array();
+    foreach (groups_get_all_groups($courseid) as $g) {
+        if ((int)$g->id === (int)$sourceproject->groupid) {
+            continue;
+        }
+        $reason = mission_manager::copy_blocker($mission, $sourceproject, (int)$g->id);
+        $targets[(int)$g->id] = array(
+            'name'    => format_string($g->name),
+            'blocker' => ($reason === '') ? '' : get_string($reason, 'local_aimissions', (int)$mission->sprint - 1),
+        );
+    }
+
+    $dupurl = new moodle_url($baseurl, array('action' => 'duplicate', 'missionid' => $missionid));
+    $form = new \local_aimissions\form\duplicate_form($dupurl, array(
+        'courseid'  => $courseid,
+        'missionid' => $missionid,
+        'groups'    => $targets,
+    ));
+    if ($form->is_cancelled()) {
+        redirect($baseurl);
+    }
+    if ($data = $form->get_data()) {
+        $chosen = \local_aimissions\form\duplicate_form::targets($data);
+        if ($data->mode === \local_aimissions\form\duplicate_form::MODE_ADAPT) {
+            foreach ($chosen as $gid) {
+                mission_manager::enqueue_adapt($missionid, $gid, (int)$USER->id);
+            }
+            redirect(new moodle_url('/local/aimissions/status.php', array('courseid' => $courseid)),
+                get_string('jobs_queued', 'local_aimissions', count($chosen)), null,
+                \core\output\notification::NOTIFY_SUCCESS);
+        }
+        \core_php_time_limit::raise(180);
+        $done = 0;
+        foreach ($chosen as $gid) {
+            mission_manager::duplicate_copy($missionid, $gid, (int)$USER->id);
+            $done++;
+        }
+        redirect($baseurl, get_string('dup_done_copy', 'local_aimissions', $done), null,
+            \core\output\notification::NOTIFY_SUCCESS);
+    }
+
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('dup_title', 'local_aimissions',
+        (object)array('sprint' => (int)$mission->sprint, 'title' => format_string($mission->title))));
+    echo html_writer::div(get_string('dup_intro', 'local_aimissions',
+        (object)array('company' => format_string($sourceproject->companyname))), 'mb-3');
+    $form->display();
+    echo $OUTPUT->footer();
+    exit;
 }
 
 // --- Action supprimer (destructive → confirmation) -----------------------
@@ -280,6 +344,12 @@ foreach ($projects as $project) {
                 get_string('manage_orphan', 'local_aimissions'), 'badge bg-warning text-dark');
         } else {
             $statuscell = s(get_string('mission_' . $m->status, 'local_aimissions'));
+            if (\local_aimissions\aichat_bridge::is_enabled_on((int)$m->assigncmid)) {
+                $statuscell .= ' ' . html_writer::link(
+                    new moodle_url('/local/aichat/manage.php', array('id' => (int)$m->assigncmid)),
+                    get_string('manage_tutor_badge', 'local_aimissions'),
+                    array('class' => 'badge bg-info text-white'));
+            }
         }
 
         $actions = array();
@@ -297,6 +367,13 @@ foreach ($projects as $project) {
                     get_string('manage_publish', 'local_aimissions'),
                     array('class' => 'btn btn-sm btn-primary'));
             }
+        }
+        // Duplication vers d'autres groupes (copie ou adaptation par l'IA).
+        if ($cmexists && $cangenerate) {
+            $actions[] = html_writer::link(
+                new moodle_url($baseurl, array('action' => 'duplicate', 'missionid' => $m->id)),
+                get_string('manage_duplicate', 'local_aimissions'),
+                array('class' => 'btn btn-sm btn-outline-primary'));
         }
         // Suppression : seulement le dernier sprint, ou une orpheline.
         if ((int)$m->sprint === $maxsprint || !$cmexists) {

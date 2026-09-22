@@ -142,7 +142,7 @@ consultables par l'enseignant.
 | Champ | Valeurs | Remarques |
 |---|---|---|
 | Activer le tuteur IA | case | ajoute un bouton de discussion sur la page du devoir |
-| Transmettre la consigne au tuteur | case (défaut oui) | envoie la **description** du devoir au tuteur → la description ne doit contenir **aucun élément de corrigé** |
+| Transmettre la consigne au tuteur | case (défaut oui) | envoie la **description** et les **« Instructions de l'activité »** au tuteur → elles ne doivent contenir **aucun élément de corrigé** |
 | Transmettre le brief pédagogique | case (défaut oui) | un brief (critères, points d'attention) est **généré automatiquement** à partir de l'énoncé et du corrigé de la Correction IA, puis relisible par l'enseignant. Le corrigé lui-même n'est jamais transmis |
 | Consignes supplémentaires | texte libre | « Ne suggère aucune bibliothèque externe », « exige le vocabulaire normalisé »… |
 | Recherches du tuteur | `Aucune` \| `Recherche Web ponctuelle` \| `Recherche de matériel` | voir ci-dessous |
@@ -166,31 +166,44 @@ progresser : elle enrichit, elle ne débloque pas.
 
 ### 6. Missions client IA — `local_aimissions`
 
-**Accès** : dans le cours, **« Générer des missions client IA »**. Un projet (entreprise
-fictive) est créé **par groupe**, avec des sprints successifs. Chaque mission devient un
-**devoir caché**, corrigé automatiquement à la remise ; l'enseignant relit puis publie.
-Les élèves peuvent **poser des questions au client IA** (fil de tickets).
+**Accès** : dans le cours, **« Générer des missions client IA »**, puis **« + Nouveau sprint »**.
+Un projet (entreprise fictive) est créé **par groupe**, avec des sprints successifs. Chaque
+sprint devient un **devoir caché**, corrigé automatiquement à la remise ; l'enseignant relit
+puis publie depuis **« Afficher les Sprints générés »**. Les élèves peuvent **poser des questions
+au client IA** (fil de tickets).
 
 **Champs**
 
 | Champ | Valeurs |
 |---|---|
-| Module / matière | texte (ex. « Développement web », « Réseaux », « Cybersécurité ») |
-| Compétence évaluée | choix dans le référentiel EFE, ou libellé libre si EFE absent |
-| Niveau | liste |
+| Contexte pédagogique | texte libre (4 000 caractères) : module, notions, contraintes pédagogiques, **choix technologiques imposés** (ils apparaissent comme une contrainte du client, jamais comme la solution). Prérempli avec celui du dernier sprint |
+| Compétences évaluées (EFE) | **une ou plusieurs** compétences du référentiel EFE (ou libellé libre si EFE absent) |
+| Niveau | BTS CIEL 1re / 2e année |
 | Complexité | Découverte \| Intermédiaire \| Avancé |
-| Nombre de contraintes | 1 à n (défaut 3) |
-| Profil du client | Neutre/coopératif, Exigeant, Imprécis/flou, Change souvent d'avis, Lent à répondre, Non technique |
-| Groupes cibles | cases, un projet distinct par groupe (anti-triche) |
+| Nombre de contraintes | 1 à 5 (défaut 3) |
+| Profil du client | Neutre/coopératif, Exigeant, Imprécis/flou, Change souvent d'avis, Lent à répondre, Non technique (fixé au premier sprint du groupe) |
+| Tuteur IA | activer sur ce sprint (oui/non) et mode de recherche (aucune, Web, matériel) |
+| Groupes cibles | cases, un projet distinct par groupe (anti-triche) ; **création de groupes** possible dans le formulaire (un nom par ligne) |
+
+**Devoir créé** : barème **« Barème officiel »** (réglable), bouton « Envoyer » obligatoire,
+**2 tentatives accordées automatiquement**, achèvement « Remettre un travail ». La demande client
+est dans les **« Instructions de l'activité »** ; la description ne porte que le bloc de
+compétence EFE (affiché sur la page de cours).
+
+**Duplication d'un sprint** (« Dupliquer », dans « Sprints générés ») vers d'autres groupes :
+- **copie à l'identique**, sans IA, vers un groupe au même point (sans projet, ou même
+  entreprise au sprint précédent) ;
+- **adaptation par l'IA** à l'entreprise de chaque groupe : mêmes besoins, même grille,
+  textes différents.
 
 Des **événements** peuvent survenir en cours de projet : changement de besoin, bug critique,
-RGPD, réduction de budget. Prérequis : des groupes existent dans le cours.
+RGPD, réduction de budget.
 
 ---
 
 ### 7. Report des compétences EFE — `local_efenotes`
 
-Section **EFE** du formulaire de devoir : activation, **codes de compétence N1 / N2 / N3**,
+Section **EFE** du formulaire de devoir : activation, **une ou plusieurs compétences**,
 libellé de devoir de remplacement, enseignant responsable, seuils de couleur. À la notation,
 la note est reportée sur la compétence. Utile pour garantir la **variété des compétences**
 couvertes par le parcours : chaque devoir noté porte son code.

@@ -68,39 +68,123 @@ class efe_bridge {
     }
 
     /**
-     * Positionne la compétence évaluée sur un devoir généré, en activant le
-     * report automatique vers EFE (table local_efenotes_activity).
+     * Référentiel à plat pour le sélecteur multiple du formulaire : code (de
+     * tout niveau, sans préfixe) => libellé indenté, tel que le propose le
+     * formulaire d'activité d'EFE.
      *
-     * No-op (retourne false) si local_efenotes est absent : le devoir reste
-     * parfaitement fonctionnel, simplement sans report de compétence.
-     *
-     * @param int      $cmid     course_modules.id du devoir généré.
-     * @param int      $courseid Cours.
-     * @param array    $codes    ['n1'=>?string, 'n2'=>?string, 'n3'=>?string]. Au moins un niveau.
-     * @param int|null $profid   ID Moodle de l'enseignant à associer à la note (ou null).
-     * @return bool true si la config EFE a été posée, false si EFE absent / aucun code.
+     * @param string|null $loaderror reçoit un message si EFE est configuré mais
+     *                               injoignable (liste alors vide)
+     * @return array code => libellé
      */
-    public static function attach_competency(int $cmid, int $courseid, array $codes, ?int $profid = null): bool {
-        if (!self::is_available()) {
-            return false;
+    public static function competence_options(?string &$loaderror = null): array {
+        global $CFG;
+        $loaderror = null;
+        if (!self::is_configured()) {
+            return array();
         }
-        $n1 = trim((string)($codes['n1'] ?? ''));
-        $n2 = trim((string)($codes['n2'] ?? ''));
-        $n3 = trim((string)($codes['n3'] ?? ''));
-        // EFE résout la compétence effective N3>N2>N1 : il suffit d'AU MOINS un
-        // niveau renseigné (cf. activity_config::get_effective_competence_code).
-        if ($n1 === '' && $n2 === '' && $n3 === '') {
-            return false;
+        $options = array();
+        $lib = $CFG->dirroot . '/local/efenotes/lib.php';
+        if (file_exists($lib)) {
+            require_once($lib);
         }
+        if (function_exists('local_efenotes_competence_options')) {
+            $options = local_efenotes_competence_options();
+        } else {
+            $competences = self::get_competences();
+            foreach (array('n1' => '', 'n2' => '▸ ', 'n3' => '• ') as $level => $prefix) {
+                foreach ($competences[$level] as $c) {
+                    $code = (string)($c['code'] ?? '');
+                    if ($code !== '') {
+                        $options[$code] = $prefix . $code . ' — ' . (string)($c['nom'] ?? '');
+                    }
+                }
+            }
+        }
+        unset($options['']); // entrée « Aucune » du formulaire d'EFE
+        if (empty($options)) {
+            $loaderror = get_string('efe_loaderror', 'local_aimissions');
+        }
+        return $options;
+    }
+
+    /**
+     * Libellés lisibles (« C01.1 — Nom ») de codes EFE, pour le prompt de
+     * génération : sans l'indentation du sélecteur.
+     *
+     * @param string[] $codes
+     * @param array    $options sortie de competence_options()
+     * @return string[]
+     */
+    public static function competence_labels(array $codes, array $options): array {
+        $labels = array();
+        foreach ($codes as $code) {
+            $label = isset($options[$code]) ? (string)$options[$code] : (string)$code;
+            $labels[] = trim(preg_replace('/^[▸•\s]+/u', '', $label));
+        }
+        return $labels;
+    }
+
+    /**
+     * EFE sait-il rattacher plusieurs compétences à une activité ?
+     * (colonne competences_json, EFE ≥ 1.5.0)
+     */
+    public static function supports_multiple(): bool {
+        global $DB;
+        return $DB->get_manager()->field_exists('local_efenotes_activity', 'competences_json');
+    }
+
+    /**
+     * Rattache les compétences évaluées à un devoir généré et active le report
+     * automatique vers EFE, au format exact qu'écrit le formulaire d'activité
+     * d'EFE (local_efenotes_coursemodule_edit_post_actions) ; puis ajoute le
+     * bloc « Compétence évaluée » en tête de la description, comme sur les
+     * autres devoirs (et donc sur la page de cours).
+     *
+     * @param int      $cmid
+     * @param int      $courseid
+     * @param string[] $codes  codes EFE de tout niveau, dans l'ordre choisi
+     * @param int      $profid enseignant à associer aux notes (0 = aucun)
+     * @return string 'multi' (toutes les compétences), 'single' (EFE ancien : la
+     *                première seulement) ou '' (EFE absent, aucun code)
+     */
+    public static function attach_competencies(int $cmid, int $courseid, array $codes, int $profid = 0): string {
+        global $CFG;
+        $codes = assign_factory::clean_codes($codes);
+        if (!self::is_available() || empty($codes)) {
+            return '';
+        }
+
         $data = array(
             'enabled'            => 1,
-            'competence_n1_code' => $n1 !== '' ? $n1 : null,
-            'competence_n2_code' => $n2 !== '' ? $n2 : null,
-            'competence_n3_code' => $n3 !== '' ? $n3 : null,
-            'prof_moodleid'      => ($profid && $profid > 0) ? $profid : null,
+            'competence_n1_code' => $codes[0],
+            'competence_n2_code' => null,
+            'competence_n3_code' => null,
+            'prof_moodleid'      => ($profid > 0) ? $profid : null,
         );
+        $mode = 'single';
+        if (self::supports_multiple()) {
+            // Même structure et même encodage que le formulaire d'EFE.
+            $data['competences_json'] = json_encode(array(
+                'quality'       => $codes,
+                'punct_enabled' => 0,
+                'punct'         => array(),
+                'criteria'      => array(),
+            ));
+            $mode = 'multi';
+        }
         \local_efenotes\activity_config::upsert($cmid, $courseid, $data);
-        return true;
+
+        // Bloc « Compétence évaluée » : le formulaire d'EFE le pose lui-même,
+        // mais il ne s'exécute pas pour un devoir créé par INSERT direct.
+        $lib = $CFG->dirroot . '/local/efenotes/lib.php';
+        if (file_exists($lib)) {
+            require_once($lib);
+        }
+        if (function_exists('local_efenotes_update_activity_intro')) {
+            local_efenotes_update_activity_intro($cmid, $courseid,
+                \local_efenotes\activity_config::get_for_cmid($cmid));
+        }
+        return $mode;
     }
 
     /**

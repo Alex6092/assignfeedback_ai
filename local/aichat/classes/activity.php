@@ -133,8 +133,40 @@ class activity {
         if (!in_array($cm->modname, self::SUPPORTED_MODS, true)) {
             return false;
         }
-        return $DB->get_record($cm->modname, array('id' => (int)$cm->instance),
-            'id, name, intro, introformat');
+        $fields = 'id, name, intro, introformat';
+        if ($cm->modname === 'assign') {
+            $fields .= ', activity, activityformat';
+        }
+        return $DB->get_record($cm->modname, array('id' => (int)$cm->instance), $fields);
+    }
+
+    /**
+     * Consigne donnée aux élèves, en texte brut : la description, puis les
+     * « Instructions de l'activité » d'un devoir. Ce second champ fait partie
+     * de la consigne (Moodle ne l'affiche que sur la page de remise, et le
+     * plugin EFE réserve la description au bloc de compétence : c'est là que
+     * les Missions client IA mettent la demande du client).
+     *
+     * @param \cm_info|\stdClass $cm
+     * @param \context           $context
+     * @param int                $maxlen troncature
+     * @return string '' s'il n'y a rien
+     */
+    public static function student_instructions($cm, $context, $maxlen = 5000) {
+        $record = self::module_record($cm);
+        if (!$record) {
+            return '';
+        }
+        $parts = array();
+        foreach (array('intro' => 'introformat', 'activity' => 'activityformat') as $field => $format) {
+            if (isset($record->$field) && trim((string)$record->$field) !== '') {
+                $text = content::to_plain_text((string)$record->$field, (int)$record->$format, $context, 0);
+                if ($text !== '') {
+                    $parts[] = $text;
+                }
+            }
+        }
+        return content::truncate(implode("\n\n", $parts), $maxlen);
     }
 
     /**
