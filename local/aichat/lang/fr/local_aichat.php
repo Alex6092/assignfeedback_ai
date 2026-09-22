@@ -343,6 +343,7 @@ $string['mykeys_guest']                = 'Les visiteurs anonymes ne peuvent pas 
 $string['mykeys_loggedinas']           = 'Les clés de recherche sont personnelles : elles ne peuvent être ni consultées ni modifiées en étant connecté en tant qu\'un autre utilisateur.';
 $string['mykeys_disabled']             = 'La recherche Web du tuteur n\'est pas activée sur ce site.';
 $string['mykeys_intro']                = 'Le tuteur IA peut chercher des informations sur Internet pour vous aider, dans les activités où l\'enseignant l\'a autorisé. Il utilise pour cela VOS propres clés de recherche : sans clé, il ne va pas sur Internet.<br><strong>Tavily (recommandé, gratuit)</strong> : créez un compte sur <a href="https://app.tavily.com" target="_blank" rel="noopener noreferrer">app.tavily.com</a> (aucune carte bancaire demandée), copiez votre clé (elle commence par « tvly- ») et collez-la ci-dessous. L\'offre gratuite donne 1 000 recherches par mois.<br><strong>Brave Search (facultatif, en secours)</strong> : utilisé seulement si Tavily ne répond pas ou si ses crédits du mois sont épuisés. Attention : Brave demande une carte bancaire et facture au-delà de 5 $ de crédits par mois ; le tuteur s\'arrête à {$a} recherches sur 31 jours avec cette clé.';
+$string['mykeys_usages']               = 'Vos clés servent à : {$a}.';
 $string['mykeys_status']               = 'État';
 $string['mykeys_newkey']               = 'Nouvelle clé';
 $string['mykeys_tavily']               = 'Clé Tavily';

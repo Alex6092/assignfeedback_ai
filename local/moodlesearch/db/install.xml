@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/moodlesearch/db" VERSION="20260923" COMMENT="MoodleSearch : journal des recherches et des clics, accès par cohorte"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_moodlesearch_search" COMMENT="Une recherche faite dans MoodleSearch (visible des enseignants de l'élève)">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="query"       TYPE="char" LENGTH="400" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="tab"         TYPE="char" LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="web" COMMENT="web|news"/>
+        <FIELD NAME="period"      TYPE="char" LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="any" COMMENT="any|day|week|month|year"/>
+        <FIELD NAME="resultcount" TYPE="int"  LENGTH="4"   NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="results"     TYPE="text"              NOTNULL="false" SEQUENCE="false" COMMENT="Résultats affichés (JSON : url, title, domain), pour les clics et le rapport"/>
+        <FIELD NAME="status"      TYPE="char" LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="ok" COMMENT="ok|cached|error|refused"/>
+        <FIELD NAME="reason"      TYPE="char" LENGTH="30"  NOTNULL="false" SEQUENCE="false" COMMENT="Motif d'un refus ou d'une erreur"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="user_time"   UNIQUE="false" FIELDS="userid, timecreated"/>
+        <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_moodlesearch_click" COMMENT="Un résultat ouvert par l'élève, et la suite donnée par OPNsense">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10"   NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="searchid"    TYPE="int"  LENGTH="10"   NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10"   NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="resultrank"  TYPE="int"  LENGTH="4"    NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Rang du résultat ouvert (« rank » est réservé par MySQL)"/>
+        <FIELD NAME="url"         TYPE="text"               NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="domain"      TYPE="char" LENGTH="255"  NOTNULL="true"  SEQUENCE="false" DEFAULT=""/>
+        <FIELD NAME="opnstatus"   TYPE="char" LENGTH="20"   NOTNULL="true"  SEQUENCE="false" DEFAULT="" COMMENT="Suite OPNsense : opened|already|pending|blocked|exam|nomac|error|none ('' = en cours)"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10"   NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="searchid"  UNIQUE="false" FIELDS="searchid"/>
+        <INDEX NAME="user_time" UNIQUE="false" FIELDS="userid, timecreated"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_moodlesearch_cohort" COMMENT="Accès à MoodleSearch réglé par cohorte (absente = réglage par défaut)">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="cohortid"     TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="enabled"      TYPE="int" LENGTH="1"  NOTNULL="true" SEQUENCE="false" DEFAULT="1"/>
+        <FIELD NAME="modifiedby"   TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"  TYPE="primary" FIELDS="id"/>
+        <KEY NAME="cohortid" TYPE="unique"  FIELDS="cohortid"/>
+      </KEYS>
+    </TABLE>
+  </TABLES>
+</XMLDB>

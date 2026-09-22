@@ -179,7 +179,7 @@ function local_aichat_extend_settings_navigation(settings_navigation $settingsna
 function local_aichat_extend_navigation_user_settings(navigation_node $useraccount, stdClass $user,
         context_user $context, stdClass $course, context_course $coursecontext) {
     global $USER;
-    if (!websearch::site_enabled() || (int)$user->id !== (int)$USER->id
+    if (empty(local_aichat_personal_keys_usages()) || (int)$user->id !== (int)$USER->id
             || \core\session\manager::is_loggedinas() || isguestuser()) {
         return;
     }
@@ -187,4 +187,30 @@ function local_aichat_extend_navigation_user_settings(navigation_node $useraccou
     $target = $parent ? $parent : $useraccount;
     $target->add(get_string('mykeys_page', 'local_aichat'), new moodle_url('/local/aichat/mykeys.php'),
         navigation_node::TYPE_SETTING, null, 'localaichatkeys');
+}
+
+/**
+ * À quoi servent les clés de recherche personnelles sur ce site : la recherche
+ * Web du tuteur, et tout plugin qui déclare s'en servir par un rappel
+ * <composant>_aichat_keys_usage() renvoyant son nom (ou '' s'il est désactivé).
+ * MoodleSearch (local_moodlesearch) utilise ainsi la clé Tavily de l'élève.
+ *
+ * Vide : la page « mes clés de recherche » n'a pas lieu d'être.
+ *
+ * @return string[] noms des usages
+ */
+function local_aichat_personal_keys_usages() {
+    $usages = array();
+    if (websearch::site_enabled()) {
+        $usages[] = get_string('pluginname', 'local_aichat');
+    }
+    foreach (get_plugins_with_function('aichat_keys_usage') as $plugins) {
+        foreach ($plugins as $function) {
+            $label = trim((string)$function());
+            if ($label !== '') {
+                $usages[] = $label;
+            }
+        }
+    }
+    return $usages;
 }

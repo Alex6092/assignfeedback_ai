@@ -343,6 +343,7 @@ $string['mykeys_guest']                = 'Guests cannot save a key.';
 $string['mykeys_loggedinas']           = 'Search keys are personal: they can neither be viewed nor changed while logged in as another user.';
 $string['mykeys_disabled']             = 'Tutor web search is not enabled on this site.';
 $string['mykeys_intro']                = 'The AI tutor can search the Internet to help you, in the activities where the teacher allowed it. It uses YOUR own search keys for that: without a key, it does not go on the Internet.<br><strong>Tavily (recommended, free)</strong>: create an account at <a href="https://app.tavily.com" target="_blank" rel="noopener noreferrer">app.tavily.com</a> (no credit card required), copy your key (it starts with "tvly-") and paste it below. The free plan gives 1,000 searches per month.<br><strong>Brave Search (optional, fallback)</strong>: used only if Tavily does not answer or if its monthly credits are used up. Warning: Brave requires a credit card and bills beyond $5 of credits per month; the tutor stops at {$a} searches over 31 days with this key.';
+$string['mykeys_usages']               = 'Your keys are used by: {$a}.';
 $string['mykeys_status']               = 'Status';
 $string['mykeys_newkey']               = 'New key';
 $string['mykeys_tavily']               = 'Tavily key';
