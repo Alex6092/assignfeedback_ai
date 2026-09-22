@@ -50,8 +50,7 @@ $string['mission_published'] = 'Published';
 $string['mission_archived']  = 'Archived';
 
 // EFE bridge.
-$string['efe_unavailable'] = 'The EFE notes plugin (local_efenotes) is not installed; competency reporting is disabled for generated missions.';
-$string['efe_attached']    = 'Competency {$a} attached to the assignment for EFE reporting.';
+$string['efe_unavailable'] = 'The EFE notes plugin (local_efenotes) is not installed or not configured: enter the competency as free text; it will not be reported to EFE.';
 
 // Generation errors.
 $string['error_maxsprints']      = 'The maximum number of sprints for this project has been reached.';
@@ -59,13 +58,11 @@ $string['error_llm_invalid']     = 'The LLM did not return a usable mission (mis
 $string['error_assign_creation'] = 'Assignment creation failed.';
 
 // Generation form.
-$string['form_intro']            = 'Pick the competency to work on, the level and the groups. The AI generates a client request (brief) for each group, posts it as a hidden assignment, and grades it automatically on submission. Review then publish from the "Generated missions" screen.';
+$string['form_intro'] = 'Describe the teaching context, pick the competencies to work on, the level and the groups. The AI generates a client request (brief) for each group, posts it as a hidden assignment, and grades it automatically on submission. Review then publish from the "Generated sprints" screen.';
 $string['form_target']           = 'Learning target';
-$string['form_module']           = 'Module / subject';
-$string['form_module_help']      = 'The module or subject concerned (e.g. "Web development", "Networks", "Cybersecurity"). Used to steer the client request context.';
-$string['form_competency']       = 'Assessed competency (EFE)';
-$string['form_competency_help']  = 'The EFE referential competency to work on. Its label guides generation (without being named in the brief) and its code is attached to the assignment for automatic reporting to EFE on grading.';
-$string['form_competency_choose'] = 'Choose a competency…';
+$string['form_competency'] = 'Assessed competencies (EFE)';
+$string['form_competency_help'] = 'One or more EFE referential competencies to work on. Their labels guide generation (without being named in the client request); their codes are set on the assignment for automatic reporting to EFE on grading, and shown at the top of its description, as on other assignments.';
+$string['form_competency_choose'] = 'Search a competency…';
 $string['form_competencylabel']  = 'Competency to work on';
 $string['form_competencylabel_help'] = 'Describe the targeted competency (e.g. "Design a relational database"). The LLM will craft a business need that exercises it without naming it. (EFE unavailable: no competency reporting.)';
 $string['form_level']            = 'Level';
@@ -80,14 +77,14 @@ $string['form_groups_heading']   = 'Target groups';
 $string['form_groups_help']      = 'A distinct project (fictional company) is generated per group: missions differ between groups (anti-cheating individualisation).';
 $string['form_nogroups']         = 'No group in this course. Create groups first (Participants → Groups): each group gets its own client company.';
 $string['form_submit']           = 'Generate missions';
-$string['error_nogroup']         = 'Select at least one group.';
+$string['error_nogroup'] = 'Select at least one group, or enter one to create.';
 $string['error_nocompetency']    = 'Provide a competency (EFE referential or free-text label).';
 $string['jobs_queued']           = '{$a} generation(s) queued. They will be processed at the next cron run.';
 
 // Status page.
 $string['status_title']          = 'Mission generation — status';
-$string['status_newgeneration']  = '+ New generation';
-$string['status_managemissions'] = 'Generated missions';
+$string['status_newgeneration'] = '+ New sprint';
+$string['status_managemissions'] = 'Show generated sprints';
 $string['status_nojobs']         = 'No generation yet.';
 $string['status_col_created']    = 'Started';
 $string['status_col_status']     = 'Status';
@@ -95,7 +92,7 @@ $string['status_col_result']     = 'Mission';
 $string['status_col_log']        = 'Log';
 
 // Manage / publish page.
-$string['manage_title']          = 'Generated missions';
+$string['manage_title'] = 'Generated sprints';
 $string['manage_noprojects']     = 'No mission generated for this course.';
 $string['manage_nogroup']        = 'No group';
 $string['manage_col_sprint']     = 'Sprint';
@@ -217,3 +214,42 @@ $string['forcereply_done']      = 'Client reply triggered (processed immediately
 $string['resume_action']        = 'Force resume';
 $string['resume_done']          = 'The project has been resumed.';
 $string['resume_message']       = 'Hello, following your supervisor\'s intervention, I agree to resume our exchanges. Let\'s keep things constructive and professional from now on.';
+
+// 0.8.0 : contexte pédagogique, compétences multiples, groupes, tuteur, duplication, barème.
+$string['efe_loaderror'] = 'The EFE referential could not be loaded (EFE server unreachable): enter the competency as free text; it will not be reported to EFE.';
+$string['form_pedagogicalcontext'] = 'Teaching context';
+$string['form_pedagogicalcontext_help'] = 'What you expect from the generated subject: module or subject, concepts to use, teaching constraints (expected work, duration, deliverables), imposed technology choices (language, database, hardware…). Imposed choices appear in the request as a client constraint, never as the solution. Prefilled with the context of the course\'s latest sprint.';
+$string['error_contexttoolong'] = 'The teaching context must not exceed {$a} characters.';
+$string['form_aichat_heading'] = 'AI tutor';
+$string['form_aichat'] = 'Enable the AI tutor for this sprint';
+$string['form_aichat_help'] = 'Students get a tutor on the assignment page: it guides them (concepts, method, questions) without ever giving the solution. It knows the client request and a teaching brief built from the grading rubric, which it never sees. Settings can be changed afterwards in the assignment.';
+$string['form_aichatsearch'] = 'Tutor searches';
+$string['form_aichatsearch_help'] = '<strong>None</strong>: the tutor only uses its own knowledge.<br><strong>Occasional web search</strong>: it may look up recent information (documentation, software version…).<br><strong>Hardware search</strong>: it looks for references and reads datasheets, for a hardware selection mission.<br>Searches require each student\'s personal key.';
+$string['aichatsearch_none'] = 'None';
+$string['aichatsearch_web'] = 'Occasional web search';
+$string['aichatsearch_material'] = 'Hardware search';
+$string['form_nogroups_create'] = 'No group in this course: create them below. Each group gets its own client company.';
+$string['form_newgroups'] = 'New groups';
+$string['form_newgroups_help'] = 'One group name per line. "Create these groups" adds them to the course and ticks them; enrol students afterwards (Participants → Groups). Names left here when generating are created too.';
+$string['form_creategroups'] = 'Create these groups';
+$string['groups_created'] = '{$a} group(s) created and ticked.';
+$string['manage_duplicate'] = 'Duplicate';
+$string['manage_tutor_badge'] = 'AI tutor';
+$string['dup_title'] = 'Duplicate sprint {$a->sprint} "{$a->title}"';
+$string['dup_intro'] = 'Reuse this sprint, written for "{$a->company}", for other groups. Assignments are created hidden, to review then publish.';
+$string['dup_mode'] = 'Duplication mode';
+$string['dup_mode_help'] = '<strong>Identical copy</strong>: same request, same rubric, same competencies, same tutor settings, no AI call. Only possible for a group at the same point: without a project (it then takes over this group\'s company), or following the same company and at the previous sprint.<br><strong>Adapt with AI</strong>: the mission is rewritten for each group\'s company (created if needed): same needs, same constraints, same rubric, but different texts from one group to another. One generation per group, tracked on the status page.';
+$string['dup_mode_copy'] = 'Identical copy';
+$string['dup_mode_adapt'] = 'Adapt with AI to each group\'s company';
+$string['dup_targets'] = 'Target groups';
+$string['dup_nogroups'] = 'No other group in this course.';
+$string['dup_reason_samegroup'] = 'source group';
+$string['dup_reason_othercompany'] = 'another company: copy impossible, adaptation possible';
+$string['dup_reason_othersprint'] = 'not at sprint {$a}: copy impossible, adaptation possible';
+$string['dup_submit'] = 'Duplicate';
+$string['dup_error_notarget'] = 'Tick at least one group.';
+$string['dup_error_ineligible'] = 'Identical copy impossible for: {$a}. Choose "Adapt with AI" for these groups.';
+$string['dup_done_copy'] = '{$a} sprint(s) copied: hidden assignments, to review then publish.';
+$string['error_adapt_nosource'] = 'The sprint to adapt no longer exists.';
+$string['setting_scalename'] = 'Assignment scale';
+$string['setting_scalename_desc'] = 'Name of the scale used to grade generated assignments (course scale, else site scale). It must contain the 4 AI grading levels (Maîtrise insuffisante, Maîtrise fragile, Maîtrise satisfaisante, Très bonne maîtrise) for the grade to be set automatically. Empty: graded out of 100.';

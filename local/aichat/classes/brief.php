@@ -218,11 +218,9 @@ class brief {
         $parts[] = "TITRE DE L'ACTIVITÉ :\n" . format_string($cm->name, true,
             array('context' => $context));
 
-        $record = activity::module_record($cm);
-        if ($record && trim((string)$record->intro) !== '') {
-            $parts[] = "CONSIGNE DONNÉE AUX ÉTUDIANTS :\n"
-                . content::to_plain_text((string)$record->intro, (int)$record->introformat,
-                    $context, 4000);
+        $instructions = activity::student_instructions($cm, $context, 4000);
+        if ($instructions !== '') {
+            $parts[] = "CONSIGNE DONNÉE AUX ÉTUDIANTS :\n" . $instructions;
         }
         if (trim((string)$fbcfg->exercise) !== '') {
             $parts[] = "ÉNONCÉ (configuration de la correction IA) :\n"

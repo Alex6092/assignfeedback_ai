@@ -40,6 +40,9 @@
         <FIELD NAME="efe_competence_n1" TYPE="char" LENGTH="32"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N1 (primaire) positionnée sur le devoir."/>
         <FIELD NAME="efe_competence_n2" TYPE="char" LENGTH="32"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N2 (optionnel, plus précis)."/>
         <FIELD NAME="efe_competence_n3" TYPE="char" LENGTH="64"  NOTNULL="false" SEQUENCE="false" COMMENT="Code compétence EFE N3 (optionnel, le plus précis)."/>
+        <FIELD NAME="efe_competences"   TYPE="text"               NOTNULL="false" SEQUENCE="false" COMMENT="Codes EFE rattachés au devoir (JSON, tout niveau, dans l'ordre choisi). Prioritaire sur n1/n2/n3."/>
+        <FIELD NAME="pedagogicalcontext" TYPE="text"              NOTNULL="false" SEQUENCE="false" COMMENT="Contexte pédagogique donné par l'enseignant (attentes, contraintes, choix technologiques imposés)."/>
+        <FIELD NAME="sourcemissionid"   TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Mission d'origine d'une copie ou d'une adaptation (0 = générée)."/>
         <FIELD NAME="assigncmid"        TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="course_modules.id du devoir généré (0 tant que non créé)."/>
         <FIELD NAME="status"            TYPE="char" LENGTH="20"  NOTNULL="true"  SEQUENCE="false" DEFAULT="draft" COMMENT="draft|published|archived."/>
         <FIELD NAME="timecreated"       TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>

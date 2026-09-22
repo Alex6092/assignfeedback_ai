@@ -50,8 +50,7 @@ $string['mission_published'] = 'Publié';
 $string['mission_archived']  = 'Archivé';
 
 // Pont EFE.
-$string['efe_unavailable'] = 'Le plugin EFE Notes (local_efenotes) n\'est pas installé ; le report des compétences est désactivé pour les missions générées.';
-$string['efe_attached']    = 'Compétence {$a} rattachée au devoir pour le report EFE.';
+$string['efe_unavailable'] = 'Le plugin EFE Notes (local_efenotes) n\'est pas installé ou pas configuré : indiquez la compétence en texte libre ; elle ne sera pas reportée vers EFE.';
 
 // Erreurs de génération.
 $string['error_maxsprints']      = 'Le nombre maximum de sprints pour ce projet est atteint.';
@@ -59,13 +58,11 @@ $string['error_llm_invalid']     = 'Le LLM n\'a pas renvoyé de mission exploita
 $string['error_assign_creation'] = 'La création du devoir a échoué.';
 
 // Formulaire de génération.
-$string['form_intro']            = 'Choisissez la compétence à faire travailler, le niveau et les groupes. Une demande client (cahier des charges) sera générée par l\'IA pour chaque groupe, déposée en devoir caché, et corrigée automatiquement au dépôt. Relisez puis publiez depuis l\'écran « Missions générées ».';
+$string['form_intro'] = 'Décrivez le contexte pédagogique, choisissez les compétences à faire travailler, le niveau et les groupes. Une demande client (cahier des charges) sera générée par l\'IA pour chaque groupe, déposée en devoir caché, et corrigée automatiquement au dépôt. Relisez puis publiez depuis l\'écran « Sprints générés ».';
 $string['form_target']           = 'Cible pédagogique';
-$string['form_module']           = 'Module / matière';
-$string['form_module_help']      = 'Le module ou la matière concernée (ex. « Développement web », « Réseaux », « Cybersécurité »). Sert à orienter le contexte de la demande client.';
-$string['form_competency']       = 'Compétence évaluée (EFE)';
-$string['form_competency_help']  = 'La compétence du référentiel EFE à faire travailler. Son libellé guide la génération (sans être nommé dans l\'énoncé) et son code est positionné sur le devoir pour le report automatique vers EFE à la correction.';
-$string['form_competency_choose'] = 'Choisir une compétence…';
+$string['form_competency'] = 'Compétences évaluées (EFE)';
+$string['form_competency_help'] = 'Une ou plusieurs compétences du référentiel EFE à faire travailler. Leurs libellés guident la génération (sans être nommés dans la demande client) ; leurs codes sont posés sur le devoir pour le report automatique vers EFE à la correction, et affichés en tête de sa description, comme sur les autres devoirs.';
+$string['form_competency_choose'] = 'Rechercher une compétence…';
 $string['form_competencylabel']  = 'Compétence à faire travailler';
 $string['form_competencylabel_help'] = 'Décrivez la compétence visée (ex. « Concevoir une base de données relationnelle »). Le LLM construira un besoin métier qui l\'exerce sans la nommer. (EFE non disponible : pas de report de compétence.)';
 $string['form_level']            = 'Niveau';
@@ -80,14 +77,14 @@ $string['form_groups_heading']   = 'Groupes cibles';
 $string['form_groups_help']      = 'Un projet (entreprise fictive) distinct est généré pour chaque groupe : les missions diffèrent d\'un groupe à l\'autre (individualisation anti-triche).';
 $string['form_nogroups']         = 'Aucun groupe dans ce cours. Créez d\'abord des groupes (Participants → Groupes) : chaque groupe aura sa propre entreprise cliente.';
 $string['form_submit']           = 'Générer les missions';
-$string['error_nogroup']         = 'Sélectionnez au moins un groupe.';
+$string['error_nogroup'] = 'Sélectionnez au moins un groupe, ou saisissez-en un à créer.';
 $string['error_nocompetency']    = 'Indiquez une compétence (référentiel EFE ou libellé libre).';
 $string['jobs_queued']           = '{$a} génération(s) mise(s) en file. Elles seront traitées au prochain passage du cron.';
 
 // Page de statut.
 $string['status_title']          = 'Génération de missions — suivi';
-$string['status_newgeneration']  = '+ Nouvelle génération';
-$string['status_managemissions'] = 'Missions générées';
+$string['status_newgeneration'] = '+ Nouveau sprint';
+$string['status_managemissions'] = 'Afficher les Sprints générés';
 $string['status_nojobs']         = 'Aucune génération pour l\'instant.';
 $string['status_col_created']    = 'Lancée le';
 $string['status_col_status']     = 'Statut';
@@ -95,7 +92,7 @@ $string['status_col_result']     = 'Mission';
 $string['status_col_log']        = 'Journal';
 
 // Page de gestion / publication.
-$string['manage_title']          = 'Missions générées';
+$string['manage_title'] = 'Sprints générés';
 $string['manage_noprojects']     = 'Aucune mission générée pour ce cours.';
 $string['manage_nogroup']        = 'Sans groupe';
 $string['manage_col_sprint']     = 'Sprint';
@@ -217,3 +214,42 @@ $string['forcereply_done']      = 'Réponse du client déclenchée (traitement i
 $string['resume_action']        = 'Forcer la reprise';
 $string['resume_done']          = 'Le projet a été relancé.';
 $string['resume_message']       = 'Bonjour, suite à l\'intervention de votre encadrant, j\'accepte de reprendre nos échanges. Restons constructifs et professionnels à l\'avenir.';
+
+// 0.8.0 : contexte pédagogique, compétences multiples, groupes, tuteur, duplication, barème.
+$string['efe_loaderror'] = 'Le référentiel EFE n\'a pas pu être chargé (serveur EFE injoignable) : indiquez la compétence en texte libre ; elle ne sera pas reportée vers EFE.';
+$string['form_pedagogicalcontext'] = 'Contexte pédagogique';
+$string['form_pedagogicalcontext_help'] = 'Vos attentes sur le sujet à générer : module ou matière, notions à mobiliser, contraintes pédagogiques (travail attendu, durée, livrables), choix technologiques imposés (langage, base de données, matériel…). Les choix imposés apparaissent dans la demande comme une contrainte du client, jamais comme la solution. Prérempli avec le contexte du dernier sprint du cours.';
+$string['error_contexttoolong'] = 'Le contexte pédagogique ne doit pas dépasser {$a} caractères.';
+$string['form_aichat_heading'] = 'Tuteur IA';
+$string['form_aichat'] = 'Activer le Tuteur IA sur ce sprint';
+$string['form_aichat_help'] = 'Les élèves disposent d\'un tuteur sur la page du devoir : il les guide (notions, méthode, questions) sans jamais donner la solution. Il connaît la demande client et un brief pédagogique fabriqué à partir de la grille de correction, qu\'il ne voit jamais. Réglages modifiables ensuite dans le devoir.';
+$string['form_aichatsearch'] = 'Recherches du tuteur';
+$string['form_aichatsearch_help'] = '<strong>Aucune</strong> : le tuteur répond avec ses seules connaissances.<br><strong>Recherche Web ponctuelle</strong> : il peut chercher une information récente (documentation, version d\'un logiciel…).<br><strong>Recherche de matériel</strong> : il cherche des références et lit les datasheets, pour une mission de choix de matériel.<br>Les recherches exigent la clé personnelle de chaque élève.';
+$string['aichatsearch_none'] = 'Aucune';
+$string['aichatsearch_web'] = 'Recherche Web ponctuelle';
+$string['aichatsearch_material'] = 'Recherche de matériel';
+$string['form_nogroups_create'] = 'Aucun groupe dans ce cours : créez-les ci-dessous. Chaque groupe aura sa propre entreprise cliente.';
+$string['form_newgroups'] = 'Nouveaux groupes';
+$string['form_newgroups_help'] = 'Un nom de groupe par ligne. « Créer ces groupes » les ajoute au cours et les coche ; vous y inscrirez les élèves ensuite (Participants → Groupes). Les noms restés ici au moment de générer sont créés eux aussi.';
+$string['form_creategroups'] = 'Créer ces groupes';
+$string['groups_created'] = '{$a} groupe(s) créé(s) et coché(s).';
+$string['manage_duplicate'] = 'Dupliquer';
+$string['manage_tutor_badge'] = 'Tuteur IA';
+$string['dup_title'] = 'Dupliquer le sprint {$a->sprint} « {$a->title} »';
+$string['dup_intro'] = 'Réutilisez ce sprint, rédigé pour « {$a->company} », pour d\'autres groupes. Les devoirs sont créés cachés, à relire puis publier.';
+$string['dup_mode'] = 'Mode de duplication';
+$string['dup_mode_help'] = '<strong>Copie à l\'identique</strong> : même demande, même corrigé, mêmes compétences, mêmes réglages du tuteur, sans appel à l\'IA. Possible seulement vers un groupe au même point : sans projet (il reprend alors l\'entreprise de ce groupe), ou qui suit la même entreprise et en est au sprint précédent.<br><strong>Adapter par l\'IA</strong> : la mission est réécrite pour l\'entreprise de chaque groupe (créée si besoin) : mêmes besoins, mêmes contraintes, même grille, mais des textes différents d\'un groupe à l\'autre. Une génération par groupe, suivie dans la page d\'état.';
+$string['dup_mode_copy'] = 'Copie à l\'identique';
+$string['dup_mode_adapt'] = 'Adapter par l\'IA à l\'entreprise de chaque groupe';
+$string['dup_targets'] = 'Groupes cibles';
+$string['dup_nogroups'] = 'Aucun autre groupe dans ce cours.';
+$string['dup_reason_samegroup'] = 'groupe d\'origine';
+$string['dup_reason_othercompany'] = 'autre entreprise : copie impossible, adaptation possible';
+$string['dup_reason_othersprint'] = 'n\'en est pas au sprint {$a} : copie impossible, adaptation possible';
+$string['dup_submit'] = 'Dupliquer';
+$string['dup_error_notarget'] = 'Cochez au moins un groupe.';
+$string['dup_error_ineligible'] = 'Copie à l\'identique impossible vers : {$a}. Choisissez « Adapter par l\'IA » pour ces groupes.';
+$string['dup_done_copy'] = '{$a} sprint(s) copié(s) : devoirs cachés, à relire puis publier.';
+$string['error_adapt_nosource'] = 'Le sprint à adapter n\'existe plus.';
+$string['setting_scalename'] = 'Barème des devoirs';
+$string['setting_scalename_desc'] = 'Nom du barème utilisé pour noter les devoirs générés (barème du cours, sinon du site). Il doit reprendre les 4 niveaux de la Correction IA (Maîtrise insuffisante, Maîtrise fragile, Maîtrise satisfaisante, Très bonne maîtrise) pour que la note soit posée automatiquement. Vide : note sur 100.';

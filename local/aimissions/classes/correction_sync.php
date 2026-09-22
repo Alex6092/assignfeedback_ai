@@ -49,6 +49,11 @@ class correction_sync {
 
         $DB->set_field('assignfeedback_ai', 'expectedanswer', $expected, array('id' => $cfg->id));
         $DB->set_field('assignfeedback_ai', 'timemodified', time(), array('id' => $cfg->id));
+
+        // Le brief du Tuteur IA dérive de ce corrigé : il est remis en file
+        // pour que le tuteur connaisse aussi les précisions du client (sans
+        // effet si le tuteur n'est pas activé sur ce sprint).
+        aichat_bridge::refresh_brief((int)$mission->assigncmid);
     }
 
     /**

@@ -64,5 +64,24 @@ function xmldb_local_aimissions_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026060506, 'local', 'aimissions');
     }
 
+    if ($oldversion < 2026092200) {
+        // Plusieurs compétences EFE, contexte pédagogique, duplication de sprints.
+        $table = new xmldb_table('local_aimissions_mission');
+        $fields = array(
+            new xmldb_field('efe_competences', XMLDB_TYPE_TEXT, null, null, null, null, null,
+                'efe_competence_n3'),
+            new xmldb_field('pedagogicalcontext', XMLDB_TYPE_TEXT, null, null, null, null, null,
+                'efe_competences'),
+            new xmldb_field('sourcemissionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0',
+                'pedagogicalcontext'),
+        );
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026092200, 'local', 'aimissions');
+    }
+
     return true;
 }
