@@ -430,12 +430,13 @@ class pool {
             return null;
         }
         $now = time();
-        $DB->update_record(self::TABLE_SLOT, (object)array(
-            'id'            => (int)$row->id,
-            'status'        => 'running',
-            'timestarted'   => $now,
-            'timeheartbeat' => $now,
-        ));
+        if (!self::transition((int)$row->id, array('reserved'), array(
+                'status'        => 'running',
+                'timestarted'   => $now,
+                'timeheartbeat' => $now,
+            ))) {
+            return null; // repris par reclaim(), annulé, ou démarré par un autre onglet
+        }
         return self::server((int)$row->serverid);
     }
 
@@ -465,8 +466,7 @@ class pool {
         if (in_array($row->status, array('done', 'failed', 'cancelled'), true)) {
             return; // déjà libéré
         }
-        $DB->update_record(self::TABLE_SLOT, (object)array(
-            'id'           => (int)$row->id,
+        self::transition((int)$row->id, array('queued', 'reserved', 'running'), array(
             'status'       => (string)$status,
             'timefinished' => $now,
         ));
@@ -487,12 +487,10 @@ class pool {
         if (!$row || !in_array($row->status, array('queued', 'reserved'), true)) {
             return false;
         }
-        $DB->update_record(self::TABLE_SLOT, (object)array(
-            'id'           => (int)$row->id,
+        return self::transition((int)$row->id, array('queued', 'reserved'), array(
             'status'       => 'cancelled',
             'timefinished' => time(),
         ));
-        return true;
     }
 
     /**
@@ -642,12 +640,15 @@ class pool {
                     // des serveurs disponibles → on continue la boucle.
                     continue;
                 }
-                $DB->update_record(self::TABLE_SLOT, (object)array(
-                    'id'           => (int)$row->id,
-                    'status'       => 'reserved',
-                    'serverid'     => (int)$best,
-                    'timereserved' => $now,
-                ));
+                // Conditionnel : le ticket peut avoir été annulé par l'élève
+                // (bouton « Arrêter ») depuis la lecture de la file.
+                if (!self::transition((int)$row->id, array('queued'), array(
+                        'status'       => 'reserved',
+                        'serverid'     => (int)$best,
+                        'timereserved' => $now,
+                    ))) {
+                    continue;
+                }
                 $used[$best]++;
             }
             return true;
@@ -670,19 +671,9 @@ class pool {
         $resttl   = self::setting('pool_reserve_ttl', self::DEFAULT_RESERVE_TTL);
         $queuettl = self::setting('pool_queue_ttl', self::DEFAULT_QUEUE_TTL);
 
-        $table = '{' . self::TABLE_SLOT . '}';
-
-        $DB->execute("UPDATE $table SET status = ?, timefinished = ?
-                       WHERE status = ? AND timeheartbeat < ?",
-            array('failed', $now, 'running', $now - $hbttl));
-
-        $DB->execute("UPDATE $table SET status = ?, timefinished = ?
-                       WHERE status = ? AND timereserved < ?",
-            array('cancelled', $now, 'reserved', $now - $resttl));
-
-        $DB->execute("UPDATE $table SET status = ?, timefinished = ?
-                       WHERE status = ? AND timecreated < ?",
-            array('cancelled', $now, 'queued', $now - $queuettl));
+        self::reclaim_batch('running',  'timeheartbeat', $now - $hbttl,    'failed',    $now);
+        self::reclaim_batch('reserved', 'timereserved',  $now - $resttl,   'cancelled', $now);
+        self::reclaim_batch('queued',   'timecreated',   $now - $queuettl, 'cancelled', $now);
 
         // Purge légère, au plus une fois par heure (évite de grossir sans fin).
         $lastpurge = (int)get_config('local_aifeedback', 'pool_lastpurge');
@@ -692,6 +683,109 @@ class pool {
                 'status IN (?, ?, ?) AND timefinished > 0 AND timefinished < ?',
                 array('done', 'failed', 'cancelled', $now - DAYSECS));
         }
+    }
+
+    /**
+     * Passe au statut $to les tickets d'un statut donné dont le temps $timefield
+     * est trop vieux.
+     *
+     * Les identifiants sont d'abord lus, puis mis à jour PAR CLÉ PRIMAIRE et
+     * dans l'ordre. Un « UPDATE … WHERE status = ? » verrouillerait l'index
+     * (status, purpose) sur toutes les lignes de ce statut, y compris celles
+     * qu'une autre requête est en train de faire changer d'état
+     * (start(), release()) : les deux transactions prenaient alors les mêmes
+     * verrous dans l'ordre inverse, ce qui produisait des interblocages
+     * MariaDB — vus par l'élève comme « Erreur d'écriture vers la base de
+     * données » au démarrage d'un chat.
+     *
+     * @param string $from      statut de départ
+     * @param string $timefield colonne de temps à comparer
+     * @param int    $before    seuil : on ne reprend que ce qui est antérieur
+     * @param string $to        statut d'arrivée
+     * @param int    $now       horodatage de fin à écrire
+     */
+    private static function reclaim_batch($from, $timefield, $before, $to, $now) {
+        global $DB;
+
+        $ids = $DB->get_fieldset_select(self::TABLE_SLOT, 'id',
+            'status = ? AND ' . $timefield . ' < ?', array($from, (int)$before));
+        if (empty($ids)) {
+            return;
+        }
+        sort($ids, SORT_NUMERIC);
+        foreach (array_chunk($ids, 50) as $chunk) {
+            list($insql, $params) = $DB->get_in_or_equal($chunk);
+            array_unshift($params, (int)$now);
+            array_unshift($params, (string)$to);
+            $params[] = (string)$from;
+            self::slot_write('UPDATE {' . self::TABLE_SLOT . '}
+                                 SET status = ?, timefinished = ?
+                               WHERE id ' . $insql . ' AND status = ?', $params);
+        }
+    }
+
+    /**
+     * Change le statut d'UN ticket, à condition qu'il soit encore dans l'un des
+     * statuts attendus. Une seule requête : pas de lecture puis écriture, donc
+     * pas de fenêtre pendant laquelle un autre processus peut décider autre
+     * chose pour ce ticket.
+     *
+     * @param int      $id
+     * @param string[] $from statuts acceptés au départ
+     * @param array    $set  colonnes à écrire (dont status)
+     * @return bool true si le ticket est bien passé au statut demandé
+     */
+    private static function transition($id, array $from, array $set) {
+        global $DB;
+
+        $sets   = array();
+        $params = array();
+        foreach ($set as $field => $value) {
+            $sets[]   = $field . ' = ?';
+            $params[] = $value;
+        }
+        list($insql, $inparams) = $DB->get_in_or_equal($from);
+        $params[] = (int)$id;
+        $params   = array_merge($params, $inparams);
+
+        self::slot_write('UPDATE {' . self::TABLE_SLOT . '}
+                             SET ' . implode(', ', $sets) . '
+                           WHERE id = ? AND status ' . $insql, $params);
+
+        // Moodle n'expose pas le nombre de lignes touchées : on relit le statut.
+        // Si un autre processus a gagné la course, il n'est pas celui demandé.
+        $status = $DB->get_field(self::TABLE_SLOT, 'status', array('id' => (int)$id));
+        return ($status !== false && isset($set['status']) && (string)$status === (string)$set['status']);
+    }
+
+    /**
+     * Écriture sur la table des tickets, avec reprise si MariaDB a désigné
+     * notre transaction comme victime d'un interblocage ou d'une attente de
+     * verrou. Ces deux cas sont transitoires : le même ordre réussit à l'essai
+     * suivant. Toute autre erreur est relancée telle quelle.
+     */
+    private static function slot_write($sql, array $params, $attempts = 3) {
+        global $DB;
+
+        for ($try = 1; ; $try++) {
+            try {
+                $DB->execute($sql, $params);
+                return;
+            } catch (\dml_exception $e) {
+                if ($try >= $attempts || !self::is_lock_conflict($e)) {
+                    throw $e;
+                }
+                usleep(50000 * $try); // 50 ms, puis 100 ms
+            }
+        }
+    }
+
+    /**
+     * Vrai si l'erreur est un interblocage ou une attente de verrou expirée.
+     */
+    private static function is_lock_conflict(\dml_exception $e) {
+        $text = $e->getMessage() . ' ' . (isset($e->debuginfo) ? (string)$e->debuginfo : '');
+        return (stripos($text, 'deadlock') !== false) || (stripos($text, 'lock wait timeout') !== false);
     }
 
     // =====================================================================
