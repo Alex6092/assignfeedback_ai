@@ -1,0 +1,119 @@
+/*
+ * MoodleSearch : une page de résultats sobre, comme les moteurs d'avant.
+ * Tout est préfixé « moodlesearch- » pour ne rien toucher du thème.
+ */
+.moodlesearch {
+    max-width: 780px;
+}
+
+.moodlesearch-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 8px;
+}
+
+.moodlesearch-input {
+    flex: 1 1 320px;
+    font-size: 1.1rem;
+}
+
+.moodlesearch-period {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+.moodlesearch-notice {
+    color: #6a737d;
+    font-size: .85rem;
+    margin-bottom: 12px;
+}
+
+.moodlesearch-tabs {
+    margin-bottom: 16px;
+}
+
+.moodlesearch-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.moodlesearch-result {
+    margin: 0 0 22px;
+}
+
+.moodlesearch-source {
+    font-size: .85rem;
+    color: #3c4043;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.moodlesearch-path {
+    color: #6a737d;
+}
+
+.moodlesearch-title {
+    font-size: 1.15rem;
+    font-weight: 400;
+    margin: 2px 0 4px;
+    line-height: 1.3;
+}
+
+.moodlesearch-title a {
+    color: #1a0dab;
+}
+
+.moodlesearch-title a:visited {
+    color: #681da8;
+}
+
+.moodlesearch-blocked {
+    font-size: .7rem;
+    vertical-align: middle;
+}
+
+.moodlesearch-date {
+    color: #6a737d;
+    font-size: .85rem;
+}
+
+.moodlesearch-snippet {
+    color: #3c4043;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.moodlesearch-more {
+    margin: 8px 0 16px;
+}
+
+.moodlesearch-footer {
+    color: #6a737d;
+    font-size: .8rem;
+    border-top: 1px solid #e1e4e8;
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.moodlesearch-recent {
+    margin-top: 28px;
+}
+
+.moodlesearch-recent h4 {
+    font-size: 1rem;
+}
+
+.moodlesearch-recent ul {
+    padding-left: 18px;
+}
+
+.moodlesearch-open-wait {
+    margin: 16px 0;
+}
+
+.moodlesearch-open-actions {
+    margin-top: 12px;
+}

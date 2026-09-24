@@ -22,6 +22,7 @@ compétences).
 - [Surcharges par devoir / par question](#surcharges-par-devoir--par-question)
 - [Tuteur IA — recherche Web](#tuteur-ia--recherche-web)
   (dont [mode « Recherche de matériel »](#mode--recherche-de-matériel-))
+- [MoodleSearch — moteur de recherche Web sans IA](#moodlesearch--moteur-de-recherche-web-sans-ia)
 - [Structure du dépôt](#structure-du-dépôt)
 - [Feuille de route](#feuille-de-route)
 
@@ -624,6 +625,106 @@ Teracom de 100 000 caractères), 51 tests :
 
 ---
 
+## MoodleSearch — moteur de recherche Web sans IA
+
+`local_moodlesearch` est un moteur de recherche Web intégré à Moodle qui **n'affiche que
+des résultats**, comme les moteurs d'avant : aucune réponse générée par une IA au-dessus
+de la liste (Tavily est toujours appelé avec `include_answer=false`).
+
+- **Clé Tavily personnelle** de la personne qui cherche : ce sont les clés du Tuteur IA
+  (*Préférences > mes clés de recherche*). Sans clé, pas de recherche : la page invite à
+  en ajouter une.
+- **Page du site** (entrée « MoodleSearch » du menu principal), **activable ou désactivable
+  par cohorte**. Autorisé par défaut ; une cohorte désactivée l'emporte. Un mode examen
+  OPNsense ferme aussi MoodleSearch à la classe concernée.
+- **Recherches et clics enregistrés**, consultables par les enseignants des cours de l'élève
+  (lien « Recherches MoodleSearch » dans la navigation du cours) et, pour tout le site, par
+  les gestionnaires. La page le rappelle en permanence.
+- **Clic sur un résultat** : demande au bloc OPNsense l'ouverture du site **pour toute la
+  classe**, par le mécanisme existant (ouverture automatique pour la durée réglée, ou
+  demande en attente de l'enseignant), **sauf s'il est en liste noire**. Les résultats vers
+  un site en liste noire sont affichés avec un badge « Bloqué par l'établissement ».
+
+### Fonctionnement
+
+```
+index.php?q=&tab=web|news&period=any|day|week|month|year[&more=1]
+  └─ searcher::search()
+       accès (site activé, capacité, cohorte, mode examen, clé)
+       → cache commun du Tuteur IA (même requête + mêmes options : 0 crédit)
+       → limite par personne et par heure
+       → plafond de la clé, réservation sous verrou (registre commun au tuteur)
+       → Tavily /search : basic (1 crédit), include_answer=false, safe_search=true,
+         topic, time_range, country, exclude_domains
+       → journal local_moodlesearch_search (ok | cached | error | refused)
+  └─ badge « Bloqué par l'établissement » : opnsense_bridge::blocked()
+
+go.php?search=&rank=&sesskey=      (jamais d'URL en paramètre)
+  └─ résultat relu dans le journal de l'utilisateur → clic enregistré
+       ├─ pas de bloc OPNsense, ou personne sans classe → redirection vers le site
+       └─ page d'attente → ajax_open.php → site_request::request_for_user()
+            opened / already → redirection ; pending → lien ; blocked / exam → rien
+            nomac → lien « Déclarer mon poste » (bloc OPNsense)
+```
+
+- **Cache** : celui du Tuteur IA (`searchcache`, durée *websearch_cachedays*). La clé de
+  cache intègre les options (onglet, période, pays, domaines exclus, nombre de résultats).
+  Une recherche déjà faite par n'importe qui ne reconsomme aucun crédit ; elle ne compte
+  pas dans la limite horaire, mais reste inscrite au journal (statut `cached`). Actualités
+  et recherches filtrées par date : 1 h au plus.
+- **Consommation** : partagée avec le tuteur (même compte Tavily, même plafond par clé sur
+  31 jours). Le pied de page indique le nombre de recherches faites avec la clé.
+- **Plus de résultats** : Tavily n'a pas de pagination ; le lien relance une recherche de
+  20 résultats (1 crédit, sauf si elle est en cache).
+
+### Configuration
+
+1. Déployer `local_aichat` 0.5.5 ou plus récent, puis `local_moodlesearch`.
+2. Pour l'ouverture des sites : `block_opnsenseaccess` 0.1.1 ou plus récent (API
+   `site_request`). Sans lui, MoodleSearch fonctionne, et un clic mène directement au site.
+3. *Administration > Plugins > Plugins locaux > MoodleSearch* :
+
+| Réglage | Défaut | Rôle |
+|---|---|---|
+| Activer MoodleSearch | non | entrée du menu principal |
+| Accès par défaut | autorisé | décoché : réservé aux cohortes activées |
+| Résultats par page | 10 | 5, 10, 15 ou 20 |
+| Recherches par personne et par heure | 30 | celles servies par le cache ne comptent pas |
+| Pays privilégié | `france` | nom anglais en minuscules ; vide : aucun |
+| Domaines exclus des résultats | — | un par ligne, 150 au plus |
+| Conservation des traces (jours) | 365 | purge chaque nuit ; 0 : sans limite |
+
+4. *MoodleSearch : accès par cohorte* : Activer / Désactiver / Par défaut pour chaque
+   cohorte, effet immédiat (pour couper une classe pendant une évaluation).
+
+**Capacités** : `local/moodlesearch:use` (utilisateur authentifié), `viewreport`
+(enseignants, contexte cours), `viewsitereport` et `manageaccess` (gestionnaires, système).
+
+### Sécurité et vie privée
+
+- Aucune réponse IA : `include_answer=false` et `safe_search=true` sont imposés par le
+  client Tavily du tuteur, quelles que soient les options.
+- La clé n'est jamais envoyée au navigateur ni écrite dans le journal.
+- Les liens de résultats ne portent que le numéro de la recherche et le rang : l'URL est
+  relue dans le journal de l'utilisateur (pas de redirection ouverte, pas d'ouverture
+  forgée pour un autre site). Clic et ouverture exigent la `sesskey`.
+- Un site en liste noire n'est **jamais** ouvert, et le clic n'ajoute pas de demande dans
+  la liste de l'enseignant (il reste visible dans le rapport MoodleSearch).
+- Titres et extraits des résultats sont échappés : ce sont des données non fiables.
+- API de vie privée : recherches et clics (export, suppression), destinations externes
+  Tavily (la requête) et OPNsense (le domaine).
+
+### Limites connues
+
+- L'ouverture vaut pour toute la classe, pour la durée réglée dans OPNsense : c'est le
+  comportement des demandes de site existantes.
+- Un élève qui n'a pas déclaré son poste (MAC) dans le bloc OPNsense ne peut pas faire
+  ouvrir de site : un lien l'y invite.
+- 20 résultats au plus par recherche (pas de pagination Tavily).
+- La clé est partagée avec le Tuteur IA : 1 000 recherches par mois sur un compte gratuit.
+
+---
+
 ## Structure du dépôt
 
 ```
@@ -654,6 +755,19 @@ question/type/aiessay/             Question « composition » corrigée par IA
 ├── classes/{job_handler,observer}.php
 ├── questiontype.php / question.php / edit_aiessay_form.php / renderer.php
 └── db/{events.php, install.xml}
+
+local/moodlesearch/                MoodleSearch : moteur de recherche Web sans IA
+├── classes/
+│   ├── searcher.php               Recherche : accès, cache, limites, Tavily, journal
+│   ├── access.php                 Site activé, capacité, cohortes, mode examen, clé
+│   ├── opnsense_bridge.php        Liste noire et ouverture via block_opnsenseaccess (facultatif)
+│   ├── clicks.php                 Clics : résultat relu dans le journal, statut d'ouverture
+│   ├── report.php / output.php    Rapports enseignant / site, rendu des résultats
+│   └── task/purge_logs.php        Purge des traces anciennes
+├── index.php                      Page de recherche
+├── go.php / ajax_open.php / js/open.js   Clic, page d'attente, ouverture du site
+├── report.php / cohorts.php       Traces des élèves, accès par cohorte
+└── db/{install.xml,access.php,hooks.php,tasks.php}
 ```
 
 ---

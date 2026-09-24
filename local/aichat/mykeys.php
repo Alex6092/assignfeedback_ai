@@ -14,6 +14,7 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
+require_once(__DIR__ . '/lib.php');
 
 use local_aichat\form\mykeys_form;
 use local_aichat\websearch\budget;
@@ -37,7 +38,9 @@ $PAGE->navbar->add(get_string('preferences'), new moodle_url('/user/preferences.
 $PAGE->navbar->add(get_string('mykeys_page', 'local_aichat'));
 
 // Personne ne modifie les clés d'un autre, pas même via « connecté en tant que ».
-if (\core\session\manager::is_loggedinas() || !manager::site_enabled()) {
+// Page utile dès qu'un usage existe : recherche du tuteur, ou autre plugin (MoodleSearch).
+$usages = local_aichat_personal_keys_usages();
+if (\core\session\manager::is_loggedinas() || empty($usages)) {
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('mykeys_page', 'local_aichat'));
     echo $OUTPUT->notification(get_string(\core\session\manager::is_loggedinas()
@@ -109,6 +112,10 @@ if ($data = $form->get_data()) {
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('mykeys_page', 'local_aichat'));
 echo html_writer::div(get_string('mykeys_intro', 'local_aichat', manager::keycap('brave')), 'mb-3');
+// Plusieurs usages (tuteur, MoodleSearch…) : l'élève sait à quoi sert sa clé.
+if (count($usages) > 1 || !manager::site_enabled()) {
+    echo html_writer::div(get_string('mykeys_usages', 'local_aichat', implode(', ', $usages)), 'mb-3');
+}
 
 $form->display();
 

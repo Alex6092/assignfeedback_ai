@@ -53,7 +53,18 @@ class tavily_provider implements provider {
         return $this->apikey !== '';
     }
 
-    public function search(string $query, int $count): result {
+    /**
+     * @param string $query
+     * @param int    $count
+     * @param array  $options options supplémentaires (MoodleSearch) ; vide pour le tuteur :
+     *   - topic           'general' | 'news'
+     *   - time_range      'day' | 'week' | 'month' | 'year'
+     *   - country         pays privilégié, en minuscules (ex. 'france')
+     *   - exclude_domains string[] (150 au plus)
+     *   - include_favicon bool
+     * @return result
+     */
+    public function search(string $query, int $count, array $options = array()): result {
         if (!$this->is_configured()) {
             return result::failure('not_configured', false);
         }
@@ -61,13 +72,27 @@ class tavily_provider implements provider {
         $body = array(
             'query'        => ($text !== '') ? $text : $query,
             'search_depth' => 'basic',   // 1 crédit
-            'topic'        => 'general',
+            'topic'        => (($options['topic'] ?? '') === 'news') ? 'news' : 'general',
             'max_results'  => max(1, min(self::MAX_COUNT, $count)),
             // Public scolaire : filtrage des contenus pour adultes, non négociable.
             'safe_search'  => true,
+            // Jamais de réponse rédigée par Tavily : on ne veut que des résultats.
+            'include_answer' => false,
         );
         if (!empty($domains)) {
             $body['include_domains'] = $domains;
+        }
+        if (in_array($options['time_range'] ?? '', array('day', 'week', 'month', 'year'), true)) {
+            $body['time_range'] = $options['time_range'];
+        }
+        if (!empty($options['country']) && preg_match('/^[a-z ]{2,40}$/', (string)$options['country'])) {
+            $body['country'] = (string)$options['country'];
+        }
+        if (!empty($options['exclude_domains']) && is_array($options['exclude_domains'])) {
+            $body['exclude_domains'] = array_slice(array_values($options['exclude_domains']), 0, 150);
+        }
+        if (!empty($options['include_favicon'])) {
+            $body['include_favicon'] = true;
         }
 
         $response  = $this->request('post', self::ENDPOINT, json_encode($body, JSON_UNESCAPED_UNICODE));
@@ -183,12 +208,15 @@ class tavily_provider implements provider {
             if (!preg_match('#^https?://[^\s<>"\']+$#i', $url)) {
                 continue;
             }
+            $favicon = isset($row['favicon']) && is_string($row['favicon'])
+                && preg_match('#^https://[^\s<>"\']+$#i', trim($row['favicon'])) ? trim($row['favicon']) : '';
             $items[] = array(
                 'title'   => self::plain(isset($row['title']) ? $row['title'] : ''),
                 'url'     => $url,
                 'snippet' => self::plain(isset($row['content']) ? $row['content'] : ''),
                 'age'     => self::plain(isset($row['published_date']) ? $row['published_date'] : ''),
                 'extra'   => array(),
+                'favicon' => $favicon,
             );
         }
         return $items;
