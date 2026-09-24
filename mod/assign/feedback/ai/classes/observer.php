@@ -98,38 +98,42 @@ class observer {
 
         $isenabled = !empty($_POST['assignfeedback_ai_enabled']);
 
-        // 1) Synchronise le flag enabled dans assign_plugin_config.
-        $cfg = $DB->get_record('assign_plugin_config', array(
-            'assignment' => $assignid,
-            'plugin'     => 'ai',
-            'subtype'    => 'assignfeedback',
-            'name'       => 'enabled',
-        ));
-        $value = $isenabled ? '1' : '0';
-        if ($cfg) {
-            if ((string)$cfg->value !== $value) {
-                $DB->set_field('assign_plugin_config', 'value', $value, array('id' => $cfg->id));
-            }
-        } else {
-            $DB->insert_record('assign_plugin_config', (object)array(
+        // Cet observateur passe APRÈS la validation de la transaction du devoir :
+        // une erreur ici laisserait l'enseignant devant une page en erreur alors
+        // que ses modifications sont enregistrées. Rien de ce qui suit ne doit
+        // donc remonter — la configuration IA se corrige en rouvrant le devoir.
+        try {
+            // 1) Synchronise le flag enabled dans assign_plugin_config.
+            $cfg = $DB->get_record('assign_plugin_config', array(
                 'assignment' => $assignid,
                 'plugin'     => 'ai',
                 'subtype'    => 'assignfeedback',
                 'name'       => 'enabled',
-                'value'      => $value,
             ));
-        }
+            $value = $isenabled ? '1' : '0';
+            if ($cfg) {
+                if ((string)$cfg->value !== $value) {
+                    $DB->set_field('assign_plugin_config', 'value', $value, array('id' => $cfg->id));
+                }
+            } else {
+                $DB->insert_record('assign_plugin_config', (object)array(
+                    'assignment' => $assignid,
+                    'plugin'     => 'ai',
+                    'subtype'    => 'assignfeedback',
+                    'name'       => 'enabled',
+                    'value'      => $value,
+                ));
+            }
 
-        // 2) Sauvegarde des champs IA si le plugin est activé pour ce devoir.
-        //    On délègue à save_settings() pour ne pas dupliquer la logique.
-        if (!$isenabled) {
-            return;
-        }
+            // 2) Sauvegarde des champs IA si le plugin est activé pour ce devoir.
+            //    On délègue à save_settings() pour ne pas dupliquer la logique.
+            if (!$isenabled) {
+                return;
+            }
 
-        require_once($CFG->dirroot . '/mod/assign/locallib.php');
-        require_once($CFG->dirroot . '/mod/assign/feedback/ai/locallib.php');
+            require_once($CFG->dirroot . '/mod/assign/locallib.php');
+            require_once($CFG->dirroot . '/mod/assign/feedback/ai/locallib.php');
 
-        try {
             $cmid = (int)$event->contextinstanceid;
             list($course, $cm) = get_course_and_cm_from_cmid($cmid, 'assign');
             $context = \context_module::instance($cm->id);
