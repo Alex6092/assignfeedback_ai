@@ -23,6 +23,7 @@ $string['unknowngroup'] = 'deleted group';
 $string['strftimeslot'] = '%A %d %B at %H:%M';
 
 $string['status_heading'] = 'Right now';
+$string['status_now'] = 'Server time: <strong>{$a->time}</strong> ({$a->tz} timezone).';
 $string['status'] = 'Status';
 $string['status_everyone'] = 'All students';
 $string['status_nogroup'] = 'Students without a group';
@@ -52,6 +53,18 @@ $string['periodname'] = 'Label';
 $string['closed_heading'] = 'Closed periods';
 $string['closed_help'] = 'Holidays, work placement: during these days the weekly slots do not apply.';
 $string['closed_add'] = 'Add period';
+$string['closed_course_heading'] = 'Periods specific to this course';
+$string['useglobal'] = 'Use the site-wide closed periods';
+$string['global_none'] = 'No site-wide closed period is defined.';
+$string['global_manage'] = 'Manage site-wide closed periods';
+
+// Site-wide closed periods (administration).
+$string['global_heading'] = 'Site-wide closed periods';
+$string['global_menu'] = 'Class hours: site-wide closed periods';
+$string['global_intro'] = 'Holidays and other closures shared by the whole school. They apply to the courses that tick "Use the site-wide closed periods" on their Class hours page; each course can add others. Dates in the {$a} timezone.';
+$string['setting_global_desc'] = 'Holidays and closures shared by all courses are entered on the <a href="{$a}">Site-wide closed periods</a> page.';
+$string['setting_useglobal_default'] = 'Site-wide periods applied by default';
+$string['setting_useglobal_default_desc'] = 'Value of the "Use the site-wide closed periods" box for courses that never set it.';
 $string['datestart'] = 'First day';
 $string['dateend'] = 'Last day';
 $string['period_added'] = 'Period added.';

@@ -749,6 +749,11 @@ Trois plugins, imposés par les points d'accroche de Moodle :
   « tout le cours »), sauf pendant les **périodes fermées** (vacances, stage), plus les
   **ouvertures exceptionnelles** (rattrapage), qui valent même pendant une période fermée.
   Deux créneaux qui se touchent (8h–10h puis 10h–12h) n'en font qu'un.
+- **Périodes de fermeture globales** : les vacances communes à tout l'établissement se
+  saisissent une fois pour le site (*Administration > Plugins > Plugins locaux > Heures de
+  cours : périodes de fermeture globales*). Chaque cours les applique avec la case
+  « Utiliser les périodes de fermeture globales » (cochée par défaut, réglable pour le
+  site) et peut ajouter ses propres périodes.
 - **Heure de l'établissement** : les horaires sont ceux du fuseau du serveur, jamais celui
   du profil de l'élève. Les changements d'heure sont gérés.
 - **Tolérance** (5 min par défaut) : l'accès reste ouvert quelques minutes après la fin du
@@ -769,7 +774,9 @@ Lien dans la navigation du cours (capacité `local/classhours:manage`, enseignan
 éditeurs) :
 
 - **En ce moment** : ouvert ou fermé pour chaque groupe, et le prochain créneau ;
-- **Emploi du temps de la semaine**, **ouvertures exceptionnelles**, **périodes fermées** ;
+- **Emploi du temps de la semaine**, **ouvertures exceptionnelles** ;
+- **Périodes fermées** : case « Utiliser les périodes de fermeture globales » et leur liste
+  (lecture seule), puis les périodes propres au cours ;
 - **Activités restreintes** : case « Restreindre » pour chaque test ou devoir (ou toute
   activité qui porte déjà la condition). On peut aussi ajouter la condition « Heures de
   cours » depuis la restriction d'accès de n'importe quelle activité ou section.
@@ -807,10 +814,15 @@ ou de ponctualité) est alors restreinte aux heures de cours.
 |---|---|---|
 | Tolérance après la fin d'un créneau | 5 min | l'activité reste accessible ; aucune tentative ne commence |
 | Option EFE cochée par défaut | non | pour les cours qui ne l'ont jamais réglée |
+| Périodes globales appliquées par défaut | oui | case « Utiliser les périodes de fermeture globales » des cours qui ne l'ont jamais réglée |
 
-**Sauvegarde et restauration** : l'emploi du temps et l'option suivent le cours (dates
-décalées, groupes remappés : un créneau dont le groupe n'est pas restauré est ignoré) ;
-l'exclusion EFE suit l'activité, y compris en cas de duplication.
+4. *Heures de cours : périodes de fermeture globales* : saisir les vacances de l'année.
+
+**Sauvegarde et restauration** : l'emploi du temps, l'option EFE et la case des périodes
+globales suivent le cours (dates décalées, groupes remappés : un créneau dont le groupe
+n'est pas restauré est ignoré) ; l'exclusion EFE suit l'activité, y compris en cas de
+duplication. Les périodes globales appartiennent au site : elles ne sont pas sauvegardées
+avec un cours.
 
 ### Limites connues
 

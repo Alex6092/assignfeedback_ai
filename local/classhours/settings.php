@@ -20,5 +20,19 @@ if ($hassiteconfig) {
         get_string('setting_efeauto_default', 'local_classhours'),
         get_string('setting_efeauto_default_desc', 'local_classhours'), 0));
 
+    // Périodes de fermeture globales (vacances) : saisies sur leur propre page.
+    $settings->add(new admin_setting_heading('local_classhours/globalheading',
+        get_string('global_heading', 'local_classhours'),
+        get_string('setting_global_desc', 'local_classhours',
+            (new moodle_url('/local/classhours/globalperiods.php'))->out(false))));
+
+    $settings->add(new admin_setting_configcheckbox('local_classhours/useglobal_default',
+        get_string('setting_useglobal_default', 'local_classhours'),
+        get_string('setting_useglobal_default_desc', 'local_classhours'), 1));
+
     $ADMIN->add('localplugins', $settings);
+
+    $ADMIN->add('localplugins', new admin_externalpage('local_classhours_globalperiods',
+        get_string('global_menu', 'local_classhours'),
+        new moodle_url('/local/classhours/globalperiods.php'), 'moodle/site:config'));
 }

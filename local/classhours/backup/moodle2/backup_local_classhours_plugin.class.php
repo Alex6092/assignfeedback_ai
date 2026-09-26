@@ -4,9 +4,11 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Sauvegarde des heures de cours.
  *
- * Niveau <course> : emploi du temps (créneaux, ouvertures, périodes fermées)
- * et option EFE. Niveau <module> : exclusion de l'activité de l'option EFE ;
- * elle suit donc aussi une duplication d'activité.
+ * Niveau <course> : emploi du temps (créneaux, ouvertures, périodes fermées
+ * du cours), option EFE et case « périodes globales ». Les périodes globales
+ * elles-mêmes appartiennent au site et ne sont pas sauvegardées.
+ * Niveau <module> : exclusion de l'activité de l'option EFE ; elle suit donc
+ * aussi une duplication d'activité.
  *
  * La restriction elle-même ({"type":"classhours"}) fait partie du JSON
  * d'accès de l'activité, que Moodle sauvegarde déjà.
@@ -20,7 +22,7 @@ class backup_local_classhours_plugin extends backup_local_plugin {
         $plugin = $this->get_plugin_element();
         $wrapper = new backup_nested_element($this->get_recommended_name());
 
-        $settings = new backup_nested_element('classhours_course', array('id'), array('efeauto'));
+        $settings = new backup_nested_element('classhours_course', array('id'), array('efeauto', 'useglobal'));
 
         $slots = new backup_nested_element('classhours_slots');
         $slot = new backup_nested_element('classhours_slot', array('id'),

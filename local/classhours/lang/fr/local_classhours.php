@@ -23,6 +23,7 @@ $string['unknowngroup'] = 'groupe supprimé';
 $string['strftimeslot'] = '%A %d %B à %H:%M';
 
 $string['status_heading'] = 'En ce moment';
+$string['status_now'] = 'Heure du serveur : <strong>{$a->time}</strong> (fuseau {$a->tz}).';
 $string['status'] = 'État';
 $string['status_everyone'] = 'Tous les élèves';
 $string['status_nogroup'] = 'Élèves sans groupe';
@@ -52,6 +53,18 @@ $string['periodname'] = 'Libellé';
 $string['closed_heading'] = 'Périodes fermées';
 $string['closed_help'] = 'Vacances, stage : pendant ces jours, les créneaux de la semaine ne s\'appliquent pas.';
 $string['closed_add'] = 'Ajouter la période';
+$string['closed_course_heading'] = 'Périodes propres au cours';
+$string['useglobal'] = 'Utiliser les périodes de fermeture globales';
+$string['global_none'] = 'Aucune période de fermeture globale n\'est définie pour le site.';
+$string['global_manage'] = 'Gérer les périodes de fermeture globales';
+
+// Périodes de fermeture globales (administration).
+$string['global_heading'] = 'Périodes de fermeture globales';
+$string['global_menu'] = 'Heures de cours : périodes de fermeture globales';
+$string['global_intro'] = 'Vacances et autres fermetures communes à tout l\'établissement. Elles s\'appliquent aux cours qui cochent « Utiliser les périodes de fermeture globales » sur leur page Heures de cours ; chaque cours peut en ajouter d\'autres. Dates du fuseau {$a}.';
+$string['setting_global_desc'] = 'Les vacances et fermetures communes à tous les cours se saisissent sur la page <a href="{$a}">Périodes de fermeture globales</a>.';
+$string['setting_useglobal_default'] = 'Périodes globales appliquées par défaut';
+$string['setting_useglobal_default_desc'] = 'Valeur de la case « Utiliser les périodes de fermeture globales » pour les cours qui ne l\'ont jamais réglée.';
 $string['datestart'] = 'Premier jour';
 $string['dateend'] = 'Dernier jour';
 $string['period_added'] = 'Période ajoutée.';

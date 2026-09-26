@@ -27,7 +27,8 @@ class restore_local_classhours_plugin extends restore_local_plugin {
     }
 
     /**
-     * Option EFE : reprise seulement si le cours cible ne l'a pas déjà réglée.
+     * Réglages du cours (option EFE, périodes globales) : repris seulement si
+     * le cours cible ne les a pas déjà réglés.
      *
      * @param array|\stdClass $data
      */
@@ -37,6 +38,9 @@ class restore_local_classhours_plugin extends restore_local_plugin {
         $courseid = (int)$this->task->get_courseid();
         if (!$DB->record_exists('local_classhours_course', array('courseid' => $courseid))) {
             store::set_efeauto($courseid, !empty($data->efeauto));
+            if (isset($data->useglobal)) {
+                store::set_useglobal($courseid, !empty($data->useglobal));
+            }
         }
     }
 

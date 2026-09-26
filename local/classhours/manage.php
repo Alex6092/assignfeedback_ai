@@ -63,6 +63,11 @@ if ($action !== '') {
         redirect($pageurl, get_string('deleted', 'local_classhours'), null, $success);
     }
 
+    if ($action === 'setuseglobal') {
+        store::set_useglobal($courseid, optional_param('useglobal', 0, PARAM_BOOL));
+        redirect(new moodle_url($pageurl, array(), 'closed'), get_string('saved', 'local_classhours'), null, $success);
+    }
+
     if ($action === 'sync') {
         $count = efe_sync::sync_course($courseid);
         redirect(new moodle_url($pageurl, array(), 'activities'),
@@ -138,11 +143,8 @@ if ($data = $openform->get_data()) {
 
 $closedform = new closed_form($pageurl, $customdata);
 if ($data = $closedform->get_data()) {
-    // Du minuit du premier jour au minuit du lendemain du dernier jour.
-    $start = (new DateTimeImmutable('@' . (int)$data->datestart))->setTimezone($tz)->setTime(0, 0);
-    $end   = (new DateTimeImmutable('@' . (int)$data->dateend))->setTimezone($tz)->setTime(0, 0)->modify('+1 day');
-    store::add_period($courseid, (int)$data->groupid, store::CLOSED, $start->getTimestamp(), $end->getTimestamp(),
-        $data->name ?? '');
+    list($start, $end) = closed_form::bounds($data, $tz);
+    store::add_period($courseid, (int)$data->groupid, store::CLOSED, $start, $end, $data->name ?? '');
     efe_sync::sync_course($courseid);
     redirect(new moodle_url($pageurl, array(), 'closed'), get_string('period_added', 'local_classhours'), null, $success);
 }
@@ -171,6 +173,12 @@ echo html_writer::tag('p', get_string('intro', 'local_classhours', s($tz->getNam
 
 // État actuel, par groupe.
 echo $OUTPUT->heading(get_string('status_heading', 'local_classhours'), 3);
+// Heure du serveur, dans le fuseau des créneaux : pour vérifier d'un coup d'œil
+// que l'horloge et le fuseau de Moodle sont justes.
+echo html_writer::tag('p', get_string('status_now', 'local_classhours', (object)array(
+    'time' => $sched->format_time($now),
+    'tz'   => s($tz->getName()),
+)));
 $statusrows = array();
 if ($groupnames) {
     $statusrows[get_string('status_nogroup', 'local_classhours')] = array();
@@ -258,28 +266,75 @@ $openform->display();
 echo html_writer::tag('a', '', array('id' => 'closed'));
 echo $OUTPUT->heading(get_string('closed_heading', 'local_classhours'), 3);
 echo html_writer::tag('p', get_string('closed_help', 'local_classhours'), array('class' => 'text-muted'));
-$closeds = $sched->get_periods(store::CLOSED);
-if ($closeds) {
+
+/**
+ * Tableau de périodes fermées ; $editable : colonnes groupe et suppression.
+ */
+$closedtable = function(array $periods, bool $editable) use ($sched, $tz, $now, $groupname, $deletelink) {
     $table = new html_table();
-    $table->head = array(get_string('datestart', 'local_classhours'), get_string('dateend', 'local_classhours'),
-        get_string('group'), get_string('periodname', 'local_classhours'), '');
+    $table->head = array(get_string('datestart', 'local_classhours'), get_string('dateend', 'local_classhours'));
+    if ($editable) {
+        $table->head[] = get_string('group');
+    }
+    $table->head[] = get_string('periodname', 'local_classhours');
+    if ($editable) {
+        $table->head[] = '';
+    }
     $table->attributes['class'] = 'generaltable';
-    foreach ($closeds as $period) {
+    foreach ($periods as $period) {
         // timeend = minuit du lendemain du dernier jour.
         $lastday = (new DateTimeImmutable('@' . (int)$period->timeend))->setTimezone($tz)->modify('-1 day');
-        $row = new html_table_row(array(
-            $sched->format_date((int)$period->timestart),
-            $sched->format_date($lastday->getTimestamp()),
-            $groupname((int)$period->groupid),
-            s((string)$period->name),
-            $deletelink('deleteperiod', (int)$period->id),
-        ));
+        $cells = array($sched->format_date((int)$period->timestart), $sched->format_date($lastday->getTimestamp()));
+        if ($editable) {
+            $cells[] = $groupname((int)$period->groupid);
+        }
+        $cells[] = s((string)$period->name);
+        if ($editable) {
+            $cells[] = $deletelink('deleteperiod', (int)$period->id);
+        }
+        $row = new html_table_row($cells);
         if ((int)$period->timeend <= $now) {
             $row->attributes['class'] = 'dimmed_text';
         }
         $table->data[] = $row;
     }
-    echo html_writer::table($table);
+    return html_writer::table($table);
+};
+
+// Périodes globales du site (vacances), appliquées si la case est cochée.
+$useglobal = store::get_useglobal($courseid);
+echo html_writer::start_tag('form', array('method' => 'post', 'action' => $pageurl->out(false),
+    'class' => 'd-flex flex-wrap align-items-center gap-2 mb-2'));
+echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()));
+echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'action', 'value' => 'setuseglobal'));
+echo html_writer::start_div('form-check');
+echo html_writer::empty_tag('input', array('type' => 'checkbox', 'name' => 'useglobal', 'value' => 1,
+    'id' => 'classhours-useglobal', 'class' => 'form-check-input') + ($useglobal ? array('checked' => 'checked') : array()));
+echo html_writer::tag('label', get_string('useglobal', 'local_classhours'),
+    array('for' => 'classhours-useglobal', 'class' => 'form-check-label fw-bold'));
+echo html_writer::end_div();
+echo html_writer::empty_tag('input', array('type' => 'submit', 'value' => get_string('savechanges'),
+    'class' => 'btn btn-secondary btn-sm'));
+echo html_writer::end_tag('form');
+
+$globals = schedule::global_periods();
+if ($globals) {
+    echo html_writer::start_div($useglobal ? '' : 'dimmed_text');
+    echo $closedtable($globals, false);
+    echo html_writer::end_div();
+} else {
+    echo html_writer::tag('p', get_string('global_none', 'local_classhours'), array('class' => 'text-muted'));
+}
+if (has_capability('moodle/site:config', context_system::instance())) {
+    echo html_writer::tag('p', html_writer::link(new moodle_url('/local/classhours/globalperiods.php'),
+        get_string('global_manage', 'local_classhours')));
+}
+
+// Périodes propres au cours.
+echo $OUTPUT->heading(get_string('closed_course_heading', 'local_classhours'), 4);
+$closeds = $sched->get_periods(store::CLOSED, false);
+if ($closeds) {
+    echo $closedtable($closeds, true);
 }
 $closedform->display();
 
