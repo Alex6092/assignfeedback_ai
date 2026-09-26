@@ -198,7 +198,7 @@ foreach ($statusrows as $label => $gids) {
             'badge bg-success text-white');
     } else {
         $next = $sched->next_opening($gids, $now);
-        $status = html_writer::span(get_string('status_closed', 'local_classhours'), 'badge bg-secondary') . ' '
+        $status = html_writer::span(get_string('status_closed', 'local_classhours'), 'badge bg-secondary text-dark') . ' '
             . ($next ? get_string('status_next', 'local_classhours', $sched->format_time($next))
                      : get_string('status_nonext', 'local_classhours'));
     }
