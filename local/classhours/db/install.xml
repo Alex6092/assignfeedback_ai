@@ -23,10 +23,10 @@
       </INDEXES>
     </TABLE>
 
-    <TABLE NAME="local_classhours_period" COMMENT="Ouverture exceptionnelle (open) ou période fermée (closed) d'un cours">
+    <TABLE NAME="local_classhours_period" COMMENT="Ouverture exceptionnelle (open) ou période fermée (closed) d'un cours ; courseid = 0 : période fermée globale du site">
       <FIELDS>
         <FIELD NAME="id"           TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="true"/>
-        <FIELD NAME="courseid"     TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="courseid"     TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" COMMENT="0 = période globale (vacances), réglée par l'administrateur"/>
         <FIELD NAME="groupid"      TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="0 = tout le cours"/>
         <FIELD NAME="type"         TYPE="char" LENGTH="10"  NOTNULL="true"  SEQUENCE="false" COMMENT="open|closed"/>
         <FIELD NAME="timestart"    TYPE="int"  LENGTH="10"  NOTNULL="true"  SEQUENCE="false"/>
@@ -48,6 +48,7 @@
         <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="courseid"     TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="efeauto"      TYPE="int" LENGTH="1"  NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="1 = restreindre automatiquement les activités à remontée EFE"/>
+        <FIELD NAME="useglobal"    TYPE="int" LENGTH="1"  NOTNULL="true" SEQUENCE="false" DEFAULT="1" COMMENT="1 = appliquer les périodes fermées globales du site"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>
       <KEYS>

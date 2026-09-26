@@ -69,17 +69,36 @@ class schedule {
     /**
      * Emploi du temps d'un cours, chargé une fois par requête : la condition
      * d'accès est évaluée pour chaque activité de la page du cours.
+     *
+     * Les périodes fermées globales du site (courseid = 0 : vacances) s'y
+     * ajoutent si le cours les utilise.
      */
     public static function for_course(int $courseid): self {
         global $DB;
         if (!isset(self::$cache[$courseid])) {
+            $where = 'courseid = :courseid';
+            $params = array('courseid' => $courseid);
+            if (store::get_useglobal($courseid)) {
+                $where = '(courseid = :courseid OR (courseid = :site AND type = :closed))';
+                $params += array('site' => store::SITE, 'closed' => store::CLOSED);
+            }
             self::$cache[$courseid] = new self($courseid,
                 $DB->get_records('local_classhours_slot', array('courseid' => $courseid),
                     'weekday, starttime, endtime, id'),
-                $DB->get_records('local_classhours_period', array('courseid' => $courseid),
-                    'timestart, timeend, id'));
+                $DB->get_records_select('local_classhours_period', $where, $params, 'timestart, timeend, id'));
         }
         return self::$cache[$courseid];
+    }
+
+    /**
+     * Périodes fermées globales du site (vacances), triées par début.
+     *
+     * @return \stdClass[]
+     */
+    public static function global_periods(): array {
+        global $DB;
+        return array_values($DB->get_records('local_classhours_period',
+            array('courseid' => store::SITE, 'type' => store::CLOSED), 'timestart, timeend, id'));
     }
 
     /**
@@ -126,12 +145,15 @@ class schedule {
     }
 
     /**
-     * @param string $type open|closed
+     * @param string    $type   open|closed
+     * @param bool|null $global true : périodes globales du site seulement ;
+     *                          false : celles du cours seulement ; null : toutes
      * @return \stdClass[] périodes de ce type, triées par début
      */
-    public function get_periods(string $type): array {
-        return array_values(array_filter($this->periods, function($p) use ($type) {
-            return $p->type === $type;
+    public function get_periods(string $type, ?bool $global = null): array {
+        return array_values(array_filter($this->periods, function($p) use ($type, $global) {
+            $isglobal = isset($p->courseid) && (int)$p->courseid === store::SITE;
+            return $p->type === $type && ($global === null || $global === $isglobal);
         }));
     }
 
