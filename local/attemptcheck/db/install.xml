@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/attemptcheck/db" VERSION="20260927" COMMENT="Contrôle des tentatives : décisions des enseignants et réglages par activité"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_attemptcheck_review" COMMENT="Tentative ou remise examinée et jugée légitime par un enseignant">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"     TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="cmid"         TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="itemtype"     TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="quiz|assign"/>
+        <FIELD NAME="itemid"       TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="quiz_attempts.id ou assign_submission.id"/>
+        <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Élève"/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="legit"/>
+        <FIELD NAME="reviewerid"   TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a tranché"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="item"     UNIQUE="true"  FIELDS="itemtype, itemid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="cmid"     UNIQUE="false" FIELDS="cmid"/>
+        <INDEX NAME="userid"   UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_attemptcheck_activity" COMMENT="Durée minimale attendue d'une activité">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="cmid"         TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="courseid"     TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="minduration"  TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Secondes ; 0 = pas de minimum"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cmid"     UNIQUE="true"  FIELDS="cmid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

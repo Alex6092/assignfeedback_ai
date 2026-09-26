@@ -23,6 +23,8 @@ compétences).
 - [Tuteur IA — recherche Web](#tuteur-ia--recherche-web)
   (dont [mode « Recherche de matériel »](#mode--recherche-de-matériel-))
 - [MoodleSearch — moteur de recherche Web sans IA](#moodlesearch--moteur-de-recherche-web-sans-ia)
+- [Heures de cours — activités accessibles seulement en classe](#heures-de-cours--activités-accessibles-seulement-en-classe)
+- [Contrôle des tentatives — hors créneau et tentatives suspectes](#contrôle-des-tentatives--hors-créneau-et-tentatives-suspectes)
 - [Structure du dépôt](#structure-du-dépôt)
 - [Feuille de route](#feuille-de-route)
 
@@ -725,6 +727,173 @@ go.php?search=&rank=&sesskey=      (jamais d'URL en paramètre)
 
 ---
 
+## Heures de cours — activités accessibles seulement en classe
+
+Certains tests et devoirs ne sont accessibles aux élèves **que pendant leurs heures de
+cours**. L'emploi du temps se règle **par cours**, et un créneau vaut pour tout le cours ou
+pour un groupe Moodle (demi-groupes de TP). Hors créneau, l'activité est grisée :
+*« Pas disponible sauf : Pendant les heures de cours : lun. 08:00–10:00 — prochain
+créneau : lundi 5 octobre à 08:00 »*.
+
+Trois plugins, imposés par les points d'accroche de Moodle :
+
+| Plugin | Emplacement | Rôle |
+|---|---|---|
+| `local_classhours` | `local/classhours/` | Emploi du temps, calcul des créneaux, page « Heures de cours », option EFE, sauvegarde/restauration |
+| `availability_classhours` | `availability/condition/classhours/` | Condition « Pendant les heures de cours » de la restriction d'accès standard |
+| `quizaccess_classhours` | `mod/quiz/accessrule/classhours/` | Test : compte à rebours jusqu'à la fin du créneau, envoi automatique |
+
+### Fonctionnement
+
+- **Créneaux** : l'élève a accès pendant les créneaux hebdomadaires de ses groupes (et de
+  « tout le cours »), sauf pendant les **périodes fermées** (vacances, stage), plus les
+  **ouvertures exceptionnelles** (rattrapage), qui valent même pendant une période fermée.
+  Deux créneaux qui se touchent (8h–10h puis 10h–12h) n'en font qu'un.
+- **Heure de l'établissement** : les horaires sont ceux du fuseau du serveur, jamais celui
+  du profil de l'élève. Les changements d'heure sont gérés.
+- **Tolérance** (5 min par défaut) : l'accès reste ouvert quelques minutes après la fin du
+  créneau, pour que l'envoi automatique d'un test et le dernier enregistrement d'un devoir
+  passent.
+- **Tests** : une tentative se termine à la fin du créneau dans lequel elle a commencé. Le
+  compte à rebours s'affiche et le test est envoyé automatiquement (réglage conseillé du
+  test : *Quand le temps est écoulé → envoi automatique*). Aucune tentative ne commence
+  pendant la tolérance. Une tentative laissée ouverte est close par une tâche planifiée.
+- **Enseignants** : ils passent outre la restriction (capacité standard
+  `moodle/course:ignoreavailabilityrestrictions`).
+- **Cours sans créneau** : une activité restreinte à la main reste fermée (en cas de doute,
+  on ferme).
+
+### Page « Heures de cours »
+
+Lien dans la navigation du cours (capacité `local/classhours:manage`, enseignants
+éditeurs) :
+
+- **En ce moment** : ouvert ou fermé pour chaque groupe, et le prochain créneau ;
+- **Emploi du temps de la semaine**, **ouvertures exceptionnelles**, **périodes fermées** ;
+- **Activités restreintes** : case « Restreindre » pour chaque test ou devoir (ou toute
+  activité qui porte déjà la condition). On peut aussi ajouter la condition « Heures de
+  cours » depuis la restriction d'accès de n'importe quelle activité ou section.
+
+### Option EFE
+
+Case **« Restreindre automatiquement les activités avec remontée EFE »** sur la page
+Heures de cours (valeur par défaut réglable pour le site). Toute activité dont la remontée
+EFE est active (`local_efenotes_activity` : activée, avec au moins une compétence de note
+ou de ponctualité) est alors restreinte aux heures de cours.
+
+- La condition posée est **marquée** (`{"type":"classhours","efe":1}`) : l'option ne retire
+  jamais que ses propres conditions, une restriction posée à la main reste.
+- **Exclure** : une case par activité EFE (devoir maison). Une activité exclue n'est jamais
+  restreinte par l'option. Retirer la condition marquée depuis la restriction d'accès ne
+  suffit pas : elle revient à la synchronisation suivante.
+- **Sans créneau, pas d'effet** : l'option ne fait rien dans un cours sans aucun créneau,
+  le défaut du site ne peut donc pas bloquer un cours qui n'utilise pas les heures de cours.
+- **Synchronisation** : à l'enregistrement d'une activité (en fin de requête, après
+  l'écriture de la configuration EFE), à chaque modification de la page Heures de cours,
+  et toutes les 10 minutes par la tâche `sync_efe` (activités configurées par programme
+  comme les sprints de `local_aimissions`, restaurations, duplications).
+- `local_efenotes` n'est **pas modifié** et n'est pas une dépendance : il est détecté à
+  l'exécution. Sans lui, l'option n'apparaît pas.
+
+### Configuration
+
+1. Installer, dans cet ordre, `local_classhours`, `availability_classhours`, puis
+   `quizaccess_classhours` (un zip par plugin).
+2. Vérifier que les restrictions d'accès sont activées (*Administration > Fonctions
+   avancées > Activer les restrictions d'accès*).
+3. *Administration > Plugins > Plugins locaux > Heures de cours* :
+
+| Réglage | Défaut | Rôle |
+|---|---|---|
+| Tolérance après la fin d'un créneau | 5 min | l'activité reste accessible ; aucune tentative ne commence |
+| Option EFE cochée par défaut | non | pour les cours qui ne l'ont jamais réglée |
+
+**Sauvegarde et restauration** : l'emploi du temps et l'option suivent le cours (dates
+décalées, groupes remappés : un créneau dont le groupe n'est pas restauré est ignoré) ;
+l'exclusion EFE suit l'activité, y compris en cas de duplication.
+
+### Limites connues
+
+- Seule une condition placée à la **racine** de la restriction (« toutes les conditions »)
+  déclenche l'envoi automatique du test et est gérée par la page Heures de cours. Une
+  condition placée dans un « OU » restreint l'accès mais ne coupe pas la tentative.
+- Hors créneau, l'élève ne peut pas non plus relire l'activité (consignes, feedback) :
+  c'est le fonctionnement de la restriction d'accès. La note reste visible dans le carnet.
+- Un test commencé une minute avant la fin du créneau est envoyé une minute plus tard.
+
+---
+
+## Contrôle des tentatives — hors créneau et tentatives suspectes
+
+`local_attemptcheck` repère les **tentatives de test** et **remises de devoir** à examiner, et
+permet de **supprimer** celles que l'enseignant juge non légitimes. Utilisable dans tous les
+cours (lien « Contrôle des tentatives » de la navigation du cours) ; l'indicateur « hors
+créneau » s'ajoute quand les heures de cours sont configurées (lien direct depuis la page
+Heures de cours).
+
+> Un indicateur **n'est pas une preuve** : un élève peut être rapide, avoir préparé son texte
+> ou le dicter. Chaque indicateur affiche ses chiffres pour juger sur pièce.
+
+### Indicateurs
+
+| Indicateur | Test | Devoir | Référence |
+|---|---|---|---|
+| **Hors créneau** | commencé ou terminé hors des créneaux de l'élève | remis hors créneau | emploi du temps actuel, appliqué aussi aux tentatives d'avant sa mise en place |
+| **Rapide** | durée < 40 % de la médiane | premier accès → remise < 40 % de la médiane | 1re tentative terminée des **autres** élèves, 5 au moins |
+| **Question rapide** | question rédigée traitée en < 25 % du temps médian | — | idem, par question |
+| **Écriture** | texte apparu à plus de 70 mots/min (ajout ≥ 40 mots) | idem (texte en ligne) | **aucune** : un collage se voit sans la classe |
+| **Durée minimale** | durée < minimum fixé par l'enseignant | idem | aucune (réglée par activité) |
+
+- **Questions rédigées** : composition IA, réponse courte IA, composition et réponse courte
+  (réglage `textqtypes`). Le temps d'une question va de l'arrivée sur sa page (enregistrement
+  de la page précédente, ou affichage de la page d'après le journal) à l'apparition de la
+  réponse finale. Moodle ne garde qu'un enregistrement automatique à la fois : la frappe se
+  mesure d'enregistrement de page en enregistrement de page.
+- **Devoirs** : premier accès = première consultation de l'activité (journal standard ; sinon
+  création de la remise). Le nombre de mots du texte en ligne à chaque enregistrement vient du
+  journal (`onlinetextwordcount`).
+- Tous les seuils sont réglables (*Administration > Plugins > Plugins locaux > Contrôle des
+  tentatives*).
+
+### Rapport et décisions
+
+- Filtres : activité, indicateur (ou toutes les tentatives), hors créneau sur les activités
+  restreintes seulement ou toutes, tentatives jugées légitimes.
+- Par tentative : **Voir** (relecture du test, correcteur du devoir), **Légitime** (la ligne est
+  masquée ; « À revoir » annule), **Supprimer**. Actions groupées sur la sélection.
+- **Durée minimale attendue** : se règle dans la vue d'une activité.
+
+### Suppression
+
+Page de confirmation obligatoire. Droits : `local/attemptcheck:delete` (enseignants éditeurs)
+**et** la capacité de l'activité.
+
+- **Test** (`mod/quiz:deleteattempts`) : suppression standard de la tentative, note recalculée.
+  Les corrections IA en attente de la tentative sont annulées.
+- **Devoir** (`mod/assign:grade`) : contenu de la remise effacé (statut « nouveau », ou
+  « rouvert »), feedback IA et note effacés ; l'élève peut redéposer. Même effet que
+  « Supprimer la remise » de Moodle, qui exige une capacité que les enseignants n'ont pas par
+  défaut.
+- La note effacée part au carnet de notes : **EFE reçoit une note grise**.
+
+### Notification
+
+À chaque remise, une tâche ad hoc analyse la tentative ; si un indicateur se déclenche, les
+enseignants du cours (`local/attemptcheck:notify`) reçoivent une notification Moodle avec le
+lien vers le rapport. Réglage *Notifier les enseignants* pour la couper.
+
+### Limites connues
+
+- Remises de devoir de groupe non prises en charge.
+- Le premier accès à un devoir est la première consultation : un élève qui a regardé le sujet
+  une semaine avant ne sera pas signalé comme rapide.
+- Sans journal standard, premier accès et vitesse d'écriture des devoirs sont estimés plus
+  grossièrement.
+- Le mode de groupe du cours n'est pas appliqué au rapport : un enseignant qui peut le
+  consulter voit tous les élèves.
+
+---
+
 ## Structure du dépôt
 
 ```
@@ -768,6 +937,37 @@ local/moodlesearch/                MoodleSearch : moteur de recherche Web sans I
 ├── go.php / ajax_open.php / js/open.js   Clic, page d'attente, ouverture du site
 ├── report.php / cohorts.php       Traces des élèves, accès par cohorte
 └── db/{install.xml,access.php,hooks.php,tasks.php}
+
+local/classhours/                  Heures de cours : emploi du temps par cours
+├── classes/
+│   ├── schedule.php               Calcul des créneaux (groupes, fusion, périodes, fuseau serveur)
+│   ├── store.php                  Écritures (créneaux, périodes, option EFE, exclusions)
+│   ├── availability_json.php      Pose / retrait de la condition à la racine du JSON d'accès
+│   ├── efe_bridge.php / efe_sync.php   Option EFE (local_efenotes facultatif)
+│   ├── form/                      Formulaires d'ajout (créneau, ouverture, période fermée)
+│   └── task/sync_efe.php          Rattrapage de l'option EFE
+├── manage.php                     Page « Heures de cours » du cours
+└── backup/moodle2/                Sauvegarde : niveau cours et niveau activité
+
+availability/condition/classhours/ Condition « Pendant les heures de cours »
+├── classes/{condition,frontend}.php
+└── yui/                           Formulaire (build = copie de src, pas d'étape de build)
+
+mod/quiz/accessrule/classhours/    Règle de test : fin de tentative à la fin du créneau
+├── rule.php
+└── classes/task/close_expired_attempts.php
+
+local/attemptcheck/                Contrôle des tentatives : hors créneau, tentatives suspectes
+├── classes/
+│   ├── collector.php              Tentatives, étapes des questions rédigées, journal
+│   ├── analyser.php               Indicateurs (calcul pur : médianes, sauts de texte)
+│   ├── checker.php                Collecte + indicateurs, activité par activité
+│   ├── offslot.php                Hors créneau via local_classhours (facultatif)
+│   ├── remover.php                Suppression d'une tentative / effacement d'une remise
+│   ├── review.php                 Décisions « légitime », durée minimale par activité
+│   ├── notifier.php / task/analyse_item.php   Analyse après remise et notification
+│   └── logs.php                   Lecture du journal standard
+└── report.php                     Rapport du cours, confirmation de suppression
 ```
 
 ---
