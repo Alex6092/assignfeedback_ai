@@ -98,6 +98,7 @@ class activity {
      * @throws \moodle_exception
      */
     public static function require_access($cmid) {
+        global $USER;
         $cmid = (int)$cmid;
         list($course, $cm) = get_course_and_cm_from_cmid($cmid);
         require_login($course, false, $cm);
@@ -113,6 +114,10 @@ class activity {
         if ($config === null || empty($config->enabled)) {
             throw new \moodle_exception('tutordisabled', 'local_aichat');
         }
+        $reason = self::closed_reason($cm, (int)$USER->id);
+        if ($reason !== null) {
+            throw new \moodle_exception($reason, 'local_aichat');
+        }
 
         return (object)array(
             'cm'      => $cm,
@@ -120,6 +125,54 @@ class activity {
             'context' => $context,
             'config'  => $config,
         );
+    }
+
+    /**
+     * Le tuteur est-il fermé à cet utilisateur sur cette activité ? Renvoie la
+     * clé de la raison (chaîne de langue), ou null s'il est ouvert.
+     *
+     *   - hors des heures de cours, sur une activité qui y est restreinte : un
+     *     élève déjà noté peut relire son devoir hors créneau, mais pas y
+     *     travailler avec le tuteur. Dépendance souple : local_classhours n'est
+     *     qu'une option ;
+     *   - devoir déjà remis et plus modifiable (brouillons exigés et devoir
+     *     envoyé, ou date limite passée) : il n'y a plus rien à y travailler.
+     *     Une nouvelle tentative rouverte rend le tuteur de nouveau disponible.
+     *
+     * L'enseignant n'est jamais concerné : il doit pouvoir essayer le tuteur.
+     *
+     * @param \cm_info $cm
+     * @param int      $userid
+     * @return string|null
+     */
+    public static function closed_reason(\cm_info $cm, int $userid): ?string {
+        $context = \context_module::instance($cm->id);
+        if ($cm->modname === 'assign' && has_capability('mod/assign:grade', $context, $userid)) {
+            return null;
+        }
+        if (class_exists('\local_classhours\access') && \local_classhours\access::is_closed_for($cm, $userid)) {
+            return 'closed_classhours';
+        }
+        if ($cm->modname === 'assign' && self::submission_locked($cm, $context, $userid)) {
+            return 'closed_submitted';
+        }
+        return null;
+    }
+
+    /**
+     * L'élève a-t-il remis ce devoir sans pouvoir le modifier ?
+     */
+    private static function submission_locked(\cm_info $cm, \context_module $context, int $userid): bool {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/assign/locallib.php');
+        $assign = new \assign($context, $cm, $cm->get_course());
+        $submission = !empty($assign->get_instance()->teamsubmission)
+            ? $assign->get_group_submission($userid, 0, false)
+            : $assign->get_user_submission($userid, false);
+        if (!$submission || $submission->status !== ASSIGN_SUBMISSION_STATUS_SUBMITTED) {
+            return false;
+        }
+        return !$assign->can_edit_submission($userid, $userid);
     }
 
     /**

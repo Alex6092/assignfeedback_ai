@@ -2,6 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 use local_classhours\availability_json;
+use local_classhours\grant;
 use local_classhours\schedule;
 use mod_quiz\local\access_rule_base;
 use mod_quiz\quiz_settings;
@@ -39,6 +40,10 @@ class quizaccess_classhours extends access_rule_base {
         if ($sched->interval_for_user((int)$USER->id, (int)$this->timenow) !== null) {
             return false;
         }
+        // Accès ponctuel accordé par l'enseignant : la tentative peut commencer.
+        if (grant::window_at((int)$this->quizobj->get_cmid(), (int)$USER->id, (int)$this->timenow) !== null) {
+            return false;
+        }
         $next = $sched->next_opening_for_user((int)$USER->id, (int)$this->timenow);
         if ($next === null) {
             return get_string('notinslot', 'quizaccess_classhours');
@@ -47,7 +52,8 @@ class quizaccess_classhours extends access_rule_base {
     }
 
     /**
-     * Fin du créneau (fusionné) qui contient le début de la tentative.
+     * Fin du créneau (fusionné) qui contient le début de la tentative ; pour
+     * une tentative commencée pendant un accès ponctuel, fin de cet accès.
      *
      * @param stdClass $attempt
      * @return int|false
@@ -57,7 +63,11 @@ class quizaccess_classhours extends access_rule_base {
             return false;
         }
         $interval = $this->schedule()->interval_for_user((int)$attempt->userid, (int)$attempt->timestart);
-        return $interval !== null ? $interval[1] : false;
+        if ($interval !== null) {
+            return $interval[1];
+        }
+        $window = grant::window_at((int)$this->quizobj->get_cmid(), (int)$attempt->userid, (int)$attempt->timestart);
+        return $window !== null ? $window[1] : false;
     }
 
     public function description() {

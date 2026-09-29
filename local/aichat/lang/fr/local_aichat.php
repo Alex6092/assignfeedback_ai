@@ -151,6 +151,8 @@ $string['widget_networkerror'] = 'Le tuteur est momentanément indisponible. Ré
 // === Erreurs ===
 $string['notsupported']    = 'Le tuteur IA n\'est pas disponible sur ce type d\'activité.';
 $string['tutordisabled']   = 'Le tuteur IA n\'est pas activé sur cette activité.';
+$string['closed_classhours'] = 'Le tuteur IA n\'est disponible que pendant les heures de cours.';
+$string['closed_submitted']  = 'Ton devoir est remis : le tuteur IA n\'est plus disponible pour cette activité.';
 $string['error_empty']     = 'Votre message est vide.';
 $string['error_toolong']   = 'Votre message dépasse {$a} caractères. Raccourcissez-le.';
 $string['error_busy']      = 'Une réponse est déjà en cours. Attendez qu\'elle se termine.';

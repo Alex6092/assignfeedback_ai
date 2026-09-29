@@ -151,6 +151,8 @@ $string['widget_networkerror'] = 'The tutor is temporarily unavailable. Please t
 // === Errors ===
 $string['notsupported']    = 'The AI tutor is not available on this type of activity.';
 $string['tutordisabled']   = 'The AI tutor is not enabled on this activity.';
+$string['closed_classhours'] = 'The AI tutor is only available during class hours.';
+$string['closed_submitted']  = 'Your assignment is submitted: the AI tutor is no longer available for this activity.';
 $string['error_empty']     = 'Your message is empty.';
 $string['error_toolong']   = 'Your message is longer than {$a} characters. Please shorten it.';
 $string['error_busy']      = 'An answer is already being generated. Please wait for it to finish.';

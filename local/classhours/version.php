@@ -14,7 +14,7 @@ defined('MOODLE_INTERNAL') || die();
  * automatique des activités qui ont une remontée EFE.
  */
 $plugin->component = 'local_classhours';
-$plugin->version   = 2026092801;       // YYYYMMDDXX
+$plugin->version   = 2026093000;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4 (\core\clock via \core\di)
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.2.1';          // Heure du serveur : caches de chaînes vidés à la mise à jour
+$plugin->release   = '0.3.0';          // Lecture hors créneau, verrou de remise, accès ponctuel sur demande

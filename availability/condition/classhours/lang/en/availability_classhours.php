@@ -13,6 +13,8 @@ $string['desc_not'] = 'Outside <strong>class hours</strong>';
 $string['desc_not_slots'] = 'Outside class hours: <strong>{$a}</strong>';
 $string['desc_noslots'] = '(no slot is configured yet)';
 $string['desc_next'] = '— next slot: <strong>{$a}</strong>';
+$string['request_link'] = 'Request exceptional access';
+$string['request_pending'] = 'Access request pending';
 
 // Access restriction form.
 $string['form_label'] = 'During class hours';

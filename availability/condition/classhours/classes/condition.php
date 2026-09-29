@@ -3,6 +3,8 @@ namespace availability_classhours;
 
 defined('MOODLE_INTERNAL') || die();
 
+use local_classhours\access;
+use local_classhours\grant;
 use local_classhours\schedule;
 
 /**
@@ -50,8 +52,19 @@ class condition extends \core_availability\condition {
         return $result;
     }
 
+    /**
+     * Ouverte pendant les créneaux de l'élève. Hors créneau, deux exceptions
+     * (voir \local_classhours\access) : la lecture d'un devoir ou d'un test où
+     * l'élève a déjà une note ou un feedback, et l'accès ponctuel accordé par
+     * un enseignant. Elles ne jouent pas sur une condition inversée (« en
+     * dehors des heures de cours »), ni sur une section.
+     */
     public function is_available($not, \core_availability\info $info, $grabthelot, $userid) {
-        $allow = schedule::for_course((int)$info->get_course()->id)->is_open_for_user((int)$userid);
+        $courseid = (int)$info->get_course()->id;
+        $allow = schedule::for_course($courseid)->is_open_for_user((int)$userid);
+        if (!$allow && !$not && $info instanceof \core_availability\info_module) {
+            $allow = access::exception_applies($courseid, $info->get_course_module(), (int)$userid);
+        }
         return $not ? !$allow : $allow;
     }
 
@@ -80,9 +93,38 @@ class condition extends \core_availability\condition {
                 if ($next !== null) {
                     $text .= ' ' . get_string('desc_next', 'availability_classhours', $sched->format_time($next));
                 }
+                $text .= self::request_link($info);
             }
         }
         return $text;
+    }
+
+    /**
+     * Lien « Demander un accès exceptionnel » (ou « demande en attente ») pour
+     * l'élève devant une activité fermée. Moodle affiche ce message sur la page
+     * du cours et sur la page « activité restreinte » ; il accepte le HTML, les
+     * conditions du cœur y insèrent déjà des liens.
+     */
+    private static function request_link(\core_availability\info $info): string {
+        global $USER;
+        if (!($info instanceof \core_availability\info_module) || !isloggedin() || isguestuser()) {
+            return '';
+        }
+        $cm = $info->get_course_module();
+        if (!in_array($cm->modname, access::READ_MODS, true)) {
+            return '';
+        }
+        $courseid = (int)$info->get_course()->id;
+        if (!has_capability('local/classhours:requestaccess', \context_course::instance($courseid))) {
+            return '';
+        }
+        if (grant::pending_id($courseid, (int)$cm->id, (int)$USER->id) !== null) {
+            return ' ' . \html_writer::span(get_string('request_pending', 'availability_classhours'),
+                'badge bg-info text-white');
+        }
+        $url = new \moodle_url('/local/classhours/request.php', array('cmid' => (int)$cm->id));
+        return ' ' . \html_writer::link($url, get_string('request_link', 'availability_classhours'),
+            array('class' => 'btn btn-sm btn-outline-primary ms-1'));
     }
 
     protected function get_debug_string() {
