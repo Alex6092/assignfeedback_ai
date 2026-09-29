@@ -74,5 +74,30 @@
         <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
       </INDEXES>
     </TABLE>
+
+    <TABLE NAME="local_classhours_grant" COMMENT="Accès ponctuel d'un élève à une activité fermée : demande de l'élève, décision de l'enseignant, fenêtre accordée">
+      <FIELDS>
+        <FIELD NAME="id"              TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="courseid"        TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="cmid"            TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="userid"          TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" COMMENT="L'élève"/>
+        <FIELD NAME="status"          TYPE="char" LENGTH="10" NOTNULL="true"  SEQUENCE="false" COMMENT="pending|accepted|refused|cancelled"/>
+        <FIELD NAME="reason"          TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Message facultatif de l'élève"/>
+        <FIELD NAME="requestedat"     TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="decidedby"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a décidé (0 : en attente)"/>
+        <FIELD NAME="decidedat"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="decisioncomment" TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Commentaire facultatif de l'enseignant"/>
+        <FIELD NAME="timestart"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Début de la fenêtre accordée"/>
+        <FIELD NAME="timeend"         TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Fin de la fenêtre accordée (exclue)"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm_user_status"  UNIQUE="false" FIELDS="cmid, userid, status"/>
+        <INDEX NAME="course_status"   UNIQUE="false" FIELDS="courseid, status"/>
+        <INDEX NAME="course_user"     UNIQUE="false" FIELDS="courseid, userid"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

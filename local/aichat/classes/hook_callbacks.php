@@ -58,6 +58,10 @@ class hook_callbacks {
         if (!has_capability('local/aichat:use', $context)) {
             return '';
         }
+        // Hors des heures de cours, ou devoir remis et plus modifiable.
+        if (activity::closed_reason($cm, (int)$USER->id) !== null) {
+            return '';
+        }
 
         $cmid = (int)$cm->id;
         $config = array(

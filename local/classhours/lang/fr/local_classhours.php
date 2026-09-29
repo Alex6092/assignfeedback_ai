@@ -2,7 +2,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'Heures de cours';
-$string['privacy:metadata'] = 'Le plugin Heures de cours ne stocke que l\'emploi du temps des cours et des réglages d\'activités, aucune donnée personnelle.';
 $string['classhours:manage'] = 'Régler les heures de cours du cours et les activités restreintes';
 $string['task_sync_efe'] = 'Heures de cours : restriction automatique des activités à remontée EFE';
 
@@ -87,3 +86,84 @@ $string['state_auto'] = 'Restreinte (auto EFE)';
 $string['state_nested'] = 'Restreinte (règle personnalisée)';
 $string['state_excluded'] = 'Exclue';
 $string['state_free'] = 'Libre';
+
+// Lecture hors créneau et verrou de remise.
+$string['submit_closed'] = 'La remise n\'est possible que pendant les heures de cours. Tu peux relire ton devoir et ton feedback, mais pas le modifier maintenant.';
+
+// Accès exceptionnel : capacités et notifications.
+$string['classhours:requestaccess'] = 'Demander un accès exceptionnel à une activité fermée';
+$string['classhours:grantaccess'] = 'Accepter, refuser ou accorder un accès exceptionnel';
+$string['messageprovider:accessrequest'] = 'Demande d\'accès exceptionnel d\'un élève';
+$string['messageprovider:accessdecision'] = 'Réponse à une demande d\'accès exceptionnel';
+
+// Accès exceptionnel : page de l'élève.
+$string['request_heading'] = 'Demander un accès exceptionnel';
+$string['request_intro'] = 'L\'activité « {$a} » est fermée en dehors des heures de cours. Tu peux demander à ton enseignant de te l\'ouvrir un moment, par exemple pour rendre ton devoir.';
+$string['request_reason'] = 'Message pour ton enseignant (facultatif)';
+$string['request_reason_help'] = 'Explique en quelques mots pourquoi tu as besoin d\'accéder à l\'activité maintenant.';
+$string['request_submit'] = 'Envoyer la demande';
+$string['request_sent'] = 'Ta demande pour « {$a} » a été envoyée à ton enseignant.';
+$string['request_already'] = 'Une demande pour « {$a} » est déjà en attente de réponse.';
+$string['request_notneeded'] = 'Cette activité n\'est pas fermée pour toi en ce moment.';
+
+// Accès exceptionnel : page de l'enseignant.
+$string['requests_menu'] = 'Demandes d\'accès';
+$string['requests_heading'] = 'Demandes d\'accès exceptionnel';
+$string['requests_intro'] = 'Les élèves peuvent demander l\'ouverture d\'un devoir ou d\'un test fermé en dehors des heures de cours, par exemple pour rendre un devoir. Un accès accordé ouvre l\'activité à l\'élève pendant la durée choisie, puis elle se referme d\'elle-même.';
+$string['requests_pending'] = 'Demandes en attente';
+$string['requests_nopending'] = 'Aucune demande en attente.';
+$string['requests_active'] = 'Accès en cours';
+$string['requests_noactive'] = 'Aucun accès en cours.';
+$string['requests_grant'] = 'Accorder un accès sans demande';
+$string['requests_grant_submit'] = 'Accorder';
+$string['requests_grant_none'] = 'Aucune activité restreinte aux heures de cours, ou aucun élève inscrit.';
+$string['requests_history'] = 'Historique';
+$string['requests_nohistory'] = 'Aucune décision pour l\'instant.';
+$string['requests_comment'] = 'Commentaire';
+$string['requests_accepted'] = 'Accès accordé.';
+$string['requests_refused'] = 'Demande refusée.';
+$string['requests_revoked'] = 'Accès retiré.';
+$string['requests_granted'] = 'Accès accordé.';
+$string['requests_alreadydecided'] = 'Un autre enseignant a déjà répondu à cette demande.';
+$string['student'] = 'Élève';
+$string['activity'] = 'Activité';
+$string['requestedat'] = 'Demandée le';
+$string['decision'] = 'Décision';
+$string['until'] = 'Jusqu\'au';
+$string['accept'] = 'Accepter';
+$string['refuse'] = 'Refuser';
+$string['revoke'] = 'Retirer l\'accès';
+$string['decidedby'] = 'Décidé par';
+$string['decidedat'] = 'Le';
+$string['deletedactivity'] = 'activité supprimée';
+$string['duration_tonight'] = 'Jusqu\'à ce soir';
+$string['grantstatus_pending'] = 'En attente';
+$string['grantstatus_accepted'] = 'Accordé';
+$string['grantstatus_refused'] = 'Refusé';
+$string['grantstatus_cancelled'] = 'Retiré';
+
+// Accès exceptionnel : messages.
+$string['msg_request_subject'] = 'Demande d\'accès : {$a->student} — {$a->activity}';
+$string['msg_request_body'] = '{$a->student} demande un accès exceptionnel à « {$a->activity} » ({$a->course}).
+
+Message : {$a->reason}';
+$string['msg_noreason'] = '(aucun message)';
+$string['msg_accepted_subject'] = 'Accès accordé : {$a->activity}';
+$string['msg_accepted_body'] = 'Ton enseignant t\'a ouvert « {$a->activity} » jusqu\'au {$a->until}.';
+$string['msg_refused_subject'] = 'Demande refusée : {$a->activity}';
+$string['msg_refused_body'] = 'Ton enseignant n\'a pas accepté ta demande d\'accès à « {$a->activity} ».';
+$string['msg_comment'] = 'Commentaire de l\'enseignant : {$a}';
+
+// Vie privée.
+$string['privacy:path'] = 'Accès exceptionnels';
+$string['privacy:metadata:grant'] = 'Demandes d\'accès exceptionnel à une activité fermée, et décisions des enseignants.';
+$string['privacy:metadata:grant:userid'] = 'L\'élève qui demande l\'accès.';
+$string['privacy:metadata:grant:reason'] = 'Le message de l\'élève.';
+$string['privacy:metadata:grant:status'] = 'L\'état de la demande (en attente, accordée, refusée, retirée).';
+$string['privacy:metadata:grant:requestedat'] = 'La date de la demande.';
+$string['privacy:metadata:grant:decidedby'] = 'L\'enseignant qui a décidé.';
+$string['privacy:metadata:grant:decidedat'] = 'La date de la décision.';
+$string['privacy:metadata:grant:decisioncomment'] = 'Le commentaire de l\'enseignant.';
+$string['privacy:metadata:grant:timestart'] = 'Le début de l\'accès accordé.';
+$string['privacy:metadata:grant:timeend'] = 'La fin de l\'accès accordé.';
+$string['privacy:metadata:messages'] = 'Les demandes et les décisions sont envoyées en notifications Moodle.';

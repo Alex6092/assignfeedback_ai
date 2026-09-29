@@ -791,6 +791,49 @@ Trois plugins, imposés par les points d'accroche de Moodle :
 - **Cours sans créneau** : une activité restreinte à la main reste fermée (en cas de doute,
   on ferme).
 
+### Relire son travail hors créneau
+
+Hors créneau, un élève qui a **déjà de quoi lire** peut rouvrir le devoir ou le test pour
+consulter son feedback :
+- **devoir** : une note, un commentaire de l'enseignant ou un feedback IA généré. Si le
+  suivi d'évaluation est actif, seulement une fois la note publiée ;
+- **test** : au moins une tentative terminée.
+
+Il ne peut pas pour autant y travailler :
+- un **verrou de remise** refuse, hors créneau, toute modification ou tout envoi de remise,
+  sur le site comme par l'application mobile (services web). L'élève est renvoyé sur la
+  page du devoir avec un message ;
+- la règle d'accès du test empêche toujours de commencer une tentative ;
+- le **Tuteur IA** reste fermé.
+
+Un élève qui n'a rien remis ne voit toujours rien hors créneau : les consignes restent
+réservées à la classe.
+
+### Accès ponctuel sur demande
+
+Pour qu'un élève puisse rendre un devoir fermé, avec l'accord de l'enseignant.
+
+- **Élève** : devant un devoir ou un test fermé, le message de restriction propose
+  « **Demander un accès exceptionnel** », avec un message facultatif. Le lien devient
+  « Demande d'accès en attente » tant que l'enseignant n'a pas répondu.
+- **Enseignant** : il est prévenu par notification. La page **« Demandes d'accès »** (lien
+  dans la navigation du cours, avec le nombre de demandes en attente) permet de :
+  - **accepter**, en choisissant la durée : 5 min (défaut), 15 min, 30 min, 1 h, 2 h,
+    jusqu'à ce soir ;
+  - **refuser**, avec un commentaire facultatif ;
+  - **retirer** un accès en cours ;
+  - **accorder** un accès sans demande.
+
+  Dans un cours en groupes séparés, seuls les enseignants du groupe de l'élève sont
+  prévenus. Si deux enseignants répondent en même temps, la première décision l'emporte.
+- **Pendant la fenêtre** : l'activité est ouverte à l'élève comme pendant un créneau. Il
+  peut remettre, le Tuteur IA est disponible, et un test commencé se termine à la fin de
+  la fenêtre. Elle se referme d'elle-même.
+- L'élève est prévenu de la décision : accès accordé jusqu'à telle heure, ou refus avec le
+  commentaire.
+- Capacités : `local/classhours:requestaccess` (élèves) et `local/classhours:grantaccess`
+  (enseignants, enseignants non éditeurs, gestionnaires).
+
 ### Page « Heures de cours »
 
 Lien dans la navigation du cours (capacité `local/classhours:manage`, enseignants
@@ -852,9 +895,19 @@ avec un cours.
 - Seule une condition placée à la **racine** de la restriction (« toutes les conditions »)
   déclenche l'envoi automatique du test et est gérée par la page Heures de cours. Une
   condition placée dans un « OU » restreint l'accès mais ne coupe pas la tentative.
-- Hors créneau, l'élève ne peut pas non plus relire l'activité (consignes, feedback) :
-  c'est le fonctionnement de la restriction d'accès. La note reste visible dans le carnet.
+- La relecture hors créneau et l'accès ponctuel ne concernent que les **devoirs** et les
+  **tests**, et une condition posée sur une **section** reste bloquante : Moodle vérifie la
+  section avant l'activité.
+- Le lien de demande n'apparaît que là où Moodle affiche le message de restriction (page du
+  cours, page « activité restreinte »). Un accès accordé ouvre l'activité entière à l'élève
+  pendant la fenêtre, pas seulement la remise.
 - Un test commencé une minute avant la fin du créneau est envoyé une minute plus tard.
+
+### Tuteur IA fermé sur un devoir remis
+
+Indépendamment des heures de cours, le Tuteur IA n'est plus proposé sur un devoir **remis et
+plus modifiable** : brouillons exigés et devoir envoyé, ou date limite passée. Il revient
+si l'enseignant rouvre une tentative. L'enseignant n'est jamais concerné.
 
 ---
 
