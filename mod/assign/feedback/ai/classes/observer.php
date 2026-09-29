@@ -166,6 +166,13 @@ class observer {
             $key = 'assignfeedback_ai_' . $f;
             $formdata->{$key} = isset($_POST[$key]) ? $_POST[$key] : '';
         }
+
+        // Report automatique de la note : transmis SEULEMENT s'il a été posté.
+        // Absent, save_settings() garde la valeur enregistrée (ou le défaut
+        // « automatique ») ; le remplir avec '' reviendrait à le décocher.
+        if (isset($_POST['assignfeedback_ai_autograde'])) {
+            $formdata->assignfeedback_ai_autograde = $_POST['assignfeedback_ai_autograde'];
+        }
         return $formdata;
     }
 

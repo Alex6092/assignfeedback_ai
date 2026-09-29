@@ -171,6 +171,29 @@ Tous les réglages globaux sont centralisés dans
 4. Le feedback structuré est enregistré et **publié automatiquement** à l'étudiant ;
    la note est appliquée selon le barème/échelle du devoir.
 
+#### Note appliquée automatiquement, ou saisie par l'enseignant
+
+Chaque devoir porte la case **« Appliquer automatiquement la note proposée par
+l'IA »** (section Feedback IA), **cochée par défaut** : c'est le fonctionnement décrit
+ci-dessus.
+
+Décochée, l'IA évalue toujours la remise et rédige son feedback, mais **la note n'est
+pas reportée** : c'est l'enseignant qui la saisit.
+
+- **Enseignant** : il voit le feedback complet, niveau et score compris, et un encart
+  « Note proposée par l'IA : 14,4 / 20 » (ou l'échelon du barème) pour s'en servir. La
+  grille de notation marque ces copies d'un badge « note à saisir ».
+- **Élève** : il voit le feedback formatif (points forts, points à améliorer,
+  commentaire détaillé, commentaire par compétence), mais **ni le niveau global, ni le
+  score, ni les niveaux par compétence** proposés par l'IA. C'est la note de
+  l'enseignant qui fait foi, et un niveau affiché par l'IA pourrait la contredire.
+
+Le **report EFE** ne dépend pas de cette case : il suit l'attribution de la note,
+qu'elle vienne de l'IA ou de l'enseignant.
+
+L'option suit le devoir à la duplication, la sauvegarde et la restauration. Les devoirs
+existants, et ceux créés par les Missions IA, restent en mode automatique.
+
 ### Question de composition (`qtype_aiessay`)
 
 1. L'enseignant crée une question « Composition (correction IA) » dans la banque de

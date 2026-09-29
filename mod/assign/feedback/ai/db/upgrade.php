@@ -87,5 +87,17 @@ function xmldb_assignfeedback_ai_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091800, 'assignfeedback', 'ai');
     }
 
+    // 2026092900 : option « Appliquer automatiquement la note proposée par
+    // l'IA ». Défaut 1 : les devoirs existants gardent leur comportement.
+    if ($oldversion < 2026092900) {
+        $table = new xmldb_table('assignfeedback_ai');
+        $field = new xmldb_field('autograde', XMLDB_TYPE_INTEGER, '1', null,
+            XMLDB_NOTNULL, null, '1', 'vision_enabled_override');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026092900, 'assignfeedback', 'ai');
+    }
+
     return true;
 }

@@ -23,6 +23,9 @@ class assign_feedback_ai extends assign_feedback_plugin {
     const STATUS_GENERATED = 'generated'; // Généré avec succès, visible par l'étudiant
     const STATUS_FAILED    = 'failed';    // Échec après MAX_ATTEMPTS tentatives
 
+    /** @var array assignid => bool, mode de notation mémorisé pour la requête */
+    private static $autogradecache = array();
+
     // =========================================================
     //  METHODES OBLIGATOIRES (interface assign_plugin)
     // =========================================================
@@ -118,6 +121,14 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->setDefault('assignfeedback_ai_competencies',
             ($cfg && $cfg->competencies !== null) ? $cfg->competencies : '');
 
+        // --- Report automatique de la note proposée par l'IA ---
+        // Décoché : l'IA rédige toujours son feedback, mais c'est l'enseignant
+        // qui saisit la note. Coché par défaut (comportement historique).
+        $mform->addElement('advcheckbox', 'assignfeedback_ai_autograde',
+            get_string('autograde', 'assignfeedback_ai'));
+        $mform->addHelpButton('assignfeedback_ai_autograde', 'autograde', 'assignfeedback_ai');
+        $mform->setDefault('assignfeedback_ai_autograde', self::autograde_enabled($cfg) ? 1 : 0);
+
         // --- URL API (override optionnel de la config globale) ---
         $mform->addElement('advcheckbox', 'assignfeedback_ai_apiurl_override',
             get_string('apiurl_override', 'assignfeedback_ai'));
@@ -183,6 +194,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
             'assignfeedback_ai_exercise',
             'assignfeedback_ai_expectedanswer',
             'assignfeedback_ai_competencies',
+            'assignfeedback_ai_autograde',
             'assignfeedback_ai_apiurl_override',
             'assignfeedback_ai_apiurl',
             'assignfeedback_ai_model_override',
@@ -238,6 +250,17 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $row->timemodified    = time();
 
         $existing = $DB->get_record(self::TABLE_CONFIG, array('assignment' => $assignid));
+
+        // Champ absent (sauvegarde programmée, formulaire sans la section IA) :
+        // on garde la valeur enregistrée, ou le défaut « report automatique ».
+        // Surtout pas 0 : ce serait basculer un devoir en notation manuelle
+        // sans que personne ne l'ait demandé.
+        if (isset($formdata->assignfeedback_ai_autograde)) {
+            $row->autograde = !empty($formdata->assignfeedback_ai_autograde) ? 1 : 0;
+        } else {
+            $row->autograde = self::autograde_enabled($existing) ? 1 : 0;
+        }
+
         if ($existing) {
             $row->id = $existing->id;
             $DB->update_record(self::TABLE_CONFIG, $row);
@@ -312,8 +335,11 @@ class assign_feedback_ai extends assign_feedback_plugin {
         }
 
         // Côté étudiant : on retourne la carte complète directement en ligne.
+        // Sans report automatique, pas de verdict IA : la note de l'enseignant fait foi.
         if (!$isteacher) {
-            return $this->render_card($result, $fb->status, self::show_score_to_students(), false);
+            $verdict = $this->current_autograde();
+            return $this->render_card($result, $fb->status,
+                $verdict && self::show_score_to_students(), false, $verdict);
         }
 
         // Côté enseignant : version compacte pour la grille de notation,
@@ -331,10 +357,17 @@ class assign_feedback_ai extends assign_feedback_plugin {
                 'badge badge-danger', array('title' => $flag))
             : '';
 
+        // Note non reportée : l'enseignant repère d'un coup d'œil les copies à noter.
+        $manualbadge = $this->current_autograde()
+            ? ''
+            : ' ' . html_writer::span(get_string('autograde_off_badge', 'assignfeedback_ai'),
+                'badge badge-secondary');
+
         return html_writer::div(
             html_writer::span($score, 'font-weight-bold mr-1') .
             html_writer::span(s($niveau), 'badge badge-' . $badge) .
             $flagbadge .
+            $manualbadge .
             $managelink,
             'assignfeedback-ai-summary'
         );
@@ -384,8 +417,13 @@ class assign_feedback_ai extends assign_feedback_plugin {
             );
         }
 
+        if ($isteacher) {
+            return $this->render_card($result, $fb->status, true, true, true,
+                $this->teacher_notice($result));
+        }
+        $verdict = $this->current_autograde();
         return $this->render_card($result, $fb->status,
-            $isteacher || self::show_score_to_students(), $isteacher);
+            $verdict && self::show_score_to_students(), false, $verdict);
     }
 
     /**
@@ -487,7 +525,8 @@ class assign_feedback_ai extends assign_feedback_plugin {
         }
 
         $mform->addElement('static', 'assignfeedback_ai_view', '',
-            $this->render_card($result, $fb->status, true, true));
+            $this->render_card($result, $fb->status, true, true, true,
+                $this->teacher_notice($result)));
         return true;
     }
 
@@ -522,7 +561,19 @@ class assign_feedback_ai extends assign_feedback_plugin {
             throw new moodle_exception('generationerror', 'assignfeedback_ai');
         }
 
-        $result = $this->normalize($result);
+        return $this->store_result($fb, $this->normalize($result), $cfg);
+    }
+
+    /**
+     * Enregistre le feedback généré, puis reporte la note si le devoir le prévoit.
+     *
+     * @param stdClass $fb     ligne {assignfeedback_ai_grade}
+     * @param array    $result feedback normalisé
+     * @param stdClass $cfg    ligne {assignfeedback_ai} du devoir
+     * @return array le feedback normalisé
+     */
+    private function store_result($fb, $result, $cfg) {
+        global $DB;
 
         $fb->aifeedback    = json_encode($result, JSON_UNESCAPED_UNICODE);
         $fb->status        = self::STATUS_GENERATED;
@@ -530,35 +581,61 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $fb->timemodified  = time();
         $DB->update_record(self::TABLE_GRADE, $fb);
 
-        // Pose automatiquement la note sur assign_grades + propage au gradebook.
-        $this->apply_grade_from_result($fb, $result);
+        // Pose la note sur assign_grades + propage au gradebook, SAUF si
+        // l'enseignant a choisi de saisir la note lui-même. Le feedback est
+        // enregistré dans tous les cas. Le report EFE n'est pas concerné ici :
+        // il suit l'événement « note attribuée », que la note vienne de l'IA
+        // ou de l'enseignant.
+        if (self::autograde_enabled($cfg)) {
+            $this->apply_grade_from_result($fb, $result);
+        }
 
         return $result;
     }
 
     /**
-     * Pose la note sur assign_grades en fonction du résultat IA :
+     * La note proposée par l'IA doit-elle être reportée automatiquement ?
+     *
+     * Vrai par défaut : sans configuration, ou pour une ligne antérieure à
+     * l'option (colonne absente), le comportement historique s'applique.
+     *
+     * @param stdClass|false|null $cfg ligne {assignfeedback_ai}
+     * @return bool
+     */
+    public static function autograde_enabled($cfg) {
+        return !$cfg || !isset($cfg->autograde) || (int)$cfg->autograde !== 0;
+    }
+
+    /**
+     * Note que l'IA propose pour ce devoir, sans l'écrire :
      *  - barème (echelle, instance->grade < 0) : matche le niveau au libellé du barème
      *  - points  (instance->grade > 0)         : mappe score 0-100 → 0-maxgrade
-     * Puis pousse au gradebook via assign_update_grades().
+     *
+     * @param array $result feedback normalisé
+     * @return array|null ['value' => float|int, 'label' => string], ou null si le
+     *                    devoir n'est pas noté ou si le niveau est absent du barème
      */
-    private function apply_grade_from_result($fb, $result) {
-        global $DB, $CFG;
-        require_once($CFG->dirroot . '/mod/assign/lib.php');
+    private function compute_grade_from_result($result) {
+        global $DB;
 
         $instance = $this->assignment->get_instance();
         $maxgrade = (int)$instance->grade;
-        $gradeval = null;
 
         if ($maxgrade > 0) {
             $score = isset($result['score']) ? (float)$result['score'] : 0.0;
-            $gradeval = round(($score / 100.0) * (float)$maxgrade, 2);
-        } else if ($maxgrade < 0) {
+            $value = round(($score / 100.0) * (float)$maxgrade, 2);
+            return array(
+                'value' => $value,
+                'label' => format_float($value, 2, true, true) . ' / ' . $maxgrade,
+            );
+        }
+
+        if ($maxgrade < 0) {
             $scaleid = -1 * $maxgrade;
             $scale   = $DB->get_record('scale', array('id' => $scaleid));
             if (!$scale) {
                 debugging('assignfeedback_ai: scale ' . $scaleid . ' introuvable', DEBUG_DEVELOPER);
-                return;
+                return null;
             }
             $items  = explode(',', $scale->scale);
             $niveau = isset($result['niveau']) ? trim((string)$result['niveau']) : '';
@@ -566,17 +643,28 @@ class assign_feedback_ai extends assign_feedback_plugin {
             foreach ($items as $i => $item) {
                 $candidate = strtolower($this->strip_accents(trim($item)));
                 if ($candidate === $key) {
-                    $gradeval = $i + 1; // barèmes Moodle : 1-indexé
-                    break;
+                    return array('value' => $i + 1, 'label' => trim($item)); // barèmes Moodle : 1-indexé
                 }
             }
-            if ($gradeval === null) {
-                debugging('assignfeedback_ai: niveau "' . $niveau
-                    . '" non trouvé dans le barème (id=' . $scaleid . ')', DEBUG_DEVELOPER);
-                return;
-            }
-        } else {
-            return; // Devoir non noté.
+            debugging('assignfeedback_ai: niveau "' . $niveau
+                . '" non trouvé dans le barème (id=' . $scaleid . ')', DEBUG_DEVELOPER);
+            return null;
+        }
+
+        return null; // Devoir non noté.
+    }
+
+    /**
+     * Pose la note proposée par l'IA sur assign_grades, puis la pousse au
+     * gradebook via assign_update_grades().
+     */
+    private function apply_grade_from_result($fb, $result) {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/mod/assign/lib.php');
+
+        $proposal = $this->compute_grade_from_result($result);
+        if ($proposal === null) {
+            return;
         }
 
         $assigngrade = $DB->get_record('assign_grades', array('id' => (int)$fb->grade));
@@ -584,12 +672,45 @@ class assign_feedback_ai extends assign_feedback_plugin {
             return;
         }
 
-        $assigngrade->grade        = $gradeval;
+        $assigngrade->grade        = $proposal['value'];
         $assigngrade->timemodified = time();
         $DB->update_record('assign_grades', $assigngrade);
 
         // Pousse la note vers le gradebook.
-        assign_update_grades($instance, (int)$assigngrade->userid);
+        assign_update_grades($this->assignment->get_instance(), (int)$assigngrade->userid);
+    }
+
+    /**
+     * Mode de notation du devoir courant, mémorisé pour la requête : la grille
+     * de notation appelle view_summary() une fois par élève.
+     *
+     * @return bool vrai si la note IA est reportée automatiquement
+     */
+    private function current_autograde() {
+        $instance = $this->assignment->get_instance();
+        $assignid = ($instance !== null) ? (int)$instance->id : 0;
+        if (!array_key_exists($assignid, self::$autogradecache)) {
+            self::$autogradecache[$assignid] = self::autograde_enabled($this->load_config($assignid));
+        }
+        return self::$autogradecache[$assignid];
+    }
+
+    /**
+     * Encart enseignant quand la note n'est pas reportée : ce que l'IA aurait
+     * proposé, pour qu'il puisse s'en servir en saisissant la sienne.
+     *
+     * @param array $result feedback normalisé
+     * @return string HTML, ou '' si la note est reportée automatiquement
+     */
+    private function teacher_notice($result) {
+        if ($this->current_autograde()) {
+            return '';
+        }
+        $proposal = $this->compute_grade_from_result($result);
+        $text = ($proposal !== null)
+            ? get_string('autograde_proposed', 'assignfeedback_ai', s($proposal['label']))
+            : get_string('autograde_off', 'assignfeedback_ai');
+        return html_writer::div($text, 'alert alert-info mb-3');
     }
 
     /**
@@ -1085,12 +1206,22 @@ class assign_feedback_ai extends assign_feedback_plugin {
     /**
      * Carte complète du feedback.
      *
-     * @param array  $result    payload JSON normalisé
-     * @param string $status    statut de la ligne
-     * @param bool   $showscore afficher le score /100 et la barre de progression
-     * @param bool   $isteacher afficher les éléments réservés à l'enseignant (signalement)
+     * @param array  $result      payload JSON normalisé
+     * @param string $status      statut de la ligne
+     * @param bool   $showscore   afficher le score /100 et la barre de progression
+     * @param bool   $isteacher   afficher les éléments réservés à l'enseignant (signalement)
+     * @param bool   $showverdict afficher le verdict de l'IA (niveau global, score,
+     *                            niveaux par compétence). Faux pour un élève quand la
+     *                            note n'est pas appliquée automatiquement : c'est alors
+     *                            la note de l'enseignant qui fait foi, et l'élève ne doit
+     *                            pas lire un niveau que l'enseignant pourrait contredire.
+     * @param string $notice      HTML affiché en tête du corps de la carte (ou '')
      */
-    private function render_card($result, $status, $showscore = true, $isteacher = false) {
+    private function render_card($result, $status, $showscore = true, $isteacher = false,
+            $showverdict = true, $notice = '') {
+        if (!$showverdict) {
+            $showscore = false; // le score EST un verdict
+        }
         $niveau      = isset($result['niveau'])               ? (string)$result['niveau']               : '—';
         $score       = isset($result['score'])                ? (int)$result['score']                    : 0;
         $forts       = isset($result['points_forts'])         ? $result['points_forts']                  : array();
@@ -1131,7 +1262,12 @@ class assign_feedback_ai extends assign_feedback_plugin {
         if ($showscore) {
             $headerright .= html_writer::tag('span', $score . '/100', array('class' => 'h5 mb-0 mr-2'));
         }
-        $headerright .= html_writer::tag('span', s($niveau), array('class' => 'badge badge-' . $badge));
+        if ($showverdict) {
+            $headerright .= html_writer::tag('span', s($niveau), array('class' => 'badge badge-' . $badge));
+        } else {
+            $headerright .= html_writer::tag('span', get_string('verdict_by_teacher', 'assignfeedback_ai'),
+                array('class' => 'small text-muted'));
+        }
         $html .= html_writer::div($headerright, 'd-flex align-items-center');
         $html .= html_writer::end_div();
 
@@ -1141,6 +1277,10 @@ class assign_feedback_ai extends assign_feedback_plugin {
         }
 
         $html .= html_writer::start_div('card-body');
+
+        if ($notice !== '') {
+            $html .= $notice;
+        }
 
         // Signalement (pression sur le correcteur, contenu inapproprié) — enseignant seulement.
         if ($isteacher && $flag !== '') {
@@ -1192,11 +1332,14 @@ class assign_feedback_ai extends assign_feedback_plugin {
                              ? $this->niveau_to_badge((string)$comp['niveau'])
                              : 'secondary';
 
+                // Sans verdict, la colonne des niveaux disparaît : un niveau par
+                // compétence reste un verdict que l'enseignant pourrait contredire.
                 $rows .= html_writer::tag('tr',
                     html_writer::tag('td', html_writer::tag('strong', $c_nom)) .
-                    html_writer::tag('td',
-                        html_writer::tag('span', $c_niveau, array('class' => 'badge badge-' . $c_badge))
-                    ) .
+                    ($showverdict
+                        ? html_writer::tag('td',
+                            html_writer::tag('span', $c_niveau, array('class' => 'badge badge-' . $c_badge)))
+                        : '') .
                     html_writer::tag('td', $c_comment, array('class' => 'text-muted small'))
                 );
             }
@@ -1205,7 +1348,9 @@ class assign_feedback_ai extends assign_feedback_plugin {
                 $head = html_writer::tag('thead',
                     html_writer::tag('tr',
                         html_writer::tag('th', get_string('competency', 'assignfeedback_ai')) .
-                        html_writer::tag('th', get_string('mastery_level', 'assignfeedback_ai')) .
+                        ($showverdict
+                            ? html_writer::tag('th', get_string('mastery_level', 'assignfeedback_ai'))
+                            : '') .
                         html_writer::tag('th', get_string('commentary', 'assignfeedback_ai'))
                     )
                 );

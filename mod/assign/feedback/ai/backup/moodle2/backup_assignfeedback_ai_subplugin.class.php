@@ -63,6 +63,7 @@ class backup_assignfeedback_ai_subplugin extends backup_subplugin {
             'apiurl', 'apiurl_override', 'model', 'model_override',
             'apikey', 'apikey_override',
             'vision_enabled', 'vision_enabled_override',
+            'autograde',
             'timecreated', 'timemodified',
         ));
 
