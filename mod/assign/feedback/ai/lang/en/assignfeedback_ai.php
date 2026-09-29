@@ -24,6 +24,18 @@ $string['defaultsystemprompt_help'] = 'Used when no assignment-level prompt is d
 $string['pdftotextpath']            = 'Path to pdftotext binary';
 $string['pdftotextpath_help']       = 'Absolute path to the pdftotext executable (poppler-utils package). Leave empty to auto-detect in /usr/bin, /usr/local/bin, etc.';
 
+// === Automatic grade reporting (1.9.0) ===
+$string['autograde']            = 'Apply the grade proposed by the AI automatically';
+$string['autograde_help']       = 'Ticked: the AI assesses the submission and its grade is written straight to the gradebook.
+
+Unticked: the AI still assesses the submission and writes its feedback, but you enter the grade. The grade the AI proposes is shown to you in the grading interface without being applied. Students see the feedback (strengths, improvements, comments) but neither the level nor the score proposed by the AI: your grade is the one that counts.
+
+EFE reporting does not depend on this setting: it happens as soon as a grade is given, by the AI or by you.';
+$string['autograde_proposed']   = 'Grade proposed by the AI: {$a}. It is not applied automatically: enter the grade yourself.';
+$string['autograde_off']        = 'The grade is not applied automatically for this assignment: enter it yourself.';
+$string['autograde_off_badge']  = 'grade to enter';
+$string['verdict_by_teacher']   = 'Graded by your teacher';
+
 // === Vision ===
 $string['vision_heading']               = 'Vision (image reading)';
 $string['vision_enabled']               = 'Send images to the model';

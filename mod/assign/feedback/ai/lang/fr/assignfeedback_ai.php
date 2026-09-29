@@ -24,6 +24,18 @@ $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défin
 $string['pdftotextpath']            = 'Chemin du binaire pdftotext';
 $string['pdftotextpath_help']       = 'Chemin absolu vers l\'exécutable pdftotext (paquet poppler-utils). Laisser vide pour une détection automatique dans /usr/bin, /usr/local/bin, etc.';
 
+// === Report automatique de la note (1.9.0) ===
+$string['autograde']            = 'Appliquer automatiquement la note proposée par l\'IA';
+$string['autograde_help']       = 'Coché : l\'IA évalue la remise et sa note est reportée directement dans le carnet de notes.
+
+Décoché : l\'IA évalue toujours la remise et rédige son feedback, mais c\'est vous qui saisissez la note. La note proposée par l\'IA vous est affichée dans l\'interface de notation, sans être reportée. L\'élève voit le feedback (points forts, points à améliorer, commentaire), mais ni le niveau ni le score proposés par l\'IA : c\'est votre note qui fait foi.
+
+Le report EFE ne dépend pas de ce réglage : il se fait dès qu\'une note est attribuée, par l\'IA ou par vous.';
+$string['autograde_proposed']   = 'Note proposée par l\'IA : {$a}. Elle n\'est pas reportée automatiquement : saisissez la note vous-même.';
+$string['autograde_off']        = 'La note n\'est pas reportée automatiquement pour ce devoir : saisissez-la vous-même.';
+$string['autograde_off_badge']  = 'note à saisir';
+$string['verdict_by_teacher']   = 'Note attribuée par ton enseignant';
+
 // === Vision ===
 $string['vision_heading']               = 'Vision (lecture d\'images)';
 $string['vision_enabled']               = 'Activer l\'envoi d\'images au modèle';
