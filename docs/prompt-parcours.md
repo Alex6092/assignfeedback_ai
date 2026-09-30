@@ -142,7 +142,7 @@ consultables par l'enseignant.
 | Champ | Valeurs | Remarques |
 |---|---|---|
 | Activer le tuteur IA | case | ajoute un bouton de discussion sur la page du devoir |
-| Transmettre la consigne au tuteur | case (défaut **non**, réglage du site « Transmettre la consigne au tuteur, par défaut ») | envoie la **description** et les **« Instructions de l'activité »** au tuteur. Avec elles, le tuteur peut juger la réponse de l'élève et lui dire si elle est juste ; si on la coche, elles ne doivent contenir **aucun élément de corrigé** |
+| Transmettre la consigne au tuteur | case (défaut **non**, réglage du site « Transmettre la consigne au tuteur, par défaut » ; **oui** pour les devoirs créés par Missions IA, dont la consigne est la demande du client) | envoie la **description** et les **« Instructions de l'activité »** au tuteur. Avec elles, le tuteur peut juger la réponse de l'élève et lui dire si elle est juste ; si on la coche, elles ne doivent contenir **aucun élément de corrigé** |
 | Transmettre le brief pédagogique | case (défaut oui) | un brief (critères, points d'attention) est **généré automatiquement** à partir de l'énoncé et du corrigé de la Correction IA, puis relisible par l'enseignant. Le corrigé lui-même n'est jamais transmis |
 | Consignes supplémentaires | texte libre | « Ne suggère aucune bibliothèque externe », « exige le vocabulaire normalisé »… |
 | Recherches du tuteur | `Aucune` \| `Recherche Web ponctuelle` \| `Recherche de matériel` | voir ci-dessous |

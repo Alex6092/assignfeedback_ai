@@ -251,10 +251,13 @@ lui confirmer qu'elle est juste. Sans elle, le tuteur s'appuie sur le titre, les
 compétences, le brief pédagogique et ce que l'élève lui explique.
 
 - Le défaut vient du réglage du site *Transmettre la consigne au tuteur, par défaut*
-  (décoché). Il vaut pour le formulaire de l'activité et pour les devoirs créés par
-  Missions ; un choix fait sur une activité n'est plus écrasé par Missions.
-- La mise à jour 0.5.8 a décoché la case sur toutes les activités existantes : la recocher
-  là où la consigne est utile au tuteur et ne contient aucun élément de réponse.
+  (décoché), appliqué dans le formulaire de l'activité.
+- **Missions IA** : la case est **cochée** sur les devoirs qu'il crée. Leur consigne est
+  la demande du client ; sans elle, le tuteur ne sait pas ce que l'équipe doit livrer. Un
+  choix fait ensuite sur le devoir n'est plus écrasé par Missions.
+- La mise à jour 0.5.8 a décoché la case sur les activités existantes, sauf les devoirs
+  créés par Missions IA : la recocher là où la consigne est utile au tuteur et ne contient
+  aucun élément de réponse.
 
 ---
 

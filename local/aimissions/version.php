@@ -14,7 +14,7 @@ $plugin->version   = 2026093002;       // YYYYMMDDXX
 $plugin->requires  = 2023042400;       // Moodle 4.2
 $plugin->component = 'local_aimissions';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.8.1';          // Tuteur : la consigne suit le réglage du site, le choix de l'enseignant n'est plus écrasé
+$plugin->release   = '0.8.1';          // Tuteur : consigne transmise à la création, le choix de l'enseignant n'est plus écrasé
 $plugin->dependencies = array(
     // Dépendance DURE : couche LLM partagée + file de jobs asynchrones
     // (>= 1.7.0 pour run_job::enqueue avec délai).
