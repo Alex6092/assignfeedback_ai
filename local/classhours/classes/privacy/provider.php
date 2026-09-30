@@ -29,6 +29,11 @@ class provider implements
     /** Ouvertures d'activités surveillées (l'élève visé quand scope = user, et les enseignants). */
     const GATE = 'local_classhours_gate';
 
+    /** Demandes de rattrapage, tiers-temps, codes de séance saisis (activités surveillées). */
+    const CATCHUP = 'local_classhours_catchup';
+    const EXTRATIME = 'local_classhours_extratime';
+    const PRESENT = 'local_classhours_present';
+
     public static function get_metadata(collection $collection): collection {
         $collection->add_database_table(self::TABLE, array(
             'userid'          => 'privacy:metadata:grant:userid',
@@ -49,8 +54,40 @@ class provider implements
             'closedby'   => 'privacy:metadata:gate:closedby',
             'timeclosed' => 'privacy:metadata:gate:timeclosed',
         ), 'privacy:metadata:gate');
+        $collection->add_database_table(self::CATCHUP, array(
+            'userid'      => 'privacy:metadata:catchup:userid',
+            'status'      => 'privacy:metadata:catchup:status',
+            'timecreated' => 'privacy:metadata:catchup:timecreated',
+        ), 'privacy:metadata:catchup');
+        $collection->add_database_table(self::EXTRATIME, array(
+            'userid'  => 'privacy:metadata:extratime:userid',
+            'percent' => 'privacy:metadata:extratime:percent',
+        ), 'privacy:metadata:extratime');
+        $collection->add_database_table(self::PRESENT, array(
+            'userid'      => 'privacy:metadata:present:userid',
+            'timecreated' => 'privacy:metadata:present:timecreated',
+        ), 'privacy:metadata:present');
         $collection->add_subsystem_link('core_message', array(), 'privacy:metadata:messages');
         return $collection;
+    }
+
+    /**
+     * Données d'élève des activités surveillées, par cours : demandes de
+     * rattrapage, tiers-temps, codes de séance saisis.
+     *
+     * @return array [sql, params] : ids de cours de l'élève
+     */
+    private static function supervised_courses_sql(int $userid): array {
+        return array(
+            'SELECT ctx.id
+               FROM {context} ctx
+              WHERE ctx.contextlevel = :level
+                AND (ctx.instanceid IN (SELECT courseid FROM {' . self::CATCHUP . '} WHERE userid = :u1)
+                     OR ctx.instanceid IN (SELECT courseid FROM {' . self::EXTRATIME . '} WHERE userid = :u2)
+                     OR ctx.instanceid IN (SELECT g.courseid FROM {' . self::PRESENT . '} p
+                                             JOIN {' . self::GATE . '} g ON g.id = p.gateid WHERE p.userid = :u3))',
+            array('level' => CONTEXT_COURSE, 'u1' => $userid, 'u2' => $userid, 'u3' => $userid),
+        );
     }
 
     public static function get_contexts_for_userid(int $userid): contextlist {
@@ -68,6 +105,8 @@ class provider implements
               WHERE (o.scope = :scope AND o.scopeid = :userid) OR o.openedby = :openedby OR o.closedby = :closedby',
             array('level' => CONTEXT_COURSE, 'scope' => 'user', 'userid' => $userid,
                 'openedby' => $userid, 'closedby' => $userid));
+        list($sql, $params) = self::supervised_courses_sql($userid);
+        $contextlist->add_from_sql($sql, $params);
         return $contextlist;
     }
 
@@ -87,6 +126,13 @@ class provider implements
             'SELECT openedby FROM {' . self::GATE . '} WHERE courseid = :courseid AND openedby > 0', $params);
         $userlist->add_from_sql('closedby',
             'SELECT closedby FROM {' . self::GATE . '} WHERE courseid = :courseid AND closedby > 0', $params);
+        $userlist->add_from_sql('userid',
+            'SELECT userid FROM {' . self::CATCHUP . '} WHERE courseid = :courseid', $params);
+        $userlist->add_from_sql('userid',
+            'SELECT userid FROM {' . self::EXTRATIME . '} WHERE courseid = :courseid', $params);
+        $userlist->add_from_sql('userid',
+            'SELECT p.userid FROM {' . self::PRESENT . '} p JOIN {' . self::GATE . '} g ON g.id = p.gateid
+              WHERE g.courseid = :courseid', $params);
     }
 
     public static function export_user_data(approved_contextlist $contextlist) {
@@ -151,10 +197,30 @@ class provider implements
                     $byyou[] = $entry;
                 }
             }
-            if ($foryou || $byyou) {
+            // Demandes de rattrapage, tiers-temps, codes de séance saisis.
+            $catchups = array();
+            foreach ($DB->get_records(self::CATCHUP, array('courseid' => $context->instanceid, 'userid' => $userid),
+                    'timecreated') as $row) {
+                $catchups[] = (object)array('cmid' => (int)$row->cmid, 'status' => $row->status,
+                    'timecreated' => transform::datetime((int)$row->timecreated));
+            }
+            $extratime = $DB->get_field(self::EXTRATIME, 'percent',
+                array('courseid' => $context->instanceid, 'userid' => $userid));
+            $present = array();
+            foreach ($DB->get_records_sql('SELECT p.id, g.cmid, p.timecreated FROM {' . self::PRESENT . '} p
+                                             JOIN {' . self::GATE . '} g ON g.id = p.gateid
+                                            WHERE g.courseid = :courseid AND p.userid = :userid ORDER BY p.timecreated',
+                    array('courseid' => $context->instanceid, 'userid' => $userid)) as $row) {
+                $present[] = (object)array('cmid' => (int)$row->cmid,
+                    'timecreated' => transform::datetime((int)$row->timecreated));
+            }
+
+            if ($foryou || $byyou || $catchups || $extratime !== false || $present) {
                 writer::with_context($context)->export_data(
                     array(get_string('privacy:path_supervised', 'local_classhours')),
-                    (object)array('openedforyou' => $foryou, 'openedorclosedbyyou' => $byyou));
+                    (object)array('openedforyou' => $foryou, 'openedorclosedbyyou' => $byyou,
+                        'catchuprequests' => $catchups, 'extratimepercent' => $extratime !== false ? (int)$extratime : null,
+                        'sessioncodes' => $present));
             }
         }
     }
@@ -162,8 +228,12 @@ class provider implements
     public static function delete_data_for_all_users_in_context(\context $context) {
         global $DB;
         if ($context instanceof \context_course) {
+            $DB->delete_records_select(self::PRESENT, 'gateid IN (SELECT id FROM {' . self::GATE . '} WHERE courseid = ?)',
+                array($context->instanceid));
             $DB->delete_records(self::TABLE, array('courseid' => $context->instanceid));
             $DB->delete_records(self::GATE, array('courseid' => $context->instanceid));
+            $DB->delete_records(self::CATCHUP, array('courseid' => $context->instanceid));
+            $DB->delete_records(self::EXTRATIME, array('courseid' => $context->instanceid));
         }
     }
 
@@ -208,5 +278,10 @@ class provider implements
             $params);
         $DB->execute('UPDATE {' . self::GATE . "} SET closedby = 0 WHERE courseid = :courseid AND closedby $insql",
             $params);
+        // Activités surveillées : demandes de rattrapage, tiers-temps, codes saisis.
+        $DB->delete_records_select(self::CATCHUP, "courseid = :courseid AND userid $insql", $params);
+        $DB->delete_records_select(self::EXTRATIME, "courseid = :courseid AND userid $insql", $params);
+        $DB->delete_records_select(self::PRESENT, 'userid ' . $insql . ' AND gateid IN (SELECT id FROM {' . self::GATE
+            . '} WHERE courseid = :courseid)', $params);
     }
 }

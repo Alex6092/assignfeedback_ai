@@ -20,3 +20,11 @@ $string['manage_link'] = 'Open / close';
 // Access restriction form.
 $string['form_label'] = 'Supervised activity';
 $string['form_help'] = 'Closed until the teacher opens it.';
+
+// Session code and linked activities.
+$string['desc_code'] = '<strong>Open</strong>: enter the session code shown in class to start.';
+$string['code_link'] = 'Enter the code';
+$string['desc_lock'] = 'Unavailable during the supervised activity {$a}';
+$string['desc_lock_not'] = 'Only during the supervised activity {$a}';
+$string['desc_lock_missing'] = 'Linked to a deleted supervised activity (no effect)';
+$string['form_lock'] = 'Closed during the supervised activity "{$a}"';

@@ -30,6 +30,12 @@ if ($hassiteconfig) {
         get_string('setting_useglobal_default', 'local_classhours'),
         get_string('setting_useglobal_default_desc', 'local_classhours'), 1));
 
+    // Activités surveillées : majoration proposée pour un élève au tiers-temps.
+    $settings->add(new admin_setting_configtext('local_classhours/extratimedefault',
+        get_string('setting_extratimedefault', 'local_classhours'),
+        get_string('setting_extratimedefault_desc', 'local_classhours'),
+        \local_classhours\extratime::DEFAULT_PERCENT, PARAM_INT));
+
     $ADMIN->add('localplugins', $settings);
 
     $ADMIN->add('localplugins', new admin_externalpage('local_classhours_globalperiods',

@@ -1,0 +1,98 @@
+/* block_supervised/styles.css — frise des activités surveillées (même esprit que le carrousel des QCM vidéo). */
+
+.block_supervised .supervised-course-title {
+    margin: 0.8rem 0 0.2rem;
+    font-weight: 600;
+}
+
+/* Frise horizontale occupant la largeur du bloc, défilable. */
+.block_supervised .supervised-frise {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.6rem;
+    overflow-x: auto;
+    padding: 0.4rem 0.2rem 0.8rem;
+    scroll-snap-type: x proximity;
+}
+
+.block_supervised .supervised-card {
+    flex: 0 0 auto;
+    width: 170px;
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.6rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    scroll-snap-align: start;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.block_supervised .supervised-card-date {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #777;
+}
+
+.block_supervised .supervised-card-title {
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.block_supervised .supervised-card-status {
+    margin-top: auto;
+    font-size: 0.85rem;
+}
+
+.block_supervised .supervised-card .btn,
+.block_supervised .supervised-card form {
+    align-self: flex-start;
+}
+
+/* Faite : grisée. */
+.block_supervised .supervised-card.is-done,
+.block_supervised .supervised-card.is-past {
+    background: #f1f1f1;
+    border-color: #e0e0e0;
+    opacity: 0.75;
+}
+
+/* À rattraper : rouge. */
+.block_supervised .supervised-card.is-due {
+    background: #fdecea;
+    border-color: #e57373;
+}
+.block_supervised .supervised-card.is-due .supervised-card-status {
+    color: #c62828;
+    font-weight: 600;
+}
+
+/* Ouverte : verte, mise en avant. */
+.block_supervised .supervised-card.is-open {
+    background: #e8f5e9;
+    border-color: #43a047;
+    box-shadow: 0 0 0 2px rgba(67, 160, 71, 0.45);
+}
+.block_supervised .supervised-card.is-open .supervised-card-status {
+    color: #2e7d32;
+    font-weight: 600;
+}
+
+/* Prochaine : jaune. */
+.block_supervised .supervised-card.is-next {
+    background: #fff8d6;
+    border-color: #f1c40f;
+    box-shadow: 0 0 0 2px rgba(241, 196, 15, 0.45);
+}
+
+/* Vient d'ouvrir (rafraîchissement) : clignote une fois. */
+@keyframes supervised-flash {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(67, 160, 71, 0.45); }
+    50% { box-shadow: 0 0 0 6px rgba(67, 160, 71, 0.8); }
+}
+.block_supervised .supervised-card.is-new {
+    animation: supervised-flash 1s ease-in-out 3;
+}

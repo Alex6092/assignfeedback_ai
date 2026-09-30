@@ -41,7 +41,8 @@ class gate_collector {
 
     /** L'élève a-t-il perdu l'accès à l'activité ? */
     private static function lost_access(\stdClass $cm, int $userid): bool {
-        return !gate::is_open_for((int)$cm->course, (int)$cm->id, $userid);
+        // La fenêtre, pas le code de séance : un élève au tiers-temps garde sa copie.
+        return !gate::in_window((int)$cm->course, (int)$cm->id, $userid);
     }
 
     /** Envoie les tentatives en cours des élèves qui n'ont plus accès. */

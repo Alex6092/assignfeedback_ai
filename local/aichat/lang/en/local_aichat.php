@@ -155,6 +155,7 @@ $string['notsupported']    = 'The AI tutor is not available on this type of acti
 $string['tutordisabled']   = 'The AI tutor is not enabled on this activity.';
 $string['closed_classhours'] = 'The AI tutor is only available during class hours.';
 $string['closed_supervised'] = 'The AI tutor is only available when the teacher opens this activity in class.';
+$string['closed_exam']       = 'Assessment in progress: the AI tutor is unavailable in this course until the session ends.';
 $string['closed_submitted']  = 'Your assignment is submitted: the AI tutor is no longer available for this activity.';
 $string['error_empty']     = 'Your message is empty.';
 $string['error_toolong']   = 'Your message is longer than {$a} characters. Please shorten it.';

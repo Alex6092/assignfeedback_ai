@@ -961,11 +961,38 @@ Lien dans la navigation du cours.
     du créneau des Heures de cours s'il y en a un en cours. Rouvrir la même cible prolonge
     l'ouverture.
   - **Fermer** une ouverture, **Fermer l'activité**, ou **Tout fermer** en haut de page.
+  - Les cartes sont rangées par **date prévue** ; **Afficher en grand** ouvre une page pour le
+    vidéoprojecteur (code de séance, compte à rebours, compteurs).
+  - **À rattraper** : les élèves pour qui la séance a eu lieu sans qu'ils aient rendu, avec
+    leurs demandes de rattrapage et un bouton **Ouvrir pour lui**.
+- **Réglages** de chaque activité (sous la carte) :
+  - **date prévue**, et une date par groupe si le cours en a ;
+  - **code de séance** et **mode examen** (voir plus bas) ;
+  - **activités fermées pendant cette activité** : leçons, pages ou autres activités à ne
+    pas consulter pendant la séance. Elles sont fermées aux élèves pour qui l'activité est
+    ouverte (le groupe, ou l'élève en rattrapage), puis rouvertes à la fermeture. Techniquement,
+    la même condition avec un paramètre : `{"type":"supervised","lock":<cmid>}`, suivie à la
+    sauvegarde et à la restauration.
+- **Tiers-temps** : les élèves concernés et leur majoration (33 % par défaut, réglage du site).
 - **Choisir les activités surveillées** : une case par devoir ou test (ou toute activité qui
   porte déjà la condition). Cocher pose la condition, fermée ; décocher la retire et
   l'activité redevient libre. La condition s'ajoute aussi depuis la restriction d'accès d'une
   activité.
 - **Historique** : les 20 dernières ouvertures.
+
+### Code de séance, tiers-temps, mode examen
+
+- **Code de séance** (option de l'activité) : chaque ouverture tire un code de 4 caractères,
+  affiché sur la carte et en grand. L'élève le saisit pour commencer : un absent ne peut pas
+  composer de chez lui quand l'activité est ouverte pour tout le cours. Le code saisi vaut
+  présence (compteur « présents »). Cinq essais faux imposent une minute d'attente.
+- **Tiers-temps** : la durée est majorée pour l'élève. Ouverte pour 30 min, l'activité reste
+  ouverte 40 min pour lui (33 %). Fermée à la main, il garde la même proportion du temps
+  réellement écoulé ; **Fermer aussi pour le tiers-temps** ferme tout de suite pour tous.
+  Le compte à rebours du test suit sa fin propre, et son travail est ramassé à sa fin.
+- **Mode examen** (option de l'activité) : pendant la séance, toute autre page du cours
+  (activités, page du cours, fichiers) renvoie l'élève qui compose vers l'activité, et le
+  **Tuteur IA** est coupé dans tout le cours.
 
 Capacités : `local/classhours:supervise` pour ouvrir et fermer (enseignants, enseignants non
 éditeurs, gestionnaires) ; `local/classhours:manage` pour choisir les activités.
@@ -992,13 +1019,20 @@ Heures de cours n'ouvre pas une activité surveillée.
 
 ### Bloc « Activités surveillées »
 
-- **Élève**, tableau de bord ou page du cours : l'activité ouverte pour lui, avec l'heure de
-  fermeture et un bouton **Commencer**. Le bloc se rafraîchit toutes les 30 s : une activité
-  que l'enseignant vient d'ouvrir apparaît sans recharger la page.
-- **Enseignant**, page du cours : chaque activité surveillée avec **Ouvrir** (tout le cours,
-  jusqu'à fermeture) ou **Fermer** en un clic, et « Plus d'options » vers la page de
-  pilotage.
-- **Enseignant**, tableau de bord : les activités qu'il a laissées ouvertes, avec **Fermer**.
+- **Élève**, tableau de bord (une frise par cours) ou page du cours : une **frise**
+  chronologique, à la manière du carrousel des QCM vidéo :
+  - **faite** (grisée) ;
+  - **à rattraper** (rouge), avec **Demander un rattrapage** : les enseignants sont prévenus ;
+  - **ouverte** (verte), avec l'heure de fermeture et **Commencer** (ou **Saisir le code**) ;
+  - **à venir**, avec la date prévue, la **prochaine** en jaune.
+
+  La carte ouverte, sinon la prochaine, est amenée à l'écran. Le bloc se rafraîchit toutes
+  les 30 s : une activité que l'enseignant vient d'ouvrir apparaît sans recharger la page.
+- **Enseignant**, page du cours : chaque activité surveillée avec sa date prévue, **Ouvrir**
+  (tout le cours, jusqu'à fermeture) ou **Fermer** en un clic, et « Plus d'options » vers la
+  page de pilotage.
+- **Enseignant**, tableau de bord : pour ses cours, les activités ouvertes (**Fermer**),
+  celles prévues aujourd'hui (**Ouvrir**) et le nombre de demandes de rattrapage.
 
 Pour le proposer à tous les élèves : *Administration > Apparence > Tableau de bord par
 défaut*, ajouter le bloc, puis « Réinitialiser le tableau de bord pour tous les
@@ -1019,7 +1053,14 @@ utilisateurs ».
 - Seuls les devoirs et les tests sont ramassés et relisibles après fermeture ; les autres
   activités peuvent être surveillées (ouvrir, fermer), sans ramassage.
 - La condition n'est proposée que sur une activité, pas sur une section. Les ouvertures ne
-  sont pas sauvegardées avec le cours : une activité restaurée est fermée.
+  sont pas sauvegardées avec le cours : une activité restaurée est fermée (ses options et
+  dates prévues, elles, suivent l'activité ; le tiers-temps, donnée personnelle, non).
+- « À rattraper » n'existe que pour les devoirs, les tests et les activités à achèvement
+  suivi ; les groupes sont ceux du moment présent.
+- Mode examen : limité au cours de l'activité (les autres cours et Internet restent
+  accessibles), et l'application mobile peut avoir du contenu du cours hors ligne.
+- Le code de séance prouve la présence tant qu'il n'est pas transmis à un absent ; il change à
+  chaque ouverture.
 
 ---
 
@@ -1145,13 +1186,15 @@ local/classhours/                  Heures de cours : emploi du temps par cours
 │   ├── availability_json.php      Pose / retrait de la condition à la racine du JSON d'accès
 │   ├── efe_bridge.php / efe_sync.php   Option EFE (local_efenotes facultatif)
 │   ├── form/                      Formulaires d'ajout (créneau, ouverture, période fermée)
-│   ├── gate.php                   Activités surveillées : ouvertures (cours, groupe, élève, durée)
+│   ├── gate.php                   Activités surveillées : ouvertures (cours, groupe, élève, durée, tiers-temps, code)
+│   ├── plan.php / extratime.php / catchup.php   Dates prévues et options, tiers-temps, rattrapage
 │   ├── gate_collector.php         Ramassage à la fermeture (tentatives, brouillons)
 │   ├── supervised_view.php        Affichage partagé : page de pilotage, bloc, rafraîchissement
 │   ├── external/supervised_refresh.php   Service web de rafraîchissement
 │   └── task/                      sync_efe, collect_supervised, close_supervised
 ├── manage.php                     Page « Heures de cours » du cours
-├── supervised.php                 Page « Activités surveillées » du cours
+├── supervised.php                 Page « Activités surveillées » du cours (et affichage en grand)
+├── code.php / catchup.php         Élève : saisie du code de séance, demande de rattrapage
 └── backup/moodle2/                Sauvegarde : niveau cours et niveau activité
 
 availability/condition/classhours/ Condition « Pendant les heures de cours »

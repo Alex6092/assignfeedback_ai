@@ -8,18 +8,33 @@ defined('MOODLE_INTERNAL') || die();
  * classe (condition d'accès availability_supervised).
  *
  * Une ligne de local_classhours_gate par ouverture, pour tout le cours, un
- * groupe ou un élève, avec une fermeture automatique facultative. Les lignes
- * fermées restent comme historique.
+ * groupe ou un élève, avec une fin facultative. Les lignes fermées restent
+ * comme historique.
  *
- * Une ouverture est active tant qu'elle n'est pas fermée ET que son heure de
- * fermeture automatique n'est pas passée : l'activité se referme donc à
- * l'heure prévue même avant le passage de la tâche close_supervised, qui ne
- * fait que la marquer fermée et ramasser le travail en cours.
+ * Fin d'une ouverture, élève par élève :
+ *   - closeat est la FIN DE BASE (0 : jusqu'à ce que l'enseignant ferme ;
+ *     une fermeture à la main la pose à « maintenant ») ;
+ *   - un élève au tiers-temps (voir extratime) a une fin propre, prolongée
+ *     d'un pourcentage du temps écoulé depuis l'ouverture ;
+ *   - timeclosed est la fermeture DÉFINITIVE, une fois le dernier tiers-temps
+ *     écoulé (ou quand l'enseignant ferme aussi pour le tiers-temps).
+ * L'activité se referme donc pour chacun à son heure, même avant le passage
+ * de la tâche close_supervised, qui ne fait que ramasser le travail en cours.
+ *
+ * Code de séance (option de l'activité, voir plan) : chaque ouverture a son
+ * code ; l'élève est « dans la fenêtre » dès l'ouverture, mais ne peut
+ * travailler qu'après avoir saisi le code (local_classhours_present).
+ *
+ * La même condition sert aussi à fermer des activités LIÉES pendant la
+ * séance : {"type":"supervised","lock":<cmid>} (voir is_supervised_json()).
  */
 class gate {
 
     /** Table des ouvertures. */
     const TABLE = 'local_classhours_gate';
+
+    /** Table des codes de séance saisis (présence). */
+    const PRESENT = 'local_classhours_present';
 
     /** Type de la condition d'accès (availability_supervised). */
     const TYPE = 'supervised';
@@ -40,12 +55,23 @@ class gate {
     /** Types d'activité dont le travail en cours est ramassé à la fermeture. */
     const COLLECT_MODS = array('assign', 'quiz');
 
-    /** @var array courseid => ouvertures non fermées du cours (y compris expirées) */
+    /** Code de séance : caractères sans ambiguïté à l'écran (ni 0/O, ni 1/I/L, ni 5/S, ni 2/Z, ni 8/B). */
+    const CODE_ALPHABET = 'ACDEFGHJKMNPQRTUVWXY34679';
+    const CODE_LENGTH = 4;
+
+    /** @var array courseid => ouvertures non définitivement fermées du cours */
     private static $cache = array();
 
-    /** Oublie les ouvertures mémorisées pour la requête (après un changement, dans les tests). */
+    /** @var array "courseid|userid" => [gateid => true] codes saisis par l'élève */
+    private static $present = array();
+
+    /** Oublie l'état mémorisé pour la requête (après un changement, dans les tests). */
     public static function reset_cache(): void {
         self::$cache = array();
+        self::$present = array();
+        extratime::reset_cache();
+        plan::reset_cache();
+        catchup::reset_cache();
     }
 
     // -------------------------------------------------------------------------
@@ -53,28 +79,36 @@ class gate {
     // -------------------------------------------------------------------------
 
     /**
-     * Ouvertures actives d'un cours. Une requête par cours, mémorisée : la
-     * page du cours évalue la condition pour chaque activité surveillée.
+     * Ouvertures non définitivement fermées d'un cours. Une requête par cours,
+     * mémorisée : la page du cours évalue la condition pour chaque activité.
      *
-     * @param int      $courseid
-     * @param int|null $now
      * @return \stdClass[] id => ouverture
      */
-    public static function active_for_course(int $courseid, ?int $now = null): array {
+    private static function pending_for_course(int $courseid): array {
         global $DB;
         if (!isset(self::$cache[$courseid])) {
             self::$cache[$courseid] = $DB->get_records(self::TABLE,
                 array('courseid' => $courseid, 'timeclosed' => 0), 'timeopened, id',
-                'id, courseid, cmid, scope, scopeid, openedby, timeopened, closeat');
+                'id, courseid, cmid, scope, scopeid, openedby, timeopened, closeat, code, collected');
         }
+        return self::$cache[$courseid];
+    }
+
+    /**
+     * Ouvertures en cours d'un cours : pour quelqu'un au moins (le tiers-temps
+     * peut prolonger une ouverture dont la fin de base est passée).
+     *
+     * @return \stdClass[] id => ouverture
+     */
+    public static function active_for_course(int $courseid, ?int $now = null): array {
         $now = $now ?? schedule::now();
-        return array_filter(self::$cache[$courseid], function($o) use ($now) {
+        return array_filter(self::pending_for_course($courseid), function($o) use ($now) {
             return self::is_active($o, $now);
         });
     }
 
     /**
-     * Ouvertures actives d'une activité.
+     * Ouvertures en cours d'une activité.
      *
      * @return \stdClass[] id => ouverture
      */
@@ -84,37 +118,198 @@ class gate {
         });
     }
 
-    /** Une ouverture est-elle active à $now ? */
+    /** Une ouverture est-elle en cours à $now, pour quelqu'un au moins ? */
     public static function is_active(\stdClass $opening, int $now): bool {
-        return empty($opening->timeclosed) && ((int)$opening->closeat === 0 || (int)$opening->closeat > $now);
-    }
-
-    /** L'activité est-elle ouverte pour cet élève ? */
-    public static function is_open_for(int $courseid, int $cmid, int $userid, ?int $now = null): bool {
-        return self::end_for($courseid, $cmid, $userid, $now) !== null;
+        if (!empty($opening->timeclosed)) {
+            return false;
+        }
+        return (int)$opening->closeat === 0 || $now < self::max_end($opening);
     }
 
     /**
-     * Fin de l'accès de l'élève : null s'il n'est pas ouvert, 0 si une de ses
-     * ouvertures n'a pas de fermeture automatique, sinon la plus lointaine.
+     * La fin de base est-elle passée (ouverture prolongée pour le tiers-temps
+     * seulement) ?
      */
-    public static function end_for(int $courseid, int $cmid, int $userid, ?int $now = null): ?int {
-        $end = null;
+    public static function in_extratime(\stdClass $opening, int $now): bool {
+        return (int)$opening->closeat > 0 && (int)$opening->closeat <= $now && self::is_active($opening, $now);
+    }
+
+    /**
+     * Fin d'une ouverture pour un élève dont le temps est majoré de $percent :
+     * la durée écoulée entre l'ouverture et la fin de base est prolongée
+     * d'autant. 0 si l'ouverture n'a pas de fin.
+     */
+    public static function user_end(\stdClass $opening, int $percent): int {
+        $closeat = (int)$opening->closeat;
+        if ($closeat === 0) {
+            return 0;
+        }
+        if ($percent <= 0) {
+            return $closeat;
+        }
+        $length = max(0, $closeat - (int)$opening->timeopened);
+        return $closeat + (int)ceil($length * $percent / 100);
+    }
+
+    /** Fin la plus lointaine d'une ouverture, tiers-temps des élèves concernés compris. */
+    public static function max_end(\stdClass $opening): int {
+        $max = 0;
+        foreach (extratime::for_course((int)$opening->courseid) as $userid => $percent) {
+            if ($percent <= $max) {
+                continue;
+            }
+            $groupids = $opening->scope === self::SCOPE_GROUP
+                ? self::user_groupids((int)$opening->courseid, (int)$userid) : array();
+            if (self::applies($opening, (int)$userid, $groupids)) {
+                $max = $percent;
+            }
+        }
+        return self::user_end($opening, $max);
+    }
+
+    /**
+     * Ouvertures dans lesquelles l'élève se trouve en ce moment (fenêtre en
+     * cours pour lui, tiers-temps compris).
+     *
+     * @return \stdClass[]
+     */
+    public static function windows_for(int $courseid, int $cmid, int $userid, ?int $now = null): array {
+        $now = $now ?? schedule::now();
+        $percent = extratime::percent($courseid, $userid);
         $groupids = null;
-        foreach (self::active_for_cm($courseid, $cmid, $now) as $opening) {
+        $out = array();
+        foreach (self::pending_for_course($courseid) as $opening) {
+            if ((int)$opening->cmid !== $cmid) {
+                continue;
+            }
             if ($opening->scope === self::SCOPE_GROUP && $groupids === null) {
                 $groupids = self::user_groupids($courseid, $userid);
             }
             if (!self::applies($opening, $userid, $groupids ?? array())) {
                 continue;
             }
-            $closeat = (int)$opening->closeat;
-            if ($closeat === 0) {
+            $end = self::user_end($opening, $percent);
+            if ($end === 0 || $now < $end) {
+                $out[] = $opening;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Fin de la fenêtre de l'élève : null s'il n'est pas dans une fenêtre, 0
+     * si une de ses ouvertures n'a pas de fin, sinon la plus lointaine de ses
+     * fins propres (tiers-temps compris).
+     */
+    public static function end_for(int $courseid, int $cmid, int $userid, ?int $now = null): ?int {
+        $windows = self::windows_for($courseid, $cmid, $userid, $now);
+        if (!$windows) {
+            return null;
+        }
+        $percent = extratime::percent($courseid, $userid);
+        $end = 0;
+        foreach ($windows as $opening) {
+            $userend = self::user_end($opening, $percent);
+            if ($userend === 0) {
                 return 0;
             }
-            $end = max($end ?? 0, $closeat);
+            $end = max($end, $userend);
         }
         return $end;
+    }
+
+    /**
+     * L'élève est-il dans une fenêtre de l'activité ? C'est ce qui ferme les
+     * activités liées et déclenche le mode examen, code saisi ou non.
+     */
+    public static function in_window(int $courseid, int $cmid, int $userid, ?int $now = null): bool {
+        return (bool)self::windows_for($courseid, $cmid, $userid, $now);
+    }
+
+    /**
+     * L'élève peut-il travailler sur l'activité : dans une fenêtre, et code
+     * de séance saisi si l'ouverture en demande un ?
+     */
+    public static function is_open_for(int $courseid, int $cmid, int $userid, ?int $now = null): bool {
+        foreach (self::windows_for($courseid, $cmid, $userid, $now) as $opening) {
+            if ((string)$opening->code === '' || self::has_entered_code($courseid, (int)$opening->id, $userid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * L'élève est dans une fenêtre mais doit encore saisir le code de séance.
+     */
+    public static function needs_code(int $courseid, int $cmid, int $userid, ?int $now = null): bool {
+        $windows = self::windows_for($courseid, $cmid, $userid, $now);
+        return $windows && !self::is_open_for($courseid, $cmid, $userid, $now);
+    }
+
+    /** L'élève a-t-il saisi le code de cette ouverture ? */
+    public static function has_entered_code(int $courseid, int $gateid, int $userid): bool {
+        global $DB;
+        $key = $courseid . '|' . $userid;
+        if (!isset(self::$present[$key])) {
+            $ids = $DB->get_fieldset_sql('SELECT p.gateid
+                                            FROM {' . self::PRESENT . '} p
+                                            JOIN {' . self::TABLE . '} g ON g.id = p.gateid
+                                           WHERE g.courseid = :courseid AND g.timeclosed = 0 AND p.userid = :userid',
+                array('courseid' => $courseid, 'userid' => $userid));
+            self::$present[$key] = array_fill_keys(array_map('intval', $ids), true);
+        }
+        return isset(self::$present[$key][$gateid]);
+    }
+
+    /**
+     * L'élève saisit un code de séance : s'il correspond à l'une de ses
+     * fenêtres, sa présence est enregistrée.
+     *
+     * @return bool code accepté
+     */
+    public static function submit_code(int $courseid, int $cmid, int $userid, string $code): bool {
+        global $DB;
+        $code = strtoupper(preg_replace('/\s+/', '', $code));
+        if ($code === '') {
+            return false;
+        }
+        foreach (self::windows_for($courseid, $cmid, $userid) as $opening) {
+            if ((string)$opening->code !== '' && hash_equals((string)$opening->code, $code)) {
+                if (!$DB->record_exists(self::PRESENT, array('gateid' => $opening->id, 'userid' => $userid))) {
+                    $DB->insert_record(self::PRESENT, (object)array('gateid' => (int)$opening->id, 'userid' => $userid,
+                        'timecreated' => schedule::now()));
+                }
+                self::$present = array();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Nombre d'élèves qui ont saisi le code des ouvertures en cours d'une activité. */
+    public static function present_count(int $courseid, int $cmid): int {
+        global $DB;
+        $ids = array_keys(self::active_for_cm($courseid, $cmid));
+        if (!$ids) {
+            return 0;
+        }
+        list($insql, $params) = $DB->get_in_or_equal($ids, SQL_PARAMS_NAMED);
+        return (int)$DB->count_records_sql('SELECT COUNT(DISTINCT userid) FROM {' . self::PRESENT . '} WHERE gateid ' . $insql,
+            $params);
+    }
+
+    /**
+     * Mode examen : l'activité surveillée (en mode examen) dans la fenêtre de
+     * laquelle se trouve l'élève, ou null.
+     */
+    public static function exam_cmid(int $courseid, int $userid, ?int $now = null): ?int {
+        foreach (plan::options_for_course($courseid) as $cmid => $options) {
+            if (!empty($options->exammode) && self::in_window($courseid, (int)$cmid, $userid, $now)) {
+                return (int)$cmid;
+            }
+        }
+        return null;
     }
 
     /** L'ouverture concerne-t-elle cet élève ? */
@@ -154,12 +349,72 @@ class gate {
     }
 
     // -------------------------------------------------------------------------
+    //  JSON de restriction : activité surveillée ou activité liée (verrou)
+    // -------------------------------------------------------------------------
+
+    /** Le JSON porte-t-il, à la racine, la condition d'une activité surveillée ? */
+    public static function is_supervised_json(?string $json): bool {
+        foreach (availability_json::root_children($json) as $child) {
+            if (($child->type ?? '') === self::TYPE && empty($child->lock)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Activités surveillées pendant lesquelles cette activité est fermée
+     * (conditions {"type":"supervised","lock":cmid} de la racine).
+     *
+     * @return int[]
+     */
+    public static function lock_cmids(?string $json): array {
+        $out = array();
+        foreach (availability_json::root_children($json) as $child) {
+            if (($child->type ?? '') === self::TYPE && !empty($child->lock)) {
+                $out[] = (int)$child->lock;
+            }
+        }
+        return $out;
+    }
+
+    /** Pose la condition d'activité surveillée à la racine. */
+    public static function add_supervised(?string $json): string {
+        return availability_json::add_child($json, (object)array('type' => self::TYPE));
+    }
+
+    /** Retire la condition d'activité surveillée (pas les verrous). */
+    public static function remove_supervised(?string $json): ?string {
+        return availability_json::remove_where($json, function($child) {
+            return ($child->type ?? '') === self::TYPE && empty($child->lock);
+        });
+    }
+
+    /** Ferme l'activité pendant l'activité surveillée $cmid. */
+    public static function add_lock(?string $json, int $cmid): string {
+        if (in_array($cmid, self::lock_cmids($json), true)) {
+            return (string)$json;
+        }
+        return availability_json::add_child($json, (object)array('type' => self::TYPE, 'lock' => $cmid));
+    }
+
+    /** Retire le verrou lié à l'activité surveillée $cmid. */
+    public static function remove_lock(?string $json, int $cmid): ?string {
+        return availability_json::remove_where($json, function($child) use ($cmid) {
+            return ($child->type ?? '') === self::TYPE && (int)($child->lock ?? 0) === $cmid;
+        });
+    }
+
+    // -------------------------------------------------------------------------
     //  Ouvrir, fermer
     // -------------------------------------------------------------------------
 
     /**
-     * Ouvre une activité. Une ouverture active pour la même cible est
-     * prolongée (ou rendue manuelle) au lieu d'être doublée.
+     * Ouvre une activité. Une ouverture en cours pour la même cible est
+     * prolongée (ou rendue manuelle) au lieu d'être doublée. Si l'activité
+     * demande un code de séance, un code est tiré pour l'ouverture.
+     *
+     * Ouvrir pour un élève marque sa demande de rattrapage comme traitée.
      *
      * @param \cm_info|\stdClass $cm
      * @param string             $scope    course|group|user
@@ -181,9 +436,14 @@ class gate {
         $now = schedule::now();
         $closeat = self::close_time($courseid, $scope, $scopeid, $duration, $now);
 
+        if ($scope === self::SCOPE_USER) {
+            catchup::mark_done((int)$cm->id, $scopeid);
+        }
+
         foreach (self::active_for_cm($courseid, (int)$cm->id, $now) as $opening) {
             if ($opening->scope === $scope && (int)$opening->scopeid === $scopeid) {
-                $DB->update_record(self::TABLE, (object)array('id' => $opening->id, 'closeat' => $closeat));
+                $DB->update_record(self::TABLE, (object)array('id' => $opening->id, 'closeat' => $closeat,
+                    'collected' => 0));
                 self::reset_cache();
                 $opening->closeat = $closeat;
                 return $opening;
@@ -200,14 +460,26 @@ class gate {
             'closeat'    => $closeat,
             'closedby'   => 0,
             'timeclosed' => 0,
+            'code'       => plan::options($courseid, (int)$cm->id)->sessioncode ? self::generate_code() : '',
+            'collected'  => 0,
         );
         $opening->id = $DB->insert_record(self::TABLE, $opening);
         self::reset_cache();
         return $opening;
     }
 
+    /** Tire un code de séance. */
+    public static function generate_code(): string {
+        $code = '';
+        $max = strlen(self::CODE_ALPHABET) - 1;
+        for ($i = 0; $i < self::CODE_LENGTH; $i++) {
+            $code .= self::CODE_ALPHABET[random_int(0, $max)];
+        }
+        return $code;
+    }
+
     /**
-     * Heure de fermeture automatique pour une durée choisie (0 = manuelle).
+     * Heure de fin de base pour une durée choisie (0 = jusqu'à fermeture).
      *
      * @throws \moodle_exception « fin du créneau » sans créneau en cours
      */
@@ -246,9 +518,15 @@ class gate {
     }
 
     /**
-     * Ferme une ouverture, ou toutes celles de l'activité, puis demande le
-     * ramassage du travail en cours (tâche ad hoc : remettre le devoir d'un
-     * élève demande des droits que l'enseignant n'a pas).
+     * Ferme une ouverture, ou toutes celles de l'activité.
+     *
+     * La fin de base passe à maintenant (une fin prévue déjà passée est
+     * gardée). Les élèves au tiers-temps concernés gardent leur temps majoré,
+     * calculé sur le temps réellement écoulé : l'ouverture ne se ferme
+     * définitivement qu'ensuite, sauf si $force (« Fermer aussi pour le
+     * tiers-temps »). Le travail en cours des élèves qui perdent l'accès est
+     * ramassé (tâche ad hoc : remettre le devoir d'un élève demande des droits
+     * que l'enseignant n'a pas).
      *
      * @param int      $courseid
      * @param int      $cmid
@@ -256,22 +534,27 @@ class gate {
      * @param int      $teacherid
      * @param bool     $collect   ramasser le travail en cours (non quand la
      *                            condition est retirée : l'activité redevient libre)
-     * @return int nombre d'ouvertures fermées
+     * @param bool     $force     fermer aussi pour le tiers-temps
+     * @return int nombre d'ouvertures fermées (ou passées en tiers-temps)
      */
-    public static function close(int $courseid, int $cmid, ?int $openingid, int $teacherid, bool $collect = true): int {
+    public static function close(int $courseid, int $cmid, ?int $openingid, int $teacherid, bool $collect = true,
+            bool $force = false): int {
         global $DB;
         $now = schedule::now();
-        $conditions = array('courseid' => $courseid, 'cmid' => $cmid, 'timeclosed' => 0);
-        if ($openingid !== null) {
-            $conditions['id'] = $openingid;
-        }
         $closed = 0;
-        foreach ($DB->get_records(self::TABLE, $conditions, 'id', 'id, closeat') as $row) {
-            // Une ouverture déjà expirée garde son heure de fin prévue.
+        foreach (self::pending_for_course($courseid) as $row) {
+            if ((int)$row->cmid !== $cmid || ($openingid !== null && (int)$row->id !== $openingid)) {
+                continue;
+            }
             $closeat = (int)$row->closeat;
-            $end = ($closeat > 0 && $closeat <= $now) ? $closeat : $now;
-            $DB->update_record(self::TABLE, (object)array('id' => $row->id, 'timeclosed' => $end,
-                'closedby' => $teacherid));
+            $base = ($closeat > 0 && $closeat <= $now) ? $closeat : $now;
+            $update = (object)array('id' => $row->id, 'closeat' => $base, 'closedby' => $teacherid,
+                'collected' => $collect ? 1 : (int)$row->collected);
+            $row->closeat = $base;
+            if ($force || !$collect || self::max_end($row) <= $now) {
+                $update->timeclosed = $force ? $now : max($base, min($now, self::max_end($row)));
+            }
+            $DB->update_record(self::TABLE, $update);
             $closed++;
         }
         self::reset_cache();
@@ -286,13 +569,13 @@ class gate {
      *
      * @return int nombre d'activités fermées
      */
-    public static function close_course(int $courseid, int $teacherid): int {
-        global $DB;
-        $cmids = $DB->get_fieldset_select(self::TABLE, 'DISTINCT cmid', 'courseid = :courseid AND timeclosed = 0',
-            array('courseid' => $courseid));
+    public static function close_course(int $courseid, int $teacherid, bool $force = false): int {
+        $cmids = array_unique(array_map(function($o) {
+            return (int)$o->cmid;
+        }, self::pending_for_course($courseid)));
         $count = 0;
         foreach ($cmids as $cmid) {
-            if (self::close($courseid, (int)$cmid, null, $teacherid) > 0) {
+            if (self::close($courseid, $cmid, null, $teacherid, true, $force) > 0) {
                 $count++;
             }
         }
@@ -300,23 +583,36 @@ class gate {
     }
 
     /**
-     * Marque fermées les ouvertures dont l'heure de fin est passée (tâche
-     * close_supervised).
+     * Tâche close_supervised : ouvertures dont la fin de base est passée.
+     *   - premier passage : ramassage des élèves sans tiers-temps ;
+     *   - fin du dernier tiers-temps : fermeture définitive et dernier ramassage.
      *
-     * @return int[] cmid => heure de fermeture, des activités concernées
+     * @return array[] ramassages à faire : [cmid, heure de fermeture]
      */
-    public static function close_expired(int $now): array {
+    public static function process_expired(int $now): array {
         global $DB;
         $rows = $DB->get_records_select(self::TABLE, 'timeclosed = 0 AND closeat > 0 AND closeat <= :now',
-            array('now' => $now), 'closeat, id', 'id, cmid, closeat');
-        $cmids = array();
+            array('now' => $now), 'closeat, id', 'id, courseid, cmid, scope, scopeid, timeopened, closeat, collected');
+        $jobs = array();
         foreach ($rows as $row) {
-            $DB->update_record(self::TABLE, (object)array('id' => $row->id, 'timeclosed' => (int)$row->closeat,
-                'closedby' => 0));
-            $cmids[(int)$row->cmid] = max($cmids[(int)$row->cmid] ?? 0, (int)$row->closeat);
+            $update = (object)array('id' => $row->id);
+            if (empty($row->collected)) {
+                $jobs[] = array((int)$row->cmid, (int)$row->closeat);
+                $update->collected = 1;
+            }
+            $final = self::max_end($row);
+            if ($final <= $now) {
+                $update->timeclosed = $final;
+                if ($final > (int)$row->closeat) {
+                    $jobs[] = array((int)$row->cmid, $final);
+                }
+            }
+            if (count((array)$update) > 1) {
+                $DB->update_record(self::TABLE, $update);
+            }
         }
         self::reset_cache();
-        return $cmids;
+        return $jobs;
     }
 
     /** Demande le ramassage du travail en cours d'une activité qui vient de fermer. */
