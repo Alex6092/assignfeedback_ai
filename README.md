@@ -241,6 +241,12 @@ cases à cocher dédiées :
 Pratique pour router certaines activités vers un modèle plus puissant ou un endpoint
 différent.
 
+La clé API propre à une **question** ne la suit pas : la duplication d'un test, la
+sauvegarde/restauration, l'import ou la copie de cours et l'export XML reprennent tous
+ses autres réglages (prompt, corrigé, compétences, URL, modèle…), mais pas la clé,
+chiffrée avec la clé du site. La question recréée utilise la clé du site ; ressaisissez
+sa clé propre si besoin.
+
 ---
 
 ## Tuteur IA — consigne transmise ou non
@@ -1162,9 +1168,18 @@ mod/assign/feedback/ai/            Feedback IA des devoirs
 └── settings.php
 
 question/type/aiessay/             Question « composition » corrigée par IA
-├── classes/{job_handler,observer}.php
-├── questiontype.php / question.php / edit_aiessay_form.php / renderer.php
-└── db/{events.php, install.xml}
+├── classes/job_handler.php        Schéma JSON et prompt par défaut (base : local_aifeedback\quiz_grader)
+├── questiontype.php               Options, export/import Moodle XML sans la clé API
+├── question.php / edit_aiessay_form.php / renderer.php
+├── backup/moodle2/                Sauvegarde/restauration des options (duplication de test, import,
+│                                  copie de cours) sans la clé API ; options par défaut si absentes
+└── db/{install.xml, upgrade.php}
+
+question/type/aishortanswer/       Question « réponse courte » corrigée par IA (même organisation)
+├── classes/job_handler.php
+├── questiontype.php / question.php / edit_aishortanswer_form.php / renderer.php
+├── backup/moodle2/
+└── db/install.xml
 
 local/moodlesearch/                MoodleSearch : moteur de recherche Web sans IA
 ├── classes/
