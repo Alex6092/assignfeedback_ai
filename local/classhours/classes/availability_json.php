@@ -19,6 +19,10 @@ defined('MOODLE_INTERNAL') || die();
  * Ce code manipule le JSON sans passer par \core_availability\tree : il reste
  * utilisable même si la condition est désactivée, et il ne dépend d'aucune
  * autre condition installée.
+ *
+ * Le même code sert à la condition « Activité surveillée » (type supervised,
+ * voir gate) : chaque méthode prend le type en dernier paramètre, Heures de
+ * cours par défaut.
  */
 class availability_json {
 
@@ -28,13 +32,15 @@ class availability_json {
     /**
      * La condition est-elle installée ET activée ? Sinon, une activité qui la
      * porte ne s'afficherait plus : on n'en pose jamais.
+     *
+     * @param string $type classhours ou supervised
      */
-    public static function condition_enabled(): bool {
-        if (!class_exists('\availability_classhours\condition')) {
+    public static function condition_enabled(string $type = self::TYPE): bool {
+        if (!class_exists('\availability_' . $type . '\condition')) {
             return false;
         }
         $enabled = \core_plugin_manager::instance()->get_enabled_plugins('availability');
-        return is_array($enabled) && array_key_exists(self::TYPE, $enabled);
+        return is_array($enabled) && array_key_exists($type, $enabled);
     }
 
     /**
@@ -58,14 +64,15 @@ class availability_json {
      * @param string|null $json
      * @param bool|null   $efe  true : posée par l'option EFE ; false : posée à
      *                          la main ; null : l'une ou l'autre
+     * @param string      $type type de la condition
      */
-    public static function has_root_condition(?string $json, ?bool $efe = null): bool {
+    public static function has_root_condition(?string $json, ?bool $efe = null, string $type = self::TYPE): bool {
         $tree = self::decode($json);
         if (!$tree || $tree->op !== '&') {
             return false;
         }
         foreach ($tree->c as $child) {
-            if (self::matches($child, $efe)) {
+            if (self::matches($child, $efe, $type)) {
                 return true;
             }
         }
@@ -79,10 +86,11 @@ class availability_json {
      *
      * @param string|null $json
      * @param bool        $efe marquer la condition comme posée par l'option EFE
+     * @param string      $type type de la condition
      * @return string nouveau JSON
      */
-    public static function add(?string $json, bool $efe): string {
-        $child = (object)array('type' => self::TYPE);
+    public static function add(?string $json, bool $efe, string $type = self::TYPE): string {
+        $child = (object)array('type' => $type);
         if ($efe) {
             $child->efe = 1;
         }
@@ -125,9 +133,10 @@ class availability_json {
      * @param string|null $json
      * @param bool|null   $efe  true : celles de l'option EFE ; false : celles
      *                          posées à la main ; null : toutes
+     * @param string      $type type de la condition
      * @return string|null nouveau JSON, null s'il ne reste aucune restriction
      */
-    public static function remove(?string $json, ?bool $efe): ?string {
+    public static function remove(?string $json, ?bool $efe, string $type = self::TYPE): ?string {
         $tree = self::decode($json);
         if (!$tree) {
             return ($json === null || trim($json) === '') ? null : $json;
@@ -139,7 +148,7 @@ class availability_json {
         $children = array();
         $showc = array();
         foreach (array_values($tree->c) as $index => $child) {
-            if (self::matches($child, $efe)) {
+            if (self::matches($child, $efe, $type)) {
                 continue;
             }
             $children[] = $child;
@@ -172,9 +181,9 @@ class availability_json {
         rebuild_course_cache($courseid, false, true);
     }
 
-    /** Un enfant de l'arbre est-il une condition Heures de cours (du bon genre) ? */
-    private static function matches($child, ?bool $efe): bool {
-        if (!is_object($child) || !isset($child->type) || $child->type !== self::TYPE) {
+    /** Un enfant de l'arbre est-il une condition de ce type (et du bon genre) ? */
+    private static function matches($child, ?bool $efe, string $type): bool {
+        if (!is_object($child) || !isset($child->type) || $child->type !== $type) {
             return false;
         }
         if ($efe === null) {
