@@ -7,3 +7,5 @@ $string['ruledescription'] = 'Ce test se fait pendant les heures de cours : la t
 $string['notinslot'] = 'Le créneau est terminé : vous ne pouvez pas commencer de tentative maintenant.';
 $string['notinslot_next'] = 'Le créneau est terminé : vous ne pouvez pas commencer de tentative maintenant. Prochain créneau : {$a}.';
 $string['task_close'] = 'Heures de cours : clôture des tentatives dont le créneau est terminé';
+$string['ruledescription_supervised'] = 'Ce test est surveillé : il ne se fait que lorsque l\'enseignant l\'ouvre en classe.';
+$string['notopen_supervised'] = 'Ce test ne se fait qu\'en classe : l\'enseignant ne l\'a pas encore ouvert.';

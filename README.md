@@ -24,6 +24,7 @@ compétences).
   (dont [mode « Recherche de matériel »](#mode--recherche-de-matériel-))
 - [MoodleSearch — moteur de recherche Web sans IA](#moodlesearch--moteur-de-recherche-web-sans-ia)
 - [Heures de cours — activités accessibles seulement en classe](#heures-de-cours--activités-accessibles-seulement-en-classe)
+- [Activités surveillées — ouvertes par l'enseignant, en classe](#activités-surveillées--ouvertes-par-lenseignant-en-classe)
 - [Contrôle des tentatives — hors créneau et tentatives suspectes](#contrôle-des-tentatives--hors-créneau-et-tentatives-suspectes)
 - [Structure du dépôt](#structure-du-dépôt)
 - [Feuille de route](#feuille-de-route)
@@ -930,6 +931,98 @@ si l'enseignant rouvre une tentative. L'enseignant n'est jamais concerné.
 
 ---
 
+## Activités surveillées — ouvertes par l'enseignant, en classe
+
+Certaines activités notées se font **en classe uniquement, au moment choisi par
+l'enseignant**, pour qu'il puisse les surveiller. Une activité surveillée reste fermée aux
+élèves (grisée : *« Ouverte seulement quand l'enseignant la lance en classe »*) tant que
+l'enseignant ne l'a pas ouverte.
+
+| Plugin | Emplacement | Rôle |
+|---|---|---|
+| `availability_supervised` | `availability/condition/supervised/` | Condition « Activité surveillée » de la restriction d'accès |
+| `block_supervised` | `blocks/supervised/` | Bloc : l'élève y trouve l'activité ouverte ; l'enseignant y ouvre et ferme |
+| `local_classhours` | `local/classhours/` | Ouvertures, page « Activités surveillées », ramassage, service web |
+| `quizaccess_classhours` | `mod/quiz/accessrule/classhours/` | Test : pas de tentative tant que ce n'est pas ouvert, compte à rebours |
+
+Une activité peut être à la fois surveillée **et** restreinte aux heures de cours : elle
+n'est alors ouverte que pendant un créneau et une fois lancée par l'enseignant.
+
+### Page « Activités surveillées »
+
+Lien dans la navigation du cours.
+
+- **En direct** : une carte par activité surveillée, avec son état (**Ouverte** / **Fermée**,
+  pour qui, jusqu'à quand) et, pour un test ou un devoir, le nombre de tentatives ou
+  brouillons en cours et de copies rendues depuis l'ouverture. La page se met à jour seule
+  toutes les 20 s.
+  - **Ouvrir** : pour **tout le cours**, un **groupe** ou un **élève** (rattrapage d'un
+    absent) ; durée : jusqu'à ce que je ferme, 15 min, 30 min, 1 h, 2 h, ou jusqu'à la fin
+    du créneau des Heures de cours s'il y en a un en cours. Rouvrir la même cible prolonge
+    l'ouverture.
+  - **Fermer** une ouverture, **Fermer l'activité**, ou **Tout fermer** en haut de page.
+- **Choisir les activités surveillées** : une case par devoir ou test (ou toute activité qui
+  porte déjà la condition). Cocher pose la condition, fermée ; décocher la retire et
+  l'activité redevient libre. La condition s'ajoute aussi depuis la restriction d'accès d'une
+  activité.
+- **Historique** : les 20 dernières ouvertures.
+
+Capacités : `local/classhours:supervise` pour ouvrir et fermer (enseignants, enseignants non
+éditeurs, gestionnaires) ; `local/classhours:manage` pour choisir les activités.
+
+### À la fermeture : le travail est ramassé
+
+Comme un ramassage de copies, dans la minute qui suit (tâche `collect_supervised`, ou
+`close_supervised` pour une fermeture à l'heure prévue) :
+- **test** : les tentatives en cours sont envoyées, datées de la fermeture ;
+- **devoir** avec brouillons exigés : les brouillons sont remis par l'API du devoir
+  (notifications, achèvement, ponctualité EFE). Un brouillon vide est laissé tel quel.
+
+Seuls les élèves qui **perdent** l'accès sont concernés : fermer un groupe ne ramasse rien
+chez un élève encore ouvert individuellement. L'activité, elle, est fermée aux élèves
+immédiatement, et à l'heure prévue même avant le passage de la tâche.
+
+### Après la fermeture
+
+Mêmes règles que les heures de cours : un élève déjà noté (note, commentaire, feedback IA
+publié, ou tentative de test terminée) peut rouvrir l'activité pour **lire**. Le verrou de
+remise (site et application mobile), la règle d'accès du test et le **Tuteur IA** empêchent
+tout nouveau travail tant que l'activité n'est pas rouverte pour lui. Un accès ponctuel des
+Heures de cours n'ouvre pas une activité surveillée.
+
+### Bloc « Activités surveillées »
+
+- **Élève**, tableau de bord ou page du cours : l'activité ouverte pour lui, avec l'heure de
+  fermeture et un bouton **Commencer**. Le bloc se rafraîchit toutes les 30 s : une activité
+  que l'enseignant vient d'ouvrir apparaît sans recharger la page.
+- **Enseignant**, page du cours : chaque activité surveillée avec **Ouvrir** (tout le cours,
+  jusqu'à fermeture) ou **Fermer** en un clic, et « Plus d'options » vers la page de
+  pilotage.
+- **Enseignant**, tableau de bord : les activités qu'il a laissées ouvertes, avec **Fermer**.
+
+Pour le proposer à tous les élèves : *Administration > Apparence > Tableau de bord par
+défaut*, ajouter le bloc, puis « Réinitialiser le tableau de bord pour tous les
+utilisateurs ».
+
+### Configuration
+
+1. Installer `local_classhours`, puis `availability_supervised`, `block_supervised` et
+   `quizaccess_classhours`.
+2. Vérifier que la condition « Activité surveillée » est activée (*Administration > Plugins >
+   Restrictions d'accès*) et que la cron tourne (ramassage, fermeture à l'heure prévue).
+
+### Limites connues
+
+- À la fermeture, les réponses saisies depuis le dernier enregistrement automatique du test
+  (réglage du site, 60 s par défaut) ou depuis le dernier changement de page sont perdues,
+  comme lorsqu'un temps limite expire.
+- Seuls les devoirs et les tests sont ramassés et relisibles après fermeture ; les autres
+  activités peuvent être surveillées (ouvrir, fermer), sans ramassage.
+- La condition n'est proposée que sur une activité, pas sur une section. Les ouvertures ne
+  sont pas sauvegardées avec le cours : une activité restaurée est fermée.
+
+---
+
 ## Contrôle des tentatives — hors créneau et tentatives suspectes
 
 `local_attemptcheck` repère les **tentatives de test** et **remises de devoir** à examiner, et
@@ -1052,15 +1145,26 @@ local/classhours/                  Heures de cours : emploi du temps par cours
 │   ├── availability_json.php      Pose / retrait de la condition à la racine du JSON d'accès
 │   ├── efe_bridge.php / efe_sync.php   Option EFE (local_efenotes facultatif)
 │   ├── form/                      Formulaires d'ajout (créneau, ouverture, période fermée)
-│   └── task/sync_efe.php          Rattrapage de l'option EFE
+│   ├── gate.php                   Activités surveillées : ouvertures (cours, groupe, élève, durée)
+│   ├── gate_collector.php         Ramassage à la fermeture (tentatives, brouillons)
+│   ├── supervised_view.php        Affichage partagé : page de pilotage, bloc, rafraîchissement
+│   ├── external/supervised_refresh.php   Service web de rafraîchissement
+│   └── task/                      sync_efe, collect_supervised, close_supervised
 ├── manage.php                     Page « Heures de cours » du cours
+├── supervised.php                 Page « Activités surveillées » du cours
 └── backup/moodle2/                Sauvegarde : niveau cours et niveau activité
 
 availability/condition/classhours/ Condition « Pendant les heures de cours »
 ├── classes/{condition,frontend}.php
 └── yui/                           Formulaire (build = copie de src, pas d'étape de build)
 
-mod/quiz/accessrule/classhours/    Règle de test : fin de tentative à la fin du créneau
+availability/condition/supervised/ Condition « Activité surveillée »
+├── classes/{condition,frontend}.php
+└── yui/
+
+blocks/supervised/                 Bloc « Activités surveillées » (élève, enseignant)
+
+mod/quiz/accessrule/classhours/    Règle de test : fin de tentative à la fin du créneau (et tests surveillés)
 ├── rule.php
 └── classes/task/close_expired_attempts.php
 

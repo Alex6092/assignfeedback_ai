@@ -7,7 +7,8 @@ use local_classhours\grant;
 
 /**
  * Liens de la navigation du cours : « Heures de cours » pour les enseignants
- * qui règlent l'emploi du temps, « Demandes d'accès » (avec le nombre de
+ * qui règlent l'emploi du temps, « Activités surveillées » pour ceux qui les
+ * ouvrent ou les choisissent, « Demandes d'accès » (avec le nombre de
  * demandes en attente) pour ceux qui accordent les accès ponctuels.
  *
  * @param navigation_node $navigation
@@ -21,6 +22,11 @@ function local_classhours_extend_navigation_course(navigation_node $navigation, 
         $navigation->add(get_string('menu', 'local_classhours'),
             new moodle_url('/local/classhours/manage.php', array('courseid' => $course->id)),
             navigation_node::TYPE_SETTING, null, 'localclasshours', new pix_icon('i/calendar', ''));
+    }
+    if (has_capability('local/classhours:supervise', $context) || has_capability('local/classhours:manage', $context)) {
+        $navigation->add(get_string('supervised_menu', 'local_classhours'),
+            new moodle_url('/local/classhours/supervised.php', array('courseid' => $course->id)),
+            navigation_node::TYPE_SETTING, null, 'localclasshourssupervised', new pix_icon('i/lock', ''));
     }
     if (has_capability('local/classhours:grantaccess', $context)) {
         $pending = $DB->count_records(grant::TABLE, array('courseid' => $course->id, 'status' => grant::PENDING));
@@ -48,11 +54,26 @@ function local_classhours_after_require_login($courseorid = null, $autologingues
         return;
     }
     $action = optional_param('action', '', PARAM_ALPHA);
-    if (!in_array($action, access::WRITE_ACTIONS, true) || !access::is_closed_for($cm, (int)$USER->id)) {
+    if (!in_array($action, access::WRITE_ACTIONS, true)) {
+        return;
+    }
+    $reason = access::closed_reason($cm, (int)$USER->id);
+    if ($reason === null) {
         return;
     }
     redirect(new moodle_url('/mod/assign/view.php', array('id' => $cm->id)),
-        get_string('submit_closed', 'local_classhours'), null, \core\output\notification::NOTIFY_WARNING);
+        get_string(local_classhours_closed_message($reason), 'local_classhours'), null,
+        \core\output\notification::NOTIFY_WARNING);
+}
+
+/**
+ * Message du verrou de remise selon la raison de la fermeture.
+ *
+ * @param string $reason classhours|supervised (voir access::closed_reason)
+ * @return string clé de chaîne
+ */
+function local_classhours_closed_message(string $reason): string {
+    return $reason === 'supervised' ? 'submit_closed_supervised' : 'submit_closed';
 }
 
 /**
@@ -80,8 +101,9 @@ function local_classhours_override_webservice_execution($externalfunctioninfo, $
         return false;
     }
     $cm = get_coursemodule_from_instance('assign', (int)$params[$functions[$name]], 0, false, IGNORE_MISSING);
-    if ($cm && access::is_closed_for($cm, (int)$USER->id)) {
-        throw new moodle_exception('submit_closed', 'local_classhours');
+    $reason = $cm ? access::closed_reason($cm, (int)$USER->id) : null;
+    if ($reason !== null) {
+        throw new moodle_exception(local_classhours_closed_message($reason), 'local_classhours');
     }
     return false;
 }

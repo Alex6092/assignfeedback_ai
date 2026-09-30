@@ -22,6 +22,18 @@ $capabilities = array(
         ),
     ),
 
+    // Ouvrir et fermer les activités surveillées du cours (enseignant).
+    'local/classhours:supervise' => array(
+        'riskbitmask'  => RISK_PERSONAL,
+        'captype'      => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes'   => array(
+            'teacher'        => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager'        => CAP_ALLOW,
+        ),
+    ),
+
     // Accepter, refuser ou accorder un accès exceptionnel (enseignant).
     'local/classhours:grantaccess' => array(
         'riskbitmask'  => RISK_PERSONAL,

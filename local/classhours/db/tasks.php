@@ -13,4 +13,14 @@ $tasks = array(
         'month'     => '*',
         'dayofweek' => '*',
     ),
+    // Activités surveillées ouvertes avec une durée : fermeture et ramassage.
+    array(
+        'classname' => '\local_classhours\task\close_supervised',
+        'blocking'  => 0,
+        'minute'    => '*',
+        'hour'      => '*',
+        'day'       => '*',
+        'month'     => '*',
+        'dayofweek' => '*',
+    ),
 );

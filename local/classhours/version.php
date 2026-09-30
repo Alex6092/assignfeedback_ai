@@ -12,9 +12,14 @@ defined('MOODLE_INTERNAL') || die();
  *
  * Pont OPTIONNEL vers local_efenotes (détecté à l'exécution) : restriction
  * automatique des activités qui ont une remontée EFE.
+ *
+ * Activités surveillées : l'enseignant ouvre et ferme lui-même certaines
+ * activités, en classe (condition availability_supervised, bloc
+ * block_supervised). Les ouvertures, la page de pilotage et le ramassage du
+ * travail en cours sont ici.
  */
 $plugin->component = 'local_classhours';
-$plugin->version   = 2026093000;       // YYYYMMDDXX
+$plugin->version   = 2026093001;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4 (\core\clock via \core\di)
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.3.0';          // Lecture hors créneau, verrou de remise, accès ponctuel sur demande
+$plugin->release   = '0.4.0';          // Activités surveillées : ouvertes et fermées par l'enseignant, en classe
