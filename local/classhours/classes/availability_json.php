@@ -94,7 +94,31 @@ class availability_json {
         if ($efe) {
             $child->efe = 1;
         }
+        return self::add_child($json, $child);
+    }
 
+    /**
+     * Conditions de la racine d'un arbre « toutes les conditions » ([] sinon).
+     *
+     * @param string|null $json
+     * @return \stdClass[]
+     */
+    public static function root_children(?string $json): array {
+        $tree = self::decode($json);
+        if (!$tree || $tree->op !== '&') {
+            return array();
+        }
+        return array_values(array_filter($tree->c, 'is_object'));
+    }
+
+    /**
+     * Ajoute une condition quelconque à la racine (voir add()).
+     *
+     * @param string|null $json
+     * @param \stdClass   $child la condition, ex. {"type":"supervised","lock":12}
+     * @return string nouveau JSON
+     */
+    public static function add_child(?string $json, \stdClass $child): string {
         $tree = self::decode($json);
         if (!$tree) {
             return json_encode((object)array('op' => '&', 'c' => array($child), 'showc' => array(true)));
@@ -137,6 +161,19 @@ class availability_json {
      * @return string|null nouveau JSON, null s'il ne reste aucune restriction
      */
     public static function remove(?string $json, ?bool $efe, string $type = self::TYPE): ?string {
+        return self::remove_where($json, function($child) use ($efe, $type) {
+            return self::matches($child, $efe, $type);
+        });
+    }
+
+    /**
+     * Retire de la racine les conditions qui satisfont $match.
+     *
+     * @param string|null $json
+     * @param callable    $match fonction(\stdClass $child): bool
+     * @return string|null nouveau JSON, null s'il ne reste aucune restriction
+     */
+    public static function remove_where(?string $json, callable $match): ?string {
         $tree = self::decode($json);
         if (!$tree) {
             return ($json === null || trim($json) === '') ? null : $json;
@@ -148,7 +185,7 @@ class availability_json {
         $children = array();
         $showc = array();
         foreach (array_values($tree->c) as $index => $child) {
-            if (self::matches($child, $efe, $type)) {
+            if (is_object($child) && $match($child)) {
                 continue;
             }
             $children[] = $child;

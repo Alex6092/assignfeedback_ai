@@ -155,6 +155,7 @@ $string['notsupported']    = 'Le tuteur IA n\'est pas disponible sur ce type d\'
 $string['tutordisabled']   = 'Le tuteur IA n\'est pas activé sur cette activité.';
 $string['closed_classhours'] = 'Le tuteur IA n\'est disponible que pendant les heures de cours.';
 $string['closed_supervised'] = 'Le tuteur IA n\'est disponible que lorsque l\'enseignant ouvre cette activité en classe.';
+$string['closed_exam']       = 'Évaluation en cours : le tuteur IA est indisponible dans ce cours jusqu\'à la fin de la séance.';
 $string['closed_submitted']  = 'Ton devoir est remis : le tuteur IA n\'est plus disponible pour cette activité.';
 $string['error_empty']     = 'Votre message est vide.';
 $string['error_toolong']   = 'Votre message dépasse {$a} caractères. Raccourcissez-le.';

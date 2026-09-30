@@ -41,7 +41,7 @@ class quizaccess_classhours extends access_rule_base {
         }
         $classhours = availability_json::has_root_condition($cm->availability)
             && availability_json::condition_enabled();
-        $supervised = availability_json::has_root_condition($cm->availability, null, gate::TYPE)
+        $supervised = gate::is_supervised_json($cm->availability)
             && availability_json::condition_enabled(gate::TYPE);
         if (!$classhours && !$supervised) {
             return null;

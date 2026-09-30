@@ -83,15 +83,48 @@ class notifier {
     }
 
     /**
+     * Activité surveillée : l'élève demande à la rattraper. Prévient les
+     * enseignants qui ouvrent les activités surveillées (même filtrage par
+     * groupes que les demandes d'accès).
+     */
+    public static function catchup_requested(\cm_info $cm, int $userid): void {
+        try {
+            $student = \core_user::get_user($userid);
+            if (!$student) {
+                return;
+            }
+            $a = (object)array(
+                'student'  => fullname($student),
+                'activity' => format_string($cm->name, true, array('context' => \context_module::instance($cm->id))),
+                'course'   => format_string($cm->get_course()->shortname),
+            );
+            $url = new \moodle_url('/local/classhours/supervised.php', array('courseid' => (int)$cm->course),
+                'cm' . (int)$cm->id);
+            foreach (self::teachers_for($cm, $userid, 'local/classhours:supervise') as $teacher) {
+                self::send('catchuprequest', $teacher, (int)$cm->course,
+                    get_string('msg_catchup_subject', 'local_classhours', $a),
+                    get_string('msg_catchup_body', 'local_classhours', $a),
+                    $url, get_string('supervised_menu', 'local_classhours'));
+            }
+        } catch (\Throwable $e) {
+            debugging('local_classhours : notification de rattrapage non envoyée — ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+    }
+
+    /**
      * Enseignants à prévenir pour une demande de cet élève sur cette activité.
      *
+     * @param \cm_info $cm
+     * @param int      $studentid
+     * @param string   $capability capacité des enseignants à prévenir
      * @return \stdClass[]
      */
-    public static function teachers_for(\cm_info $cm, int $studentid): array {
+    public static function teachers_for(\cm_info $cm, int $studentid,
+            string $capability = 'local/classhours:grantaccess'): array {
         global $CFG;
         require_once($CFG->libdir . '/grouplib.php');
         $context = \context_module::instance($cm->id);
-        $teachers = get_users_by_capability($context, 'local/classhours:grantaccess',
+        $teachers = get_users_by_capability($context, $capability,
             'u.*', 'u.lastname, u.firstname', '', '', '', '', false, true);
         unset($teachers[$studentid]);
         if (!$teachers || groups_get_activity_groupmode($cm) != SEPARATEGROUPS) {

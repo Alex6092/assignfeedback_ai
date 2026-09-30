@@ -54,11 +54,21 @@ class backup_local_classhours_plugin extends backup_local_plugin {
         $wrapper = new backup_nested_element($this->get_recommended_name());
 
         $exclude = new backup_nested_element('classhours_exclude', array('id'), array('timecreated'));
+        // Activité surveillée : options et dates prévues (les ouvertures, temporaires, ne suivent pas).
+        $options = new backup_nested_element('classhours_supervised', array('id'), array('sessioncode', 'exammode'));
+        $plans = new backup_nested_element('classhours_plans');
+        $planned = new backup_nested_element('classhours_plan', array('id'), array('groupid', 'timeplanned'));
 
         $plugin->add_child($wrapper);
         $wrapper->add_child($exclude);
+        $wrapper->add_child($options);
+        $wrapper->add_child($plans);
+        $plans->add_child($planned);
 
         $exclude->set_source_table('local_classhours_exclude', array('cmid' => backup::VAR_MODID));
+        $options->set_source_table('local_classhours_supervised', array('cmid' => backup::VAR_MODID));
+        $planned->set_source_table('local_classhours_plan', array('cmid' => backup::VAR_MODID));
+        $planned->annotate_ids('group', 'groupid');
 
         return $plugin;
     }

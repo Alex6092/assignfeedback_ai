@@ -8,11 +8,11 @@ defined('MOODLE_INTERNAL') || die();
  * son tableau de bord celles qu'il a laissées ouvertes.
  */
 $plugin->component = 'block_supervised';
-$plugin->version   = 2026093001;       // YYYYMMDDXX
+$plugin->version   = 2026100100;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0';
+$plugin->release   = '0.2.0';          // Frise : faites, à rattraper, ouverte, à venir
 $plugin->dependencies = array(
     // Ouvertures, affichage et service web de rafraîchissement.
-    'local_classhours' => 2026093001,
+    'local_classhours' => 2026100100,
 );

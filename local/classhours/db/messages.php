@@ -18,4 +18,12 @@ $messageproviders = array(
             'email' => MESSAGE_PERMITTED,
         ),
     ),
+    // Un élève demande à rattraper une activité surveillée : prévient les enseignants.
+    'catchuprequest' => array(
+        'capability' => 'local/classhours:supervise',
+        'defaults'   => array(
+            'popup' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+            'email' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+        ),
+    ),
 );

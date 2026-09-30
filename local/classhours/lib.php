@@ -3,7 +3,9 @@ defined('MOODLE_INTERNAL') || die();
 
 use local_classhours\access;
 use local_classhours\efe_sync;
+use local_classhours\gate;
 use local_classhours\grant;
+use local_classhours\plan;
 
 /**
  * Liens de la navigation du cours : « Heures de cours » pour les enseignants
@@ -50,6 +52,7 @@ function local_classhours_extend_navigation_course(navigation_node $navigation, 
 function local_classhours_after_require_login($courseorid = null, $autologinguest = null, $cm = null,
         $setwantsurltome = null, $preventredirect = null) {
     global $SCRIPT, $USER;
+    local_classhours_exam_guard($courseorid, $cm, !empty($preventredirect));
     if (!$cm || ($cm->modname ?? '') !== 'assign' || $SCRIPT !== '/mod/assign/view.php') {
         return;
     }
@@ -64,6 +67,48 @@ function local_classhours_after_require_login($courseorid = null, $autologingues
     redirect(new moodle_url('/mod/assign/view.php', array('id' => $cm->id)),
         get_string(local_classhours_closed_message($reason), 'local_classhours'), null,
         \core\output\notification::NOTIFY_WARNING);
+}
+
+/**
+ * Mode examen d'une activité surveillée : pendant la séance, toute autre page
+ * du cours (activités, page du cours, fichiers — pluginfile passe aussi par
+ * require_login) renvoie l'élève vers l'activité d'examen. Restent ouvertes
+ * l'activité d'examen elle-même (et la saisie de son code de séance) et une
+ * autre activité surveillée ouverte pour lui. En AJAX ou en service web, la
+ * requête est refusée.
+ *
+ * @param stdClass|int|null $courseorid
+ * @param cm_info|stdClass|null $cm
+ * @param bool $preventredirect
+ * @throws moodle_exception en AJAX ou en service web
+ */
+function local_classhours_exam_guard($courseorid, $cm, bool $preventredirect): void {
+    global $USER, $SCRIPT;
+    if (!isloggedin() || isguestuser() || $SCRIPT === '/local/classhours/code.php') {
+        return;
+    }
+    $courseid = is_object($courseorid) ? (int)$courseorid->id : (int)$courseorid;
+    if ($courseid <= 0 && $cm) {
+        $courseid = (int)$cm->course;
+    }
+    if ($courseid <= SITEID) {
+        return;
+    }
+    $examcmid = access::exam_cmid($courseid, (int)$USER->id);
+    if ($examcmid === null) {
+        return;
+    }
+    if ($cm && ((int)$cm->id === $examcmid || (gate::is_supervised_json($cm->availability ?? null)
+            && gate::in_window($courseid, (int)$cm->id, (int)$USER->id)))) {
+        return;
+    }
+    if ($preventredirect) {
+        throw new moodle_exception('exam_locked', 'local_classhours');
+    }
+    $cms = get_fast_modinfo($courseid)->get_cms();
+    $exam = $cms[$examcmid] ?? null;
+    $url = ($exam && $exam->url) ? $exam->url : new moodle_url('/course/view.php', array('id' => $courseid));
+    redirect($url, get_string('exam_redirect', 'local_classhours'), null, \core\output\notification::NOTIFY_WARNING);
 }
 
 /**
@@ -121,4 +166,16 @@ function local_classhours_coursemodule_edit_post_actions($data, $course) {
         efe_sync::defer_cm((int)$data->coursemodule);
     }
     return $data;
+}
+
+/**
+ * Suppression d'une activité : ses réglages d'activité surveillée (options,
+ * dates prévues) partent avec elle.
+ *
+ * @param stdClass $cm
+ */
+function local_classhours_pre_course_module_delete($cm) {
+    if (!empty($cm->id)) {
+        plan::delete_for_cm((int)$cm->id);
+    }
 }

@@ -20,3 +20,11 @@ $string['manage_link'] = 'Ouvrir / fermer';
 // Formulaire de restriction d'accès.
 $string['form_label'] = 'Activité surveillée';
 $string['form_help'] = 'Fermée tant que l\'enseignant ne l\'ouvre pas.';
+
+// Code de séance et activités liées.
+$string['desc_code'] = '<strong>Ouverte</strong> : saisissez le code de séance affiché en classe pour commencer.';
+$string['code_link'] = 'Saisir le code';
+$string['desc_lock'] = 'Indisponible pendant l\'activité surveillée {$a}';
+$string['desc_lock_not'] = 'Seulement pendant l\'activité surveillée {$a}';
+$string['desc_lock_missing'] = 'Liée à une activité surveillée supprimée (sans effet)';
+$string['form_lock'] = 'Fermée pendant l\'activité surveillée « {$a} »';

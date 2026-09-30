@@ -108,9 +108,11 @@
         <FIELD NAME="scopeid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Groupe ou élève (0 pour tout le cours)"/>
         <FIELD NAME="openedby"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a ouvert"/>
         <FIELD NAME="timeopened" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
-        <FIELD NAME="closeat"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Fermeture automatique (0 : manuelle)"/>
+        <FIELD NAME="closeat"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Fin de base (0 : jusqu'à fermeture) ; le tiers-temps la prolonge par élève"/>
         <FIELD NAME="closedby"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a fermé (0 : fermeture automatique ou pas encore fermée)"/>
-        <FIELD NAME="timeclosed" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="0 tant que l'ouverture n'est pas fermée"/>
+        <FIELD NAME="timeclosed" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Fermeture définitive, tiers-temps écoulé (0 tant qu'elle n'a pas eu lieu)"/>
+        <FIELD NAME="code"       TYPE="char" LENGTH="8"  NOTNULL="true"  SEQUENCE="false" DEFAULT="" COMMENT="Code de séance à saisir par l'élève ('' : pas de code)"/>
+        <FIELD NAME="collected"  TYPE="int"  LENGTH="1"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="1 : ramassage de la fin de base fait"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -118,6 +120,85 @@
       <INDEXES>
         <INDEX NAME="course_closed" UNIQUE="false" FIELDS="courseid, timeclosed"/>
         <INDEX NAME="cm_closed"     UNIQUE="false" FIELDS="cmid, timeclosed"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_classhours_supervised" COMMENT="Options d'une activité surveillée (valeurs par défaut sans ligne)">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"     TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="cmid"         TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="sessioncode"  TYPE="int" LENGTH="1"  NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="1 : l'élève saisit le code de séance pour commencer"/>
+        <FIELD NAME="exammode"     TYPE="int" LENGTH="1"  NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="1 : le reste du cours et le Tuteur IA sont fermés pendant la séance"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cmid"   UNIQUE="true"  FIELDS="cmid"/>
+        <INDEX NAME="course" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_classhours_plan" COMMENT="Date prévue d'une activité surveillée, pour tout le cours (groupid 0) ou pour un groupe">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"    TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="cmid"        TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="groupid"     TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timeplanned" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm_group" UNIQUE="true"  FIELDS="cmid, groupid"/>
+        <INDEX NAME="course"   UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_classhours_catchup" COMMENT="Demandes de rattrapage d'une activité surveillée par un élève">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"    TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="cmid"        TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="status"      TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="pending|done|cancelled"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timedone"    TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm_user_status" UNIQUE="false" FIELDS="cmid, userid, status"/>
+        <INDEX NAME="course_status"  UNIQUE="false" FIELDS="courseid, status"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_classhours_extratime" COMMENT="Tiers-temps : élèves dont la durée d'une activité surveillée est majorée">
+      <FIELDS>
+        <FIELD NAME="id"       TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="userid"   TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="percent"  TYPE="int" LENGTH="3"  NOTNULL="true" SEQUENCE="false" DEFAULT="33"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course_user" UNIQUE="true" FIELDS="courseid, userid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_classhours_present" COMMENT="Code de séance saisi par un élève pour une ouverture (vaut présence)">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="gateid"      TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="userid"      TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="gate_user" UNIQUE="true" FIELDS="gateid, userid"/>
       </INDEXES>
     </TABLE>
   </TABLES>

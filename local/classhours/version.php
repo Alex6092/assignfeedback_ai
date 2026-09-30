@@ -19,7 +19,7 @@ defined('MOODLE_INTERNAL') || die();
  * travail en cours sont ici.
  */
 $plugin->component = 'local_classhours';
-$plugin->version   = 2026093001;       // YYYYMMDDXX
+$plugin->version   = 2026100100;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4 (\core\clock via \core\di)
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.4.0';          // Activités surveillées : ouvertes et fermées par l'enseignant, en classe
+$plugin->release   = '0.5.0';          // Activités surveillées : frise, rattrapage, dates prévues, activités liées, code de séance, tiers-temps, mode examen

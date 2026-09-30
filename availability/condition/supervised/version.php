@@ -8,11 +8,11 @@ defined('MOODLE_INTERNAL') || die();
  * cours sont dans local_classhours.
  */
 $plugin->component = 'availability_supervised';
-$plugin->version   = 2026093001;       // YYYYMMDDXX
+$plugin->version   = 2026100100;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0';
+$plugin->release   = '0.2.0';          // Activités liées (verrou), code de séance
 $plugin->dependencies = array(
     // Ouvertures (gate), lecture du travail noté (access).
-    'local_classhours' => 2026093001,
+    'local_classhours' => 2026100100,
 );

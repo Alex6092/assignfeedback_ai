@@ -70,5 +70,27 @@ function xmldb_local_classhours_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026093001, 'local', 'classhours');
     }
 
+    if ($oldversion < 2026100100) {
+        // Activités surveillées v2 : code de séance, ramassage en deux temps
+        // (tiers-temps), options, dates prévues, rattrapage, tiers-temps, présence.
+        $table = new xmldb_table('local_classhours_gate');
+        $fields = array(
+            new xmldb_field('code', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, '', 'timeclosed'),
+            new xmldb_field('collected', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'code'),
+        );
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        foreach (array('local_classhours_supervised', 'local_classhours_plan', 'local_classhours_catchup',
+                'local_classhours_extratime', 'local_classhours_present') as $name) {
+            if (!$dbman->table_exists($name)) {
+                $dbman->install_one_table_from_xmldb_file(__DIR__ . '/install.xml', $name);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026100100, 'local', 'classhours');
+    }
+
     return true;
 }

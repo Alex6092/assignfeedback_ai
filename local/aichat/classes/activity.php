@@ -145,6 +145,7 @@ class activity {
      *     travailler avec le tuteur. Dépendance souple : local_classhours n'est
      *     qu'une option ;
      *   - activité surveillée que l'enseignant n'a pas ouverte (même règle) ;
+     *   - pendant une activité surveillée en mode examen : tout le cours ;
      *   - devoir déjà remis et plus modifiable (brouillons exigés et devoir
      *     envoyé, ou date limite passée) : il n'y a plus rien à y travailler.
      *     Une nouvelle tentative rouverte rend le tuteur de nouveau disponible.
@@ -161,6 +162,11 @@ class activity {
             return null;
         }
         if (class_exists('\local_classhours\access')) {
+            // Mode examen d'une activité surveillée : tuteur coupé dans tout le cours.
+            if (method_exists('\local_classhours\access', 'exam_cmid')
+                    && \local_classhours\access::exam_cmid((int)$cm->course, $userid) !== null) {
+                return 'closed_exam';
+            }
             if (method_exists('\local_classhours\access', 'closed_reason')) {
                 $closed = \local_classhours\access::closed_reason($cm, $userid);
                 if ($closed !== null) {

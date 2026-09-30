@@ -107,7 +107,46 @@ class restore_local_classhours_plugin extends restore_local_plugin {
     protected function define_module_plugin_structure() {
         return array(
             new restore_path_element($this->get_namefor('exclude'), $this->get_pathfor('/classhours_exclude')),
+            new restore_path_element($this->get_namefor('supervised'), $this->get_pathfor('/classhours_supervised')),
+            new restore_path_element($this->get_namefor('plan'), $this->get_pathfor('/classhours_plans/classhours_plan')),
         );
+    }
+
+    /**
+     * Options d'activité surveillée, rattachées au nouveau module.
+     *
+     * @param array|\stdClass $data
+     */
+    public function process_local_classhours_supervised($data) {
+        $data = (object)$data;
+        $cmid = (int)$this->task->get_moduleid();
+        if ($cmid > 0) {
+            \local_classhours\plan::save_options((int)$this->task->get_courseid(), $cmid,
+                !empty($data->sessioncode), !empty($data->exammode));
+        }
+    }
+
+    /**
+     * Date prévue d'une activité surveillée : décalée comme les dates du cours,
+     * groupe remappé (une date d'un groupe non restauré est ignorée).
+     *
+     * @param array|\stdClass $data
+     */
+    public function process_local_classhours_plan($data) {
+        global $DB;
+        $data = (object)$data;
+        $cmid = (int)$this->task->get_moduleid();
+        $groupid = $this->map_group((int)$data->groupid);
+        if ($cmid <= 0 || $groupid === null || empty($data->timeplanned)) {
+            return;
+        }
+        $courseid = (int)$this->task->get_courseid();
+        $row = (object)array('courseid' => $courseid, 'cmid' => $cmid, 'groupid' => $groupid,
+            'timeplanned' => $this->apply_date_offset((int)$data->timeplanned));
+        if (!$DB->record_exists('local_classhours_plan', array('cmid' => $cmid, 'groupid' => $groupid))) {
+            $DB->insert_record('local_classhours_plan', $row);
+        }
+        \local_classhours\plan::reset_cache();
     }
 
     /**

@@ -143,7 +143,8 @@ class access {
      * Pourquoi l'activité est fermée à cet élève pour du travail :
      *   - 'classhours' : hors de ses heures de cours, sans accès ponctuel ;
      *   - 'supervised' : activité surveillée que l'enseignant n'a pas ouverte
-     *     pour lui (un accès ponctuel des Heures de cours n'y change rien) ;
+     *     pour lui, ou dont il n'a pas encore saisi le code de séance (un
+     *     accès ponctuel des Heures de cours n'y change rien) ;
      *   - null : ouverte.
      * Une activité qui porte les deux conditions exige les deux ouvertures.
      *
@@ -157,7 +158,7 @@ class access {
         }
         $classhours = availability_json::has_root_condition($cm->availability)
             && availability_json::condition_enabled();
-        $supervised = availability_json::has_root_condition($cm->availability, null, gate::TYPE)
+        $supervised = gate::is_supervised_json($cm->availability)
             && availability_json::condition_enabled(gate::TYPE);
         if (!$classhours && !$supervised) {
             return null;
@@ -175,6 +176,26 @@ class access {
             return 'supervised';
         }
         return null;
+    }
+
+    /**
+     * Mode examen : l'activité surveillée (en mode examen) pendant laquelle
+     * le reste du cours et le Tuteur IA sont fermés à cet élève, ou null.
+     * Les enseignants (qui passent outre les restrictions) ne sont jamais
+     * concernés, ni un cours où la condition est désactivée.
+     */
+    public static function exam_cmid(int $courseid, int $userid): ?int {
+        if ($courseid <= SITEID || !availability_json::condition_enabled(gate::TYPE)) {
+            return null;
+        }
+        $cmid = gate::exam_cmid($courseid, $userid);
+        if ($cmid === null) {
+            return null;
+        }
+        if (has_capability('moodle/course:ignoreavailabilityrestrictions', \context_course::instance($courseid), $userid)) {
+            return null;
+        }
+        return $cmid;
     }
 
     private static function ai_table_exists(): bool {
