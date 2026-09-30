@@ -146,5 +146,27 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091905, 'local', 'aichat');
     }
 
+    // 2026093002 : la consigne n'est plus transmise au tuteur par défaut. Avec
+    // elle, le modèle peut juger la réponse de l'élève et la lui confirmer.
+    // La case est décochée sur les activités existantes, SAUF les devoirs créés
+    // par Missions IA : leur consigne est la demande du client, sans laquelle
+    // le tuteur ne sait pas ce que l'équipe doit livrer. L'enseignant peut
+    // ensuite recocher ou décocher activité par activité.
+    if ($oldversion < 2026093002) {
+        $table = new xmldb_table('local_aichat_activity');
+        $field = new xmldb_field('includeintro', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'enabled');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_default($table, $field);
+        }
+        if ($dbman->table_exists('local_aimissions_mission')) {
+            $DB->execute('UPDATE {local_aichat_activity} SET includeintro = 0
+                           WHERE cmid NOT IN (SELECT assigncmid FROM {local_aimissions_mission} WHERE assigncmid > 0)');
+        } else {
+            $DB->set_field('local_aichat_activity', 'includeintro', 0);
+        }
+        set_config('includeintrodefault', 0, 'local_aichat');
+        upgrade_plugin_savepoint(true, 2026093002, 'local', 'aichat');
+    }
+
     return true;
 }

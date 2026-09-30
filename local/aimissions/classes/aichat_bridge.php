@@ -24,9 +24,10 @@ class aichat_bridge {
     /**
      * Active le tuteur sur un devoir, puis met son brief en file.
      *
-     * La consigne et le brief sont transmis au tuteur. Le brief est fabriqué à
-     * partir de l'énoncé et du corrigé de la Correction IA : à appeler APRÈS
-     * leur écriture.
+     * La consigne (demande du client) et le brief sont transmis au tuteur à la
+     * première configuration ; ensuite, le choix de l'enseignant sur le devoir
+     * n'est plus écrasé. Le brief est fabriqué à partir de l'énoncé et du
+     * corrigé de la Correction IA : à appeler APRÈS leur écriture.
      *
      * @param int $cmid
      * @param int $courseid
@@ -37,12 +38,19 @@ class aichat_bridge {
         if (!self::is_available() || $cmid <= 0) {
             return false;
         }
-        \local_aichat\activity::save($cmid, $courseid, array(
+        $data = array(
             'enabled'      => 1,
-            'includeintro' => 1,
             'includebrief' => 1,
             'websearch'    => max(self::SEARCH_NONE, min(self::SEARCH_MATERIAL, $search)),
-        ));
+        );
+        // La demande du client est dans les « Instructions de l'activité » :
+        // sans elle, le tuteur ne sait pas ce que l'équipe doit livrer. Elle
+        // est donc transmise à la première configuration, quel que soit le
+        // défaut du site ; un choix de l'enseignant n'est ensuite plus écrasé.
+        if (\local_aichat\activity::get($cmid) === null) {
+            $data['includeintro'] = 1;
+        }
+        \local_aichat\activity::save($cmid, $courseid, $data);
         self::refresh_brief($cmid);
         return true;
     }

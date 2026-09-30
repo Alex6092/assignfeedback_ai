@@ -243,6 +243,25 @@ différent.
 
 ---
 
+## Tuteur IA — consigne transmise ou non
+
+La case **« Transmettre la consigne au tuteur »** de la section Tuteur IA d'une activité
+ajoute la description et les « Instructions de l'activité » au contexte du tuteur. Elle est
+**décochée par défaut** : avec la consigne, le modèle peut juger la réponse de l'élève et
+lui confirmer qu'elle est juste. Sans elle, le tuteur s'appuie sur le titre, les
+compétences, le brief pédagogique et ce que l'élève lui explique.
+
+- Le défaut vient du réglage du site *Transmettre la consigne au tuteur, par défaut*
+  (décoché), appliqué dans le formulaire de l'activité.
+- **Missions IA** : la case est **cochée** sur les devoirs qu'il crée. Leur consigne est
+  la demande du client ; sans elle, le tuteur ne sait pas ce que l'équipe doit livrer. Un
+  choix fait ensuite sur le devoir n'est plus écrasé par Missions.
+- La mise à jour 0.5.8 a décoché la case sur les activités existantes, sauf les devoirs
+  créés par Missions IA : la recocher là où la consigne est utile au tuteur et ne contient
+  aucun élément de réponse.
+
+---
+
 ## Tuteur IA — duplication, sauvegarde, réinitialisation
 
 La section « Tuteur IA » d'un devoir suit l'activité :
