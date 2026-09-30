@@ -8,7 +8,7 @@
         <FIELD NAME="cmid"          TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="courseid"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="enabled"       TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="includeintro"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="1" COMMENT="Give the activity description to the tutor"/>
+        <FIELD NAME="includeintro"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0" COMMENT="Give the activity instructions to the tutor (off by default)"/>
         <FIELD NAME="includebrief"  TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="1" COMMENT="Give the pedagogical brief (derived from the marking scheme) to the tutor"/>
         <FIELD NAME="brief"         TYPE="text"              NOTNULL="false" COMMENT="Criteria and attention points, NEVER the solution"/>
         <FIELD NAME="briefstatus"   TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="none" COMMENT="none|pending|ready|failed"/>

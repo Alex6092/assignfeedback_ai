@@ -24,9 +24,11 @@ class aichat_bridge {
     /**
      * Active le tuteur sur un devoir, puis met son brief en file.
      *
-     * La consigne et le brief sont transmis au tuteur. Le brief est fabriqué à
-     * partir de l'énoncé et du corrigé de la Correction IA : à appeler APRÈS
-     * leur écriture.
+     * Le brief est transmis au tuteur ; la consigne suit le réglage du site
+     * « Transmettre la consigne par défaut » (décoché) à la première
+     * configuration, puis le choix de l'enseignant sur le devoir, qui n'est
+     * plus écrasé. Le brief est fabriqué à partir de l'énoncé et du corrigé de
+     * la Correction IA : à appeler APRÈS leur écriture.
      *
      * @param int $cmid
      * @param int $courseid
@@ -39,7 +41,6 @@ class aichat_bridge {
         }
         \local_aichat\activity::save($cmid, $courseid, array(
             'enabled'      => 1,
-            'includeintro' => 1,
             'includebrief' => 1,
             'websearch'    => max(self::SEARCH_NONE, min(self::SEARCH_MATERIAL, $search)),
         ));

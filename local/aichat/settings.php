@@ -27,6 +27,16 @@ if ($hassiteconfig) {
         PARAM_RAW
     ));
 
+    // Case « Transmettre la consigne au tuteur » d'une activité nouvellement
+    // configurée (formulaire, devoirs créés par Missions). Décochée : avec la
+    // consigne, le modèle peut dire à l'élève si sa réponse est juste.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/includeintrodefault',
+        new lang_string('setting_includeintrodefault', 'local_aichat'),
+        new lang_string('setting_includeintrodefault_help', 'local_aichat'),
+        0
+    ));
+
     $settings->add(new admin_setting_configtext(
         'local_aichat/temperature',
         new lang_string('setting_temperature', 'local_aichat'),

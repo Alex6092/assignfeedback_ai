@@ -41,6 +41,15 @@ class activity {
     }
 
     /**
+     * Valeur de « Transmettre la consigne au tuteur » pour une activité
+     * nouvellement configurée : réglage du site, décoché par défaut. Avec la
+     * consigne, le modèle peut juger la réponse de l'élève et la lui confirmer.
+     */
+    public static function includeintro_default(): int {
+        return get_config('local_aichat', 'includeintrodefault') ? 1 : 0;
+    }
+
+    /**
      * Enregistre (crée ou met à jour) la configuration d'une activité.
      *
      * @param int   $cmid
@@ -58,7 +67,7 @@ class activity {
                 'cmid'         => (int)$cmid,
                 'courseid'     => (int)$courseid,
                 'enabled'      => 0,
-                'includeintro' => 1,
+                'includeintro' => self::includeintro_default(),
                 'includebrief' => 1,
                 'brief'        => null,
                 'briefstatus'  => 'none',

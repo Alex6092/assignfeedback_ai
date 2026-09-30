@@ -38,7 +38,8 @@ function local_aichat_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->addElement('advcheckbox', 'aichatincludeintro',
         get_string('form_includeintro', 'local_aichat'));
     $mform->addHelpButton('aichatincludeintro', 'form_includeintro', 'local_aichat');
-    $mform->setDefault('aichatincludeintro', ($config === null || $config->includeintro) ? 1 : 0);
+    $mform->setDefault('aichatincludeintro',
+        ($config === null ? activity::includeintro_default() : (int)$config->includeintro) ? 1 : 0);
     $mform->hideIf('aichatincludeintro', 'aichatenabled', 'notchecked');
 
     // Le brief n'a de sens que si la correction IA fournit un corrigé.

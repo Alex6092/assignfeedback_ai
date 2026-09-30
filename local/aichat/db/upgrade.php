@@ -146,5 +146,20 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026091905, 'local', 'aichat');
     }
 
+    // 2026093002 : la consigne n'est plus transmise au tuteur par défaut. Avec
+    // elle, le modèle peut juger la réponse de l'élève et la lui confirmer.
+    // La case est décochée sur toutes les activités existantes ; l'enseignant
+    // la recoche là où il le souhaite.
+    if ($oldversion < 2026093002) {
+        $table = new xmldb_table('local_aichat_activity');
+        $field = new xmldb_field('includeintro', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'enabled');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_default($table, $field);
+        }
+        $DB->set_field('local_aichat_activity', 'includeintro', 0);
+        set_config('includeintrodefault', 0, 'local_aichat');
+        upgrade_plugin_savepoint(true, 2026093002, 'local', 'aichat');
+    }
+
     return true;
 }
