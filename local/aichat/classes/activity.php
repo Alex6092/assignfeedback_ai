@@ -135,6 +135,7 @@ class activity {
      *     élève déjà noté peut relire son devoir hors créneau, mais pas y
      *     travailler avec le tuteur. Dépendance souple : local_classhours n'est
      *     qu'une option ;
+     *   - activité surveillée que l'enseignant n'a pas ouverte (même règle) ;
      *   - devoir déjà remis et plus modifiable (brouillons exigés et devoir
      *     envoyé, ou date limite passée) : il n'y a plus rien à y travailler.
      *     Une nouvelle tentative rouverte rend le tuteur de nouveau disponible.
@@ -150,8 +151,15 @@ class activity {
         if ($cm->modname === 'assign' && has_capability('mod/assign:grade', $context, $userid)) {
             return null;
         }
-        if (class_exists('\local_classhours\access') && \local_classhours\access::is_closed_for($cm, $userid)) {
-            return 'closed_classhours';
+        if (class_exists('\local_classhours\access')) {
+            if (method_exists('\local_classhours\access', 'closed_reason')) {
+                $closed = \local_classhours\access::closed_reason($cm, $userid);
+                if ($closed !== null) {
+                    return $closed === 'supervised' ? 'closed_supervised' : 'closed_classhours';
+                }
+            } else if (\local_classhours\access::is_closed_for($cm, $userid)) {
+                return 'closed_classhours';
+            }
         }
         if ($cm->modname === 'assign' && self::submission_locked($cm, $context, $userid)) {
             return 'closed_submitted';

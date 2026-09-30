@@ -99,5 +99,26 @@
         <INDEX NAME="course_user"     UNIQUE="false" FIELDS="courseid, userid"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="local_classhours_gate" COMMENT="Activités surveillées : ouvertures décidées par l'enseignant (tout le cours, un groupe ou un élève), et leur historique">
+      <FIELDS>
+        <FIELD NAME="id"         TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="true"/>
+        <FIELD NAME="courseid"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="cmid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
+        <FIELD NAME="scope"      TYPE="char" LENGTH="10" NOTNULL="true"  SEQUENCE="false" COMMENT="course|group|user"/>
+        <FIELD NAME="scopeid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Groupe ou élève (0 pour tout le cours)"/>
+        <FIELD NAME="openedby"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a ouvert"/>
+        <FIELD NAME="timeopened" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="closeat"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Fermeture automatique (0 : manuelle)"/>
+        <FIELD NAME="closedby"   TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Enseignant qui a fermé (0 : fermeture automatique ou pas encore fermée)"/>
+        <FIELD NAME="timeclosed" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="0 tant que l'ouverture n'est pas fermée"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="course_closed" UNIQUE="false" FIELDS="courseid, timeclosed"/>
+        <INDEX NAME="cm_closed"     UNIQUE="false" FIELDS="cmid, timeclosed"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

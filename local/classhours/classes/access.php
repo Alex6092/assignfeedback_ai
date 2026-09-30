@@ -15,6 +15,9 @@ defined('MOODLE_INTERNAL') || die();
  *     règle d'accès des tests empêchent pour autant tout nouveau travail ;
  *   - l'ACCÈS PONCTUEL accordé par un enseignant (voir grant), qui, lui, ouvre
  *     aussi la remise.
+ *
+ * Les activités surveillées (voir gate) suivent les mêmes règles : lecture du
+ * travail noté après fermeture, verrou de remise, Tuteur IA fermé.
  */
 class access {
 
@@ -35,6 +38,7 @@ class access {
     public static function reset_cache(): void {
         self::$released = array();
         grant::reset_cache();
+        gate::reset_cache();
     }
 
     /**
@@ -105,33 +109,72 @@ class access {
         if (grant::is_active($courseid, (int)$cm->id, $userid)) {
             return true;
         }
+        return self::has_released_work($courseid, $cm, $userid);
+    }
+
+    /**
+     * L'élève a-t-il déjà de quoi lire sur ce devoir ou ce test (note,
+     * feedback, tentative terminée) ? Sert aussi aux activités surveillées,
+     * que l'élève peut rouvrir en lecture après leur fermeture.
+     *
+     * @param int                $courseid
+     * @param \cm_info|\stdClass $cm (id, modname, instance)
+     * @param int                $userid
+     */
+    public static function has_released_work(int $courseid, $cm, int $userid): bool {
+        if (!in_array($cm->modname, self::READ_MODS, true)) {
+            return false;
+        }
         return isset(self::released_work($courseid, $userid)[$cm->modname][(int)$cm->instance]);
     }
 
     /**
      * L'activité est-elle fermée à cet élève en ce moment, pour du TRAVAIL
-     * (remise, Tuteur IA) ? La lecture hors créneau ne compte pas ici : seul un
-     * accès ponctuel rouvre le travail.
+     * (remise, test, Tuteur IA) ? La lecture ne compte pas ici.
      *
      * @param \cm_info|\stdClass $cm
      * @param int                $userid
      */
     public static function is_closed_for($cm, int $userid): bool {
-        if (empty($cm->availability) || !availability_json::has_root_condition($cm->availability)) {
-            return false;
+        return self::closed_reason($cm, $userid) !== null;
+    }
+
+    /**
+     * Pourquoi l'activité est fermée à cet élève pour du travail :
+     *   - 'classhours' : hors de ses heures de cours, sans accès ponctuel ;
+     *   - 'supervised' : activité surveillée que l'enseignant n'a pas ouverte
+     *     pour lui (un accès ponctuel des Heures de cours n'y change rien) ;
+     *   - null : ouverte.
+     * Une activité qui porte les deux conditions exige les deux ouvertures.
+     *
+     * @param \cm_info|\stdClass $cm
+     * @param int                $userid
+     * @return string|null
+     */
+    public static function closed_reason($cm, int $userid): ?string {
+        if (empty($cm->availability)) {
+            return null;
         }
-        if (!availability_json::condition_enabled()) {
-            return false;
+        $classhours = availability_json::has_root_condition($cm->availability)
+            && availability_json::condition_enabled();
+        $supervised = availability_json::has_root_condition($cm->availability, null, gate::TYPE)
+            && availability_json::condition_enabled(gate::TYPE);
+        if (!$classhours && !$supervised) {
+            return null;
         }
         $context = \context_module::instance((int)$cm->id);
         if (has_capability('moodle/course:ignoreavailabilityrestrictions', $context, $userid)) {
-            return false;
+            return null;
         }
         $courseid = (int)$cm->course;
-        if (grant::is_active($courseid, (int)$cm->id, $userid)) {
-            return false;
+        if ($classhours && !grant::is_active($courseid, (int)$cm->id, $userid)
+                && !schedule::for_course($courseid)->is_open_for_user($userid)) {
+            return 'classhours';
         }
-        return !schedule::for_course($courseid)->is_open_for_user($userid);
+        if ($supervised && !gate::is_open_for($courseid, (int)$cm->id, $userid)) {
+            return 'supervised';
+        }
+        return null;
     }
 
     private static function ai_table_exists(): bool {
