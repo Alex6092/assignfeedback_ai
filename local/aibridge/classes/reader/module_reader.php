@@ -65,7 +65,7 @@ class module_reader {
             'modname'      => $cm->modname,
             'name'         => $cm->name,
             'url'          => $cm->url ? $cm->url->out(false) : null,
-            'section'      => array('number' => (int)$cm->sectionnum, 'name' => get_section_name($course, $section)),
+            'section'      => array('number' => (int)$cm->sectionnum, 'name' => util::plain(get_section_name($course, $section))),
             'cm'           => array(
                 'idnumber'            => $cm->idnumber,
                 'visible'             => (int)$cm->visible,
@@ -100,7 +100,9 @@ class module_reader {
         $items = $DB->get_records('grade_items', array('courseid' => $courseid, 'itemtype' => 'mod',
             'itemmodule' => $cm->modname, 'iteminstance' => $cm->instance), 'itemnumber');
         foreach ($items as $item) {
-            $category = $DB->get_field('grade_categories', 'fullname', array('id' => $item->categoryid));
+            // Catégorie racine du carnet : son nom technique est « ? ».
+            $category = $DB->get_record('grade_categories', array('id' => $item->categoryid), 'fullname, parent');
+            $category = !$category ? false : (empty($category->parent) ? '(racine du cours)' : $category->fullname);
             $out[] = array(
                 'itemnumber'   => (int)$item->itemnumber,
                 'itemname'     => $item->itemname,

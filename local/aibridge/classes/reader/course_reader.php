@@ -161,7 +161,7 @@ class course_reader {
             $out[] = array(
                 'id'           => (int)$section->id,
                 'number'       => (int)$section->section,
-                'name'         => get_section_name($course, $section),
+                'name'         => util::plain(get_section_name($course, $section)),
                 'rawname'      => $section->name,
                 'summary'      => $section->summary,
                 'summaryformat' => (int)$section->summaryformat,

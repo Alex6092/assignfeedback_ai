@@ -35,6 +35,11 @@ class util {
         return self::$tables[$table];
     }
 
+    /** Texte formaté par Moodle (format_string : « &amp; ») ramené en texte brut. */
+    public static function plain(string $text): string {
+        return html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     /** Date lisible (ISO 8601, fuseau du serveur), null si 0. */
     public static function date($timestamp): ?string {
         $timestamp = (int)$timestamp;
