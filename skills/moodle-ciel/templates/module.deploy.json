@@ -1,0 +1,41 @@
+{
+  "format": "moodle-ciel/module@1",
+  "course": { "id": 0 },
+  "section": { "number": 2, "name": "M2 - Le neurone artificiel" },
+  "prefix": "IA",
+  "activities": [
+    {
+      "key": "lecon",
+      "role": "lecon",
+      "name": "Le neurone artificiel",
+      "file": "lecon.html"
+    },
+    {
+      "key": "entrainement",
+      "role": "entrainement",
+      "name": "QCM - Le neurone artificiel",
+      "questions": { "file": "entrainement.xml", "category": "M2 - Entraînement", "draw": 9, "draw_ai": 1 },
+      "timelimit_minutes": 11
+    },
+    {
+      "key": "tp1",
+      "role": "tp",
+      "name": "TP 2 - Programmer un perceptron",
+      "dir": "tp1",
+      "submission": { "type": "onlinetext" },
+      "tutor": { "websearch": "none" },
+      "efe": { "competences": ["C08.3.D4.T5"], "ponctualite": ["C03.4.R4.T5"], "after_due": true },
+      "duedate": "2026-10-07T17:45"
+    },
+    {
+      "key": "sommatif",
+      "role": "sommatif",
+      "name": "Test sommatif : Le neurone artificiel",
+      "questions": { "file": "sommatif.xml", "category": "M2 - Test sommatif" },
+      "points": 20,
+      "efe": { "competences": ["C04.4"], "after_due": true },
+      "supervised": { "planned": "2026-10-07T15:00", "sessioncode": true, "exammode": true },
+      "duedate": "2026-10-14T17:45"
+    }
+  ]
+}

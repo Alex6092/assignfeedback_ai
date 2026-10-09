@@ -1,0 +1,12 @@
+{
+  "youtubeurl": "https://www.youtube.com/watch?v=XXXXXXXXXXX",
+  "titre": "Ce que montre la vidéo, en une ligne",
+  "duree": "0:00",
+  "source": "Chaîne ou auteur",
+  "pertinence": "Concept dynamique visé et difficulté qu'elle lève",
+  "questions": [
+    { "id": 1, "time": 60, "question": "…", "choices": ["…", "…", "…", "…"], "correct": 0 },
+    { "id": 2, "time": "end", "question": "…", "choices": ["…", "…", "…", "…"], "correct": 0 }
+  ],
+  "livequestions": []
+}

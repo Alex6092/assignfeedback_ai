@@ -1184,6 +1184,23 @@ Les plugins lus sont détectés à l'exécution : aucun n'est requis. Chaque ré
 
 Mise en service pas à pas : [`local/aibridge/README.md`](local/aibridge/README.md) (Moodle) et [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md) (poste).
 
+### Skill « moodle-ciel »
+
+[`skills/moodle-ciel`](skills/moodle-ciel/SKILL.md) décrit comment concevoir un parcours BTS CIEL
+au format des parcours existants : carte du parcours, leçons, QCM d'entraînement, TP avec Correction
+IA, Tuteur IA et EFE, tests sommatifs surveillés, vidéo quand elle est pertinente, puis déploiement
+par le pont. Ses réglages de référence ont été relevés dans Moodle sur les parcours Cyber et IA. Un
+script vérifie chaque module avant déploiement (`scripts/check-module.mjs`).
+
+Installation pour Claude Code et Codex (jonctions vers le dépôt) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\install-skill.ps1
+```
+
+Les exemples tirés des vrais parcours (`templates/exemples-ia/`) restent hors du dépôt : ils
+contiennent des questions de tests réels.
+
 ---
 
 ## Structure du dépôt
@@ -1297,6 +1314,16 @@ local/aibridge/                    Pont IA : services web de lecture pour Claude
 tools/moodle-mcp/                  Serveur MCP local (Node ≥ 20, sans build) branché sur local_aibridge
 ├── src/{index,config,moodle-client,tools,snapshot,shape}.js
 └── test/                          node --test
+
+tools/install-skill.ps1            Installe le skill pour Claude Code et Codex
+
+skills/moodle-ciel/                Skill « parcours Moodle BTS CIEL » (Claude Code, Codex)
+├── SKILL.md                       Déroulé : cadrage, carte, modules, contrôles, déploiement
+├── references/                    Référentiel et codes EFE, anatomie d'un module, réglages par rôle,
+│                                  HTML, vidéo, outils IA, déploiement
+├── templates/                     Gabarits (leçon, TP, manifeste, vidéo, carte, fiche enseignant)
+├── scripts/check-module.mjs       Contrôle d'un module avant déploiement
+└── agents/openai.yaml             Présentation du skill dans Codex
 ```
 
 ---
