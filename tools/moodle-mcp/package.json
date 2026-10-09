@@ -1,0 +1,22 @@
+{
+  "name": "moodle-mcp",
+  "version": "0.1.0",
+  "description": "Serveur MCP local (stdio) qui relie Claude Code et Codex à Moodle via le plugin local_aibridge.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "moodle-mcp": "src/index.js"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.1",
+    "zod": "4.6.5"
+  }
+}

@@ -26,6 +26,7 @@ compétences).
 - [Heures de cours — activités accessibles seulement en classe](#heures-de-cours--activités-accessibles-seulement-en-classe)
 - [Activités surveillées — ouvertes par l'enseignant, en classe](#activités-surveillées--ouvertes-par-lenseignant-en-classe)
 - [Contrôle des tentatives — hors créneau et tentatives suspectes](#contrôle-des-tentatives--hors-créneau-et-tentatives-suspectes)
+- [Pont IA — Claude Code et Codex lisent Moodle](#pont-ia--claude-code-et-codex-lisent-moodle)
 - [Structure du dépôt](#structure-du-dépôt)
 - [Feuille de route](#feuille-de-route)
 
@@ -1141,6 +1142,50 @@ lien vers le rapport. Réglage *Notifier les enseignants* pour la couper.
 
 ---
 
+## Pont IA — Claude Code et Codex lisent Moodle
+
+`local_aibridge` expose des services web qui permettent à un agent IA (Claude Code, Codex) de
+**lire un cours dans le détail**, réglages de nos plugins compris. L'agent y accède par le
+serveur MCP local [`tools/moodle-mcp`](tools/moodle-mcp/README.md). Le pont sert à concevoir les
+parcours BTS CIEL à partir de ce qui est réellement configuré dans Moodle, et plus seulement à
+partir des fiches.
+
+```
+Claude Code / Codex ──stdio──> tools/moodle-mcp (Node ≥ 20) ──HTTPS + jeton──> local_aibridge
+```
+
+### Ce que l'agent peut lire
+
+| Fonction | Contenu |
+|---|---|
+| `local_aibridge_get_site_info` | Version de Moodle, plugins du projet et leur version, réglages utiles (prompt système par défaut, seuils EFE, tuteur…), thème et présence des classes CSS des parcours. |
+| `local_aibridge_list_courses` | Cours lisibles par le compte du jeton. |
+| `local_aibridge_get_course` | Réglages du cours, heures de cours, groupes (effectifs seulement), blocs, carnet de notes, plan avec un résumé des extensions de chaque activité. |
+| `local_aibridge_get_module` | Instance complète, note, achèvement, accès décodé (activité surveillée, verrous, heures de cours), contenu propre au type (pages de leçon et sauts, structure du test et options des questions IA, relecture décodée, plugins et grille du devoir…), extensions : Correction IA, Tuteur IA et son brief, EFE, options surveillées et dates prévues, durée minimale, accès Internet, avancement. |
+| `local_aibridge_get_questions` | Banques (`mod_qbank`, banques des tests), catégories, questions et export Moodle XML. |
+| `local_aibridge_get_efe_competences` | Référentiel EFE proposé par `local_efenotes`. |
+
+Les plugins lus sont détectés à l'exécution : aucun n'est requis. Chaque réponse est un champ
+`json`. Sa structure varie selon le type d'activité et les plugins installés.
+
+### Garde-fous
+
+- **Aucune donnée nominative d'élève** : ni noms, ni copies, ni notes, ni conversations avec le
+  tuteur. Les tiers-temps et les dérogations individuelles sont seulement comptés.
+- **Aucun secret** : toute clé nommée `apikey`, `password`, `secret`, `token`, `…key` est
+  masquée (`[masqué]`). Les drapeaux associés restent lisibles (`apikey_override`).
+- Capacité `local/aibridge:read` dans le cours : par défaut enseignant, enseignant éditeur et
+  gestionnaire.
+- Service `local_aibridge` désactivé à l'installation, avec utilisateurs autorisés seulement.
+- **Journal** de chaque appel (compte, fonction, cible, durée, résultat) : *Administration du site
+  → Plugins → Plugins locaux → Journal du pont IA*. Conservation réglable (90 jours par défaut).
+- Écriture (phase suivante) : désactivée par défaut, limitée aux catégories bac à sable, tout est
+  créé masqué.
+
+Mise en service pas à pas : [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md).
+
+---
+
 ## Structure du dépôt
 
 ```
@@ -1237,6 +1282,21 @@ local/attemptcheck/                Contrôle des tentatives : hors créneau, ten
 │   ├── notifier.php / task/analyse_item.php   Analyse après remise et notification
 │   └── logs.php                   Lecture du journal standard
 └── report.php                     Rapport du cours, confirmation de suppression
+
+local/aibridge/                    Pont IA : services web de lecture pour Claude Code et Codex
+├── classes/
+│   ├── external/                  Une classe par fonction (get_site_info, get_course, get_module...)
+│   ├── reader/                    Lecteurs : site, cours, activité, banques de questions (export XML)
+│   ├── extension/                 Adaptateurs des plugins (Correction IA, tuteur, EFE, surveillées...)
+│   ├── redactor.php               Masquage des secrets
+│   ├── audit.php                  Journal des appels
+│   └── task/purge_log.php
+├── log.php                        Page « Journal du pont IA »
+└── db/{access.php,install.xml,services.php,tasks.php}
+
+tools/moodle-mcp/                  Serveur MCP local (Node ≥ 20, sans build) branché sur local_aibridge
+├── src/{index,config,moodle-client,tools,snapshot,shape}.js
+└── test/                          node --test
 ```
 
 ---

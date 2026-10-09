@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/aibridge/db" VERSION="20261009" COMMENT="Pont IA : journal des appels et registre des objets créés par le pont"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_aibridge_log" COMMENT="Journal des appels au pont (une ligne par appel de service web)">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="false" COMMENT="Compte qui a appelé (compte de service du jeton)"/>
+        <FIELD NAME="function"    TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="Nom court de la fonction (get_course...)"/>
+        <FIELD NAME="courseid"    TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="cmid"        TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="params"      TYPE="text"              NOTNULL="false" SEQUENCE="false" COMMENT="Paramètres en JSON, tronqués"/>
+        <FIELD NAME="status"      TYPE="char" LENGTH="10"  NOTNULL="true" SEQUENCE="false" COMMENT="ok|error"/>
+        <FIELD NAME="error"       TYPE="text"              NOTNULL="false" SEQUENCE="false" COMMENT="Message d'erreur, tronqué"/>
+        <FIELD NAME="durationms"  TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated"/>
+        <INDEX NAME="courseid"    UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="userid"      UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_aibridge_created" COMMENT="Objets créés par le pont : seuls ceux-ci, encore masqués, pourront être supprimés par le pont">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="objecttype"  TYPE="char" LENGTH="30" NOTNULL="true" SEQUENCE="false" COMMENT="course|section|cm|questioncategory"/>
+        <FIELD NAME="objectid"    TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="courseid"    TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="object"   UNIQUE="true"  FIELDS="objecttype, objectid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
