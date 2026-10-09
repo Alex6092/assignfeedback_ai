@@ -1182,7 +1182,7 @@ Les plugins lus sont détectés à l'exécution : aucun n'est requis. Chaque ré
 - Écriture (phase suivante) : désactivée par défaut, limitée aux catégories bac à sable, tout est
   créé masqué.
 
-Mise en service pas à pas : [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md).
+Mise en service pas à pas : [`local/aibridge/README.md`](local/aibridge/README.md) (Moodle) et [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md) (poste).
 
 ---
 
