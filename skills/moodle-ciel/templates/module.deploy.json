@@ -1,6 +1,6 @@
 {
   "format": "moodle-ciel/module@1",
-  "course": { "id": 0 },
+  "course": { "id": 0, "teacher_id": 0 },
   "section": { "number": 2, "name": "M2 - Le neurone artificiel" },
   "prefix": "IA",
   "activities": [

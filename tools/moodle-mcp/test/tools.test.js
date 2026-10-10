@@ -6,7 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools, TRUNCATE_AT } from '../src/tools.js';
 
 /** Serveur MCP réel branché sur un faux client Moodle, en mémoire. */
-async function connect(responses) {
+async function connect(responses, options = {}) {
   const calls = [];
   const moodle = {
     async callJson(fn, params = {}) {
@@ -19,7 +19,7 @@ async function connect(responses) {
     },
   };
   const server = new McpServer({ name: 'moodle', version: 'test' });
-  registerTools(server, moodle);
+  registerTools(server, moodle, options);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test', version: '0' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

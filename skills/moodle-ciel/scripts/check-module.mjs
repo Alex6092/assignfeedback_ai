@@ -80,6 +80,9 @@ if (manifest) {
   if (!Number.isInteger(manifest.course?.id) || manifest.course.id <= 0) warn(m, 'course.id à renseigner (cours bac à sable cible)');
   if (!manifest.prefix) warn(m, 'prefix manquant (préfixe des idnumbers : CY, IA…)');
   if (!activities.length) err(m, 'aucune activité');
+  if (activities.some((a) => a.efe) && !(manifest.course?.teacher_id > 0)) {
+    warn(m, 'course.teacher_id manquant : EFE désignerait le compte de service du pont comme enseignant');
+  }
 }
 
 for (const [i, a] of activities.entries()) {

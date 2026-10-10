@@ -35,6 +35,37 @@ $string['task_purge_log'] = 'Nettoyage du journal du pont IA';
 // Erreurs.
 $string['error_json'] = 'Réponse impossible à encoder en JSON : {$a}';
 $string['error_export'] = 'Export Moodle XML impossible.';
+$string['error_writesdisabled'] = 'L\'écriture par le pont est désactivée (réglage « Autoriser l\'écriture » du pont).';
+$string['error_notsandbox'] = 'La catégorie {$a} n\'est pas un bac à sable du pont : écriture refusée.';
+$string['error_coursenames'] = 'Le nom complet et le nom abrégé du cours sont obligatoires.';
+$string['error_sectionnumber'] = 'Numéro de section invalide : {$a}.';
+$string['error_modname'] = 'Type d\'activité non pris en charge par le pont : {$a}.';
+$string['error_settings'] = 'Les réglages doivent être un objet JSON (champs nommés du formulaire de l\'activité).';
+$string['error_date'] = 'Date invalide (format attendu AAAA-MM-JJTHH:MM) : {$a}.';
+$string['error_scale'] = 'Barème introuvable : {$a}.';
+$string['error_efenocompetence'] = 'Report EFE activé sans compétence : au moins un code est obligatoire.';
+$string['error_efecode'] = 'Code EFE refusé : {$a} (niveau N2 au minimum, par exemple C04.3 ou C04.3.D4.T4).';
+$string['error_drafttype'] = 'Type d\'objet inconnu : {$a} (cm, section ou course).';
+$string['error_notcreated'] = 'Cet objet n\'a pas été créé par le pont : suppression refusée ({$a}).';
+$string['error_draftgone'] = 'Objet introuvable, retiré du registre du pont ({$a}).';
+$string['error_draftvisible'] = 'Objet visible : un enseignant l\'a publié, le pont ne le supprime pas ({$a}).';
+$string['error_sectionzero'] = 'La section 0 d\'un cours ne se supprime pas.';
+$string['error_sectionnotempty'] = 'La section {$a} contient encore des activités : supprimez-les d\'abord.';
+$string['error_beforecmid'] = 'Position impossible : l\'activité {$a} n\'est pas dans cette section.';
+$string['error_lessonpages'] = 'Pages de la leçon attendues : une liste JSON de {title, contents}, non vide.';
+$string['error_lessonpage'] = 'Page {$a} de la leçon sans titre ou sans contenu.';
+$string['error_categoryname'] = 'Nom de catégorie de questions obligatoire.';
+$string['error_noquestions'] = 'Aucune question dans le fichier Moodle XML.';
+$string['error_categorynotempty'] = 'La catégorie « {$a} » contient déjà des questions : choisissez une autre catégorie, ou videz celle-ci dans Moodle.';
+$string['error_import'] = 'Import Moodle XML refusé : {$a}';
+$string['error_quiznotempty'] = 'Ce test contient déjà des questions : le pont ne remplit qu\'un test vide.';
+$string['error_quizattempts'] = 'Ce test a déjà des tentatives : sa structure ne peut plus être modifiée.';
+$string['error_randomcategory'] = 'Catégorie de tirage aléatoire introuvable dans les banques du cours : {$a}.';
+$string['error_randomcount'] = 'Pas assez de questions pour le tirage aléatoire ({$a}).';
+$string['error_questionidnumber'] = 'Question introuvable dans les banques du cours : idnumber « {$a} ».';
+$string['error_quizlayout'] = 'Structure du test attendue : {"slots": [...]} avec au moins un emplacement.';
+$string['error_extras'] = 'Réglages attendus : un objet JSON (supervised, minduration, avancement).';
+$string['error_coursenotdraft'] = 'Le cours contient une activité publiée ou qui ne vient pas du pont (activité {$a}) : suppression refusée.';
 
 // Vie privée.
 $string['privacy:metadata:log'] = 'Journal des appels au pont IA.';

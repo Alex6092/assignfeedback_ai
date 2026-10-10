@@ -6,7 +6,8 @@
       "args": ["tools/moodle-mcp/src/index.js"],
       "env": {
         "MOODLE_URL": "${MOODLE_URL}",
-        "MOODLE_TOKEN": "${MOODLE_TOKEN}"
+        "MOODLE_TOKEN": "${MOODLE_TOKEN}",
+        "MOODLE_MCP_READONLY": "${MOODLE_MCP_READONLY:-1}"
       }
     }
   }
