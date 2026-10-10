@@ -1183,6 +1183,9 @@ Les plugins lus sont détectés à l'exécution : aucun n'est requis. Chaque ré
   le pont ne supprime que ses propres brouillons. `moodle_deploy_module` déploie tout un module du
   skill « moodle-ciel » depuis son manifeste (leçon, questions, tests, TP, surveillance, Avancement).
 
+**Guide d'utilisation (installation, phrases à dire à l'agent, dépannage) :
+[`docs/guide-agent-moodle.md`](docs/guide-agent-moodle.md).**
+
 Mise en service pas à pas : [`local/aibridge/README.md`](local/aibridge/README.md) (Moodle) et [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md) (poste).
 
 ### Leçons imprimables (`local_lessonexport`)
