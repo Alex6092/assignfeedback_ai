@@ -124,6 +124,32 @@ export class MoodleClient {
   }
 
   /**
+   * Télécharge un fichier d'une zone de fichiers (images d'une page de leçon...)
+   * par webservice/pluginfile.php. Le jeton part dans le corps POST.
+   *
+   * @param {string} filepath chemin après pluginfile.php : /contextid/composant/zone/itemid/fichier
+   * @returns {Promise<Buffer>}
+   */
+  async download(filepath) {
+    const encoded = filepath.split('/').map((part) => encodeURIComponent(part)).join('/');
+    let response;
+    try {
+      response = await this.fetchImpl(`${this.url}/webservice/pluginfile.php${encoded}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token: this.token }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      throw new MoodleError(`Fichier injoignable (${filepath}) : ${error?.message}`);
+    }
+    if (!response.ok) {
+      throw new MoodleError(`Fichier ${filepath} : HTTP ${response.status}.`, { status: response.status });
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  /**
    * Appelle une fonction du pont (réponse { json: "..." }) et décode le JSON.
    *
    * @param {string} wsfunction
