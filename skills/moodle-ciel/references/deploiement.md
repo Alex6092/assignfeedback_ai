@@ -15,14 +15,16 @@ Mx-sujet/
 ├── module.deploy.json     manifeste (ce qui est créé, dans quel ordre, avec quels réglages)
 ├── lecon.html             pages de la leçon entre marqueurs
 ├── images/                images référencées par la leçon (facultatif)
-├── entrainement.xml       banque d'entraînement (Moodle XML)
+├── entrainement.questions.mjs   source des questions (→ scripts/build-questions.mjs)
+├── entrainement.xml       banque d'entraînement (Moodle XML généré)
 ├── tp1/                   un dossier par TP
 │   ├── consigne.html      → Instructions de l'activité (HTML, vue par l'élève)
 │   ├── enonce.txt         → Correction IA : énoncé de l'exercice
 │   ├── corrige.txt        → Correction IA : corrigé attendu / barème (score sur 100)
 │   ├── competences.txt    → Correction IA : compétences évaluées (une par ligne)
 │   └── tuteur.txt         → Tuteur IA : consignes supplémentaires (facultatif)
-├── sommatif.xml           test sommatif (Moodle XML)
+├── sommatif.questions.mjs source du test sommatif
+├── sommatif.xml           test sommatif (Moodle XML généré)
 ├── video.json             vidéo + QCM (facultatif, voir video.md)
 └── fiche-enseignant.html  barème, vigilance, corrigés (jamais déployée)
 ```

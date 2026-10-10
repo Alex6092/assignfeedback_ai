@@ -67,6 +67,10 @@ Avant de produire quoi que ce soit, pose les questions qui manquent :
 - thème, année (1re / 2e), effectif, demi-groupe ou classe entière ;
 - volume : nombre de séances, durée, heures totales ; place dans l'année ;
 - prérequis acquis ; matériel, VM, logiciels, accès Internet en salle ;
+- **puissance des postes** : ce qui s'exécute en combien de temps (un entraînement, un scan), et
+  les notions qu'il veut laisser en bonus, hors évaluation ;
+- **format des TP** : TP de labo en phases (1 à 3 h) ou exercices courts de transfert et d'analyse
+  (20 à 40 min) — voir `references/anatomie-module.md` ;
 - compétences visées (s'il en impose) et bloc d'examen visé (U4, U5, U6) ;
 - évaluations attendues ; s'il veut une évaluation finale ; un projet de fin (Missions IA) ;
 - le cours Moodle cible (id) et la date de début, pour placer dates prévues et échéances.
@@ -100,6 +104,11 @@ Les exemples de `templates/exemples-ia/` sont de **vrais fichiers** du parcours 
 dans Moodle : imite leur forme (structure des énoncés, corrigé « RÉPONSE TYPE / PONDÉRATION /
 ERREURS TYPIQUES » des questions IA, barème par blocs des TP, étiquettes et idnumbers des questions),
 pas leur sujet. Ils ne sont pas versionnés dans git, car ils contiennent des questions de tests réels.
+
+Écris les questions (entraînement, sommatif, finale) dans un module JavaScript, puis génère le
+Moodle XML avec `scripts/build-questions.mjs` : plus court à écrire qu'à la main, et sans erreur de
+balisage. Le format est décrit en tête du script ; garde le module source à côté du XML
+(`entrainement.questions.mjs`) pour les corrections suivantes.
 
 Les réglages de chaque type d'activité (tentatives, délais, relecture, achèvement, surveillance…)
 sont fixés par son **rôle** dans le manifeste et détaillés dans `references/reglages-moodle.md`.
@@ -152,7 +161,8 @@ node <dossier du skill>/scripts/check-module.mjs <dossier du module> [--efe efe-
 
 Il vérifie notamment : marqueurs et classes du HTML, absence de `<script>`, de `<center>` et de
 styles en ligne superflus, champs obligatoires des TP et **fuite du corrigé dans la consigne**,
-questions XML (idnumbers uniques, étiquettes, total des points, champs IA), manifeste (rôles,
+questions XML (idnumbers uniques, étiquettes, total des points, champs IA, part des points sur la
+compétence rapportée à EFE), manifeste (rôles,
 fichiers, codes EFE N2/N3, dates). Avec `--efe` (fichier tiré de `moodle_get_efe_competences`), il
 vérifie aussi que chaque code EFE existe. Corrige les erreurs ; explique les avertissements que tu
 choisis de garder.

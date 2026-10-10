@@ -1189,8 +1189,10 @@ Mise en service pas à pas : [`local/aibridge/README.md`](local/aibridge/README.
 [`skills/moodle-ciel`](skills/moodle-ciel/SKILL.md) décrit comment concevoir un parcours BTS CIEL
 au format des parcours existants : carte du parcours, leçons, QCM d'entraînement, TP avec Correction
 IA, Tuteur IA et EFE, tests sommatifs surveillés, vidéo quand elle est pertinente, puis déploiement
-par le pont. Ses réglages de référence ont été relevés dans Moodle sur les parcours Cyber et IA. Un
-script vérifie chaque module avant déploiement (`scripts/check-module.mjs`).
+par le pont. Ses réglages de référence ont été relevés dans Moodle sur les parcours Cyber et IA, puis
+ajustés après une reproduction à l'aveugle du module M5 du parcours IA. Un script génère le Moodle XML
+des questions (`scripts/build-questions.mjs`), un autre vérifie chaque module avant déploiement
+(`scripts/check-module.mjs`).
 
 Installation pour Claude Code et Codex (jonctions vers le dépôt) :
 
@@ -1322,6 +1324,7 @@ skills/moodle-ciel/                Skill « parcours Moodle BTS CIEL » (Claude 
 ├── references/                    Référentiel et codes EFE, anatomie d'un module, réglages par rôle,
 │                                  HTML, vidéo, outils IA, déploiement
 ├── templates/                     Gabarits (leçon, TP, manifeste, vidéo, carte, fiche enseignant)
+├── scripts/build-questions.mjs    Questions décrites en JavaScript → Moodle XML
 ├── scripts/check-module.mjs       Contrôle d'un module avant déploiement
 └── agents/openai.yaml             Présentation du skill dans Codex
 ```

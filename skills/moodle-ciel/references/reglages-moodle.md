@@ -40,7 +40,8 @@ Noms des champs : ceux des tables Moodle (`quiz`, `assign`, `lesson`…), pour q
 | `questionsperpage`, `navmethod`, `shuffleanswers` | 1, `free`, 1 | |
 | `preferredbehaviour` | `deferredfeedback` | |
 | Questions | **tirage aléatoire** : `draw` questions par tentative dans la catégorie de la banque (10 par défaut, 6 pour un petit module) | chaque tentative est différente |
-| Relecture | pendant : la tentative ; juste après et plus tard : juste/faux, points, feedbacks, feedback global ; **bonne réponse jamais** | l'élève doit chercher, pas recopier |
+| Relecture | pendant : la tentative ; juste après et plus tard : juste/faux, points, retours de chaque réponse, appréciation globale du test ; **feedback général des questions et bonne réponse : jamais** | l'élève qui veut progresser retourne chercher la réponse dans la leçon |
+| Feedbacks des questions | le retour de chaque mauvaise réponse donne un **indice** (l'erreur probable, la notion à relire), jamais la bonne réponse ; le feedback général peut expliquer la réponse : il ne sera pas affiché | une tentative suivante redonne souvent la même question |
 | `grade` | 100 | |
 | `gradepass` | 0 | |
 | Achèvement | une tentative faite (`completionminattempts = 1`) | |

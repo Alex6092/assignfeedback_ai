@@ -91,19 +91,36 @@ Pas de `<center>` ni de `<br>` autour de l'icône : le thème la centre et l'esp
 
 ## 4. Anatomie d'une page de leçon
 
-**Page 1** (ou page unique) :
-```html
-<h1>🗺️ Module 2 — Reconnaissance &amp; cartographie (Nmap)</h1>
-<div class="objectif">
-  <strong>🎯 Ce que tu vas maîtriser :</strong> …<br>
-  <strong>🛠 Au menu :</strong> …<br>
-  <strong>⏱ Durée estimée :</strong> 3 h<br>
-  <strong>🎓 Compétence travaillée :</strong> <span class="comp">C04</span> Analyser un système informatique
-</div>
-<h2>Où on en est</h2>
-<p>…</p>
-<pre><code>Reconnaissance ──▶ Énumération ──▶ Vulnérabilités ──▶ … (tu es ici)</code></pre>
-```
+**Page 1** (ou page unique) : l'encadré `objectif` suit l'un des deux modèles de l'enseignant.
+Choisis-le **pour tout le parcours**, d'après sa présentation, et note-le dans la carte :
+
+- **Parcours de métier ou de labo** (Cyber : une même cible, des rôles, un rapport qui avance) : la
+  compétence travaillée et la situation dans le parcours comptent pour l'élève.
+  ```html
+  <h1>🗺️ Module 2 — Reconnaissance &amp; cartographie (Nmap)</h1>
+  <div class="objectif">
+    <strong>🎯 Ce que tu vas maîtriser :</strong> …<br>
+    <strong>🛠 Au menu :</strong> …<br>
+    <strong>🎓 Compétence travaillée :</strong> <span class="comp">C04</span> Analyser un système informatique
+  </div>
+  <h2>Où on en est</h2>
+  <p>…</p>
+  <pre><code>Reconnaissance ──▶ Énumération ──▶ Vulnérabilités ──▶ … (tu es ici)</code></pre>
+  ```
+- **Parcours de programmation** (IA : chaque module ajoute du code et un jeu de données) : les
+  outils et les données du module comptent pour l'élève.
+  ```html
+  <h1>🔢 Module 5 — Deep learning &amp; reconnaissance d'images</h1>
+  <div class="objectif">
+    <strong>🎯 Ce que tu vas maîtriser :</strong> …<br>
+    <strong>🐍 Python au menu :</strong> Keras (<code>Sequential</code>, <code>Dense</code>, <code>fit</code>)<br>
+    <strong>📦 Données :</strong> MNIST
+  </div>
+  ```
+
+**Pas de durée dans la leçon** (ni « ⏱ Durée estimée », ni durée de lecture) : un élève qui lit
+« 3 h » se croit large et prend son temps. La durée va dans la fiche enseignant et dans la carte.
+Les leçons existantes l'affichent encore (exemple `lecon-M2-moodle.html`) : ne la reprends pas.
 
 **Corps** : des `h2` numérotés ou titrés, des paragraphes courts, un exemple concret par notion,
 du code commenté, des encadrés `astuce` / `danger` là où ils servent. Les exercices non notés :
@@ -124,7 +141,7 @@ Dans une leçon de plusieurs pages, chaque page se termine par un `suite` qui an
 
 - Tutoiement, phrases courtes, voix active. Pas de remplissage ni d'emphase décorative.
 - Le vocabulaire technique normalisé est introduit (en gras, défini) puis réutilisé tel quel.
-- Un emoji en tête d'encadré ou de titre, comme repère visuel : 🎯 🛠 🎓 ⏱ 💡 ⚠️ ➡️ ✅ 📤 📄.
+- Un emoji en tête d'encadré ou de titre, comme repère visuel : 🎯 🛠 🎓 🐍 📦 💡 ⚠️ ➡️ ✅ 📤 📄.
 - Concret : la même cible ou la même entreprise fictive tout au long du parcours donne un fil.
 - Dans un parcours de sécurité offensive, le cadre légal et le périmètre sont rappelés à chaque
   manipulation risquée (encadré `danger`).

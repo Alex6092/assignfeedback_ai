@@ -177,6 +177,9 @@ function checkLesson(name) {
     const h1 = (block.match(/<h1[\s>]/gi) ?? []).length;
     if (h1 !== 1) warn(where, `${h1} titre(s) <h1> : un seul par page (il donne le titre de la page)`);
     checkHtmlFragment(where, block);
+    if (/⏱|durée\s+(estimée|de lecture)|<strong>\s*durée\s*:/i.test(block)) {
+      warn(where, 'durée affichée dans la leçon : elle va dans la fiche enseignant (un élève qui la lit prend son temps)');
+    }
     sizes.push(block.length);
   });
   const total = sizes.reduce((a, b) => a + b, 0);
@@ -260,6 +263,7 @@ function checkQuestions(a) {
   const missing = { idnumber: 0, prefix: 0, tag: 0, penalty: 0 };
   let points = 0;
   let aiCount = 0;
+  const pointsByTag = new Map();
   for (const q of qs) {
     const where = `${name} « ${q.name || '(sans nom)'} »`;
     if (!q.name) err(where, 'nom manquant');
@@ -282,7 +286,17 @@ function checkQuestions(a) {
       if (q.type === 'aiessay' && !textOf((q.body.match(/<competencies>([\s\S]*?)<\/competencies>/) ?? [])[1] ?? '')) warn(where, 'compétences évaluées vides');
       if (textOf((q.body.match(/<apikey>([\s\S]*?)<\/apikey>/) ?? [])[1] ?? '')) err(where, 'une clé d\'API est présente dans le XML');
     }
-    points += q.type === 'multianswer' || q.type === 'cloze' ? clozePoints(q.text) : (q.type === 'description' ? 0 : q.grade);
+    const qPoints = q.type === 'multianswer' || q.type === 'cloze' ? clozePoints(q.text) : (q.type === 'description' ? 0 : q.grade);
+    points += qPoints;
+    for (const t of new Set(q.tags.filter((tag) => N1.test(tag)))) pointsByTag.set(t, (pointsByTag.get(t) ?? 0) + qPoints);
+  }
+  // La compétence rapportée à EFE doit être celle que le test mesure : au moins la moitié des points.
+  const efeN1 = (a.efe?.competences?.[0] ?? '').split('.')[0];
+  if (graded && N1.test(efeN1) && points > 0) {
+    const share = (pointsByTag.get(efeN1) ?? 0) / points;
+    if (share < 0.5) {
+      warn(name, `le test rapporte ${a.efe.competences[0]} à EFE, mais les questions étiquetées ${efeN1} ne font que ${Math.round(share * 100)} % des points`);
+    }
   }
   if (missing.idnumber) warn(name, `${missing.idnumber} question(s) sans idnumber`);
   if (missing.prefix) warn(name, `${missing.prefix} idnumber(s) sans le préfixe ${manifest.prefix}-`);

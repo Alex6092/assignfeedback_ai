@@ -6,6 +6,9 @@
 - **Prérequis** : …
 - **Matériel** : …
 - **Blocs d'examen visés** : [U4 / U5 / U6]
+- **Format des TP** : [TP de labo / exercices courts]
+- **Page 1 des leçons** : [modèle « métier ou labo » / modèle « programmation »]
+- **Postes** : [temps d'exécution des manipulations ; notions laissées en bonus, hors évaluation]
 
 ## Modules
 
