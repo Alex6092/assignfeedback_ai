@@ -50,7 +50,11 @@ body.local-lessonexport .lessonexport-note {
         background: #fff !important;
     }
 
-    /* Rien de Moodle autour du contenu. */
+    /* Rien de Moodle autour du contenu, ni les encadrés flottants d'autres plugins
+       (widget d'accès réseau, notifications). */
+    body.local-lessonexport [id^="oa-actgate"],
+    body.local-lessonexport .toast-wrapper,
+    body.local-lessonexport #user-notifications,
     body.local-lessonexport .lessonexport-toolbar,
     body.local-lessonexport .lessonexport-launch,
     body.local-lessonexport nav.navbar,

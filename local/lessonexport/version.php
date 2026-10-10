@@ -10,7 +10,7 @@ defined('MOODLE_INTERNAL') || die();
  * et le mode examen des activités surveillées (tout passe par require_login).
  */
 $plugin->component = 'local_lessonexport';
-$plugin->version   = 2026101100;       // YYYYMMDDXX
+$plugin->version   = 2026101101;       // YYYYMMDDXX
 $plugin->requires  = 2025041400;       // Moodle 5.0
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0';
+$plugin->release   = '0.1.1';

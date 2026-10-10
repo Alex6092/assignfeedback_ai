@@ -10,11 +10,17 @@ use local_lessonexport\course_settings;
 use local_lessonexport\exporter;
 
 $id = required_param('id', PARAM_INT);
-list($course, $cm) = get_course_and_cm_from_cmid($id, 'lesson');
+list($course) = get_course_and_cm_from_cmid($id, 'lesson');
 
-// require_login applique la visibilité, les restrictions d'accès et le mode
-// examen d'une activité surveillée (local_classhours renvoie vers l'examen).
-require_login($course, false, $cm);
+// Connexion au niveau du COURS, sans déclarer l'activité : cette page n'est pas
+// une page d'activité, et les plugins qui ajoutent un widget à toute page
+// d'activité (accès réseau, tuteur...) n'ont rien à y faire, encore moins sur
+// une impression. Le mode examen d'une activité surveillée s'applique bien au
+// niveau du cours (local_classhours renvoie l'élève vers l'examen) ; la
+// visibilité et les restrictions d'accès de la leçon sont vérifiées ci-dessous
+// (exporter::denied_reason, sur cm_info::uservisible).
+require_login($course, false);
+$cm = get_fast_modinfo($course)->get_cm($id);
 if (!course_settings::can_view((int)$course->id)) {
     throw new moodle_exception('disabled', 'local_lessonexport');
 }
