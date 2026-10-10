@@ -27,14 +27,16 @@ class create_module extends base {
             'settings' => new external_value(PARAM_RAW, 'Champs du formulaire de l\'activité (objet JSON)',
                 VALUE_DEFAULT, '{}'),
             'dryrun'   => new external_value(PARAM_BOOL, 'Vérifier sans créer', VALUE_DEFAULT, false),
+            'beforecmid' => new external_value(PARAM_INT, 'Placer avant cette activité (même section) ; 0 : à la fin',
+                VALUE_DEFAULT, 0),
         ));
     }
 
     public static function execute(int $courseid, int $section, string $modname, string $name, string $intro = '',
-            string $settings = '{}', bool $dryrun = false): array {
+            string $settings = '{}', bool $dryrun = false, int $beforecmid = 0): array {
         $params = self::validate_parameters(self::execute_parameters(), array(
             'courseid' => $courseid, 'section' => $section, 'modname' => $modname, 'name' => $name,
-            'intro' => $intro, 'settings' => $settings, 'dryrun' => $dryrun,
+            'intro' => $intro, 'settings' => $settings, 'dryrun' => $dryrun, 'beforecmid' => $beforecmid,
         ));
         $courseid = (int)$params['courseid'];
         $context = \context_course::instance($courseid);
@@ -53,7 +55,8 @@ class create_module extends base {
         $logparams['settings'] = $decoded;
         return audit::run('create_module', $logparams, $courseid, 0, function() use ($course, $params, $decoded) {
             return array('json' => util::encode(module_writer::create($course, (int)$params['section'],
-                $params['modname'], $params['name'], $params['intro'], $decoded, (bool)$params['dryrun'])));
+                $params['modname'], $params['name'], $params['intro'], $decoded, (bool)$params['dryrun'],
+                (int)$params['beforecmid'])));
         });
     }
 

@@ -38,10 +38,11 @@ class module_writer {
      * @param string    $intro    description (HTML)
      * @param array     $settings champs du formulaire de l'activité
      * @param bool      $dryrun   ne rien créer : renvoyer les champs qui seraient transmis
+     * @param int       $beforecmid placer l'activité avant celle-ci (même section) ; 0 : à la fin
      * @return array
      */
     public static function create(\stdClass $course, int $section, string $modname, string $name, string $intro,
-            array $settings, bool $dryrun): array {
+            array $settings, bool $dryrun, int $beforecmid = 0): array {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/course/lib.php');
         require_once($CFG->dirroot . '/course/modlib.php');
@@ -75,6 +76,13 @@ class module_writer {
         if (empty($course->enablecompletion) && !empty($info->completion)) {
             $warnings[] = 'Achèvement désactivé dans le cours : les conditions d\'achèvement sont ignorées.';
         }
+        if ($beforecmid > 0) {
+            $before = get_fast_modinfo($course)->get_cms()[$beforecmid] ?? null;
+            if (!$before || (int)$before->sectionnum !== $section) {
+                throw new \moodle_exception('error_beforecmid', 'local_aibridge', '', $beforecmid);
+            }
+            $info->beforemod = $beforecmid;
+        }
 
         if ($dryrun) {
             $exists = (bool)get_fast_modinfo($course)->get_section_info($section);
@@ -98,6 +106,8 @@ class module_writer {
             \core_courseformat\formatactions::cm($course->id)->set_visibility($cmid, 0);
             $warnings[] = 'Activité remasquée après création.';
         }
+        // Élément de note masqué lui aussi : certains modules (devoir) le créent visible.
+        self::hide_grade_items((int)$course->id, $modname, (int)$result->instance);
 
         return array(
             'cmid'     => $cmid,
@@ -298,6 +308,19 @@ class module_writer {
         $formdata = (object)$settings;
         $formdata->instance = (int)$cm->instance;
         $plugin->save_settings($formdata);
+    }
+
+    /** Masque les éléments de note de l'activité dans le carnet. */
+    private static function hide_grade_items(int $courseid, string $modname, int $instance): void {
+        global $CFG;
+        require_once($CFG->libdir . '/gradelib.php');
+        $items = \grade_item::fetch_all(array('itemtype' => 'mod', 'itemmodule' => $modname,
+            'iteminstance' => $instance, 'courseid' => $courseid));
+        foreach ($items ?: array() as $item) {
+            if (!$item->is_hidden()) {
+                $item->set_hidden(1);
+            }
+        }
     }
 
     /**

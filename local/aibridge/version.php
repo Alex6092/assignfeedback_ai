@@ -18,7 +18,7 @@ defined('MOODLE_INTERNAL') || die();
  * block_avancementlapro) sont détectés à l'exécution : aucun n'est requis.
  */
 $plugin->component = 'local_aibridge';
-$plugin->version   = 2026101000;       // YYYYMMDDXX
+$plugin->version   = 2026101001;       // YYYYMMDDXX
 $plugin->requires  = 2025041400;       // Moodle 5.0 (banques de questions en activités mod_qbank)
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.2.0';          // Écriture en bac à sable : cours, sections, activités, brouillons
+$plugin->release   = '0.3.0';          // Écriture : pages de leçon, questions, structure des tests, surveillance, Avancement

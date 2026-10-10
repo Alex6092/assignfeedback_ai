@@ -5,7 +5,9 @@
 
 import path from 'node:path';
 import { z } from 'zod';
-import { withFiles, readField } from './content.js';
+import { extractBlocks, withFiles, readField } from './content.js';
+import { deployModule, pageTitle, splitAiQuestions } from './deploy.js';
+import fs from 'node:fs/promises';
 import { errorResult, textResult, truncateStrings } from './shape.js';
 import { snapshotCourse } from './snapshot.js';
 
@@ -232,6 +234,7 @@ function registerWriteTools(server, client, safe) {
       settings: z.record(z.string(), z.unknown()).default({}).describe('Champs du formulaire de l\'activité.'),
       settings_files: z.record(z.string(), z.string()).default({})
         .describe('Champ → fichier, ex. {"content": "M5/page.html", "assignfeedback_ai_expectedanswer": "M5/tp1/corrige.txt"}.'),
+      before_cmid: z.number().int().min(0).default(0).describe('Placer avant cette activité de la même section (0 : à la fin).'),
       dry_run: dryRun,
     },
     annotations: CREATE,
@@ -246,8 +249,127 @@ function registerWriteTools(server, client, safe) {
       intro,
       settings: JSON.stringify(settings),
       dryrun: args.dry_run,
+      beforecmid: args.before_cmid,
     });
   }));
+
+  server.registerTool('moodle_set_lesson_pages', {
+    title: 'Moodle : pages d\'une leçon',
+    description: 'Remplace les pages d\'une leçon créée par le pont (encore masquée) par les blocs entre marqueurs '
+      + 'd\'un fichier lecon.html : une page par bloc, titre = texte du <h1> (sans emoji ni « Module n — »), '
+      + 'boutons Suivant / Précédent / Terminer.',
+    inputSchema: {
+      cmid: z.number().int().positive(),
+      file: z.string().describe('lecon.html du module.'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ cmid, file, dry_run: dryrun }) => {
+    const html = await fs.readFile(path.resolve(file), 'utf8');
+    const blocks = extractBlocks(html);
+    if (!blocks.length) {
+      throw new Error(`${file} : aucun bloc entre les marqueurs ▶ DÉBUT / FIN CONTENU MOODLE ◀.`);
+    }
+    const pages = blocks.map((contents, i) => ({ title: pageTitle(contents, `Page ${i + 1}`), contents }));
+    return call('local_aibridge_set_lesson_pages', { cmid, pages: JSON.stringify(pages), dryrun });
+  }));
+
+  server.registerTool('moodle_import_questions', {
+    title: 'Moodle : importer des questions',
+    description: 'Importe un fichier Moodle XML dans une catégorie de la banque de questions du cours (banque créée '
+      + 'masquée si besoin ; catégorie créée si besoin, et refusée si elle contient déjà des questions). Avec '
+      + 'split_ai, les questions corrigées par IA vont dans la sous-catégorie « <catégorie> — IA » (tirage à part). '
+      + 'Renvoie les identifiants (categoryid, questions) pour moodle_set_quiz_layout.',
+    inputSchema: {
+      courseid: z.number().int().positive(),
+      file: z.string().describe('Fichier Moodle XML.'),
+      category: z.string().min(1).describe('Catégorie de destination, ex. « M5 - Entraînement ».'),
+      parent: z.string().default('').describe('Catégorie parente (vide : à la racine de la banque).'),
+      split_ai: z.boolean().default(false),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ courseid, file, category, parent, split_ai: splitAi, dry_run: dryrun }) => {
+    const xml = await fs.readFile(path.resolve(file), 'utf8');
+    if (!splitAi) {
+      return call('local_aibridge_import_questions', { courseid, category, parent, xml, dryrun });
+    }
+    const split = splitAiQuestions(xml);
+    const regular = split.regular ? await client.callJson('local_aibridge_import_questions',
+      { courseid, category, parent, xml: split.regular, dryrun }) : null;
+    const ai = split.ai ? await client.callJson('local_aibridge_import_questions',
+      { courseid, category: `${category} — IA`, parent: category, xml: split.ai, dryrun }) : null;
+    return textResult({ regular, ai });
+  }));
+
+  server.registerTool('moodle_set_quiz_layout', {
+    title: 'Moodle : questions d\'un test',
+    description: 'Remplit un test VIDE créé par le pont : emplacements fixes repérés par idnumber (dans l\'ordre, avec '
+      + 'leurs points) et/ou tirages aléatoires dans une catégorie (categoryid renvoyé par moodle_import_questions). '
+      + 'shufflequestions mélange l\'ordre des questions (test sommatif).',
+    inputSchema: {
+      cmid: z.number().int().positive(),
+      slots: z.array(z.union([
+        z.object({ idnumber: z.string().min(1), maxmark: z.number().optional() }),
+        z.object({ random: z.object({ categoryid: z.number().int().positive() }), count: z.number().int().positive(),
+          maxmark: z.number().optional() }),
+      ])).min(1),
+      shufflequestions: z.boolean().default(false),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ cmid, slots, shufflequestions, dry_run: dryrun }) => call('local_aibridge_set_quiz_layout',
+    { cmid, layout: JSON.stringify({ slots, shufflequestions }), dryrun })));
+
+  server.registerTool('moodle_set_module_extras', {
+    title: 'Moodle : surveillance, durée minimale, Avancement',
+    description: 'Réglages hors formulaire d\'une activité créée par le pont : activité surveillée (code de séance, mode '
+      + 'examen, date prévue), durée minimale attendue (secondes), Avancement (suivi du cours, date de rendu ; sur un '
+      + 'test ou une leçon, la date de rendu ne ferme jamais l\'activité).',
+    inputSchema: {
+      cmid: z.number().int().positive(),
+      supervised: z.object({
+        planned: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
+        sessioncode: z.boolean().default(true),
+        exammode: z.boolean().default(true),
+      }).optional(),
+      minduration_seconds: z.number().int().min(0).optional(),
+      avancement_duedate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional()
+        .describe('Date de rendu dans l\'Avancement (déclenche le report EFE « après la date de rendu »).'),
+      avancement: z.boolean().default(true).describe('Inscrire l\'activité au bloc Avancement (suivi du cours activé).'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async (args) => {
+    const extras = {};
+    if (args.supervised) {
+      extras.supervised = args.supervised;
+    }
+    if (args.minduration_seconds !== undefined) {
+      extras.minduration = args.minduration_seconds;
+    }
+    if (args.avancement || args.avancement_duedate) {
+      extras.avancement = args.avancement_duedate ? { duedate: args.avancement_duedate } : {};
+    }
+    return call('local_aibridge_set_module_extras', { cmid: args.cmid, extras: JSON.stringify(extras), dryrun: args.dry_run });
+  }));
+
+  server.registerTool('moodle_deploy_module', {
+    title: 'Moodle : déployer un module du skill',
+    description: 'Déploie un module du skill moodle-ciel à partir de son manifeste module.deploy.json : section, puis '
+      + 'chaque activité dans l\'ordre avec les réglages de son rôle (reglages-moodle.md), ses contenus (leçon, '
+      + 'questions, TP), sa surveillance et l\'Avancement ; relit enfin chaque activité et renvoie les écarts au '
+      + 'manifeste. Tout est créé MASQUÉ dans un cours bac à sable. Toujours lancer d\'abord dry_run, et contrôler le '
+      + 'module avec scripts/check-module.mjs du skill.',
+    inputSchema: {
+      manifest: z.string().describe('Chemin de module.deploy.json (les fichiers sont lus à côté).'),
+      courseid: z.number().int().positive().optional().describe('Cours cible (sinon course.id du manifeste).'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ manifest, courseid, dry_run: dryRun2 }) => textResult(
+    await deployModule(client, manifest, { courseid, dryRun: dryRun2 }),
+  )));
 
   server.registerTool('moodle_delete_draft', {
     title: 'Moodle : supprimer un brouillon du pont',

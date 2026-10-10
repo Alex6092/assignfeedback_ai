@@ -62,6 +62,14 @@ class course_writer {
         foreach ($DB->get_records('course_sections', array('course' => $course->id), '', 'id') as $section) {
             created::add(created::SECTION, (int)$section->id, (int)$course->id);
         }
+        // Activités que Moodle ajoute de lui-même à un cours neuf (forum « Annonces ») :
+        // elles font partie du brouillon, masquées comme le reste.
+        foreach ($DB->get_records('course_modules', array('course' => $course->id), '', 'id, visible') as $cm) {
+            created::add(created::CM, (int)$cm->id, (int)$course->id);
+            if ((int)$cm->visible !== 0) {
+                formatactions::cm($course->id)->set_visibility((int)$cm->id, 0);
+            }
+        }
         return array(
             'courseid'  => (int)$course->id,
             'shortname' => $course->shortname,
@@ -119,9 +127,12 @@ class course_writer {
         if ($fields) {
             $actions->update($section, $fields);
         }
-        if (in_array((int)$section->id, $createdids, true)) {
-            $section = get_fast_modinfo($course->id)->get_section_info($number);
-            $actions->set_visibility($section, false);
+        // Toutes les sections créées (celle demandée et celles qui la précèdent) sont masquées.
+        foreach ($createdids as $sectionid) {
+            $newsection = get_fast_modinfo($course->id)->get_section_info_by_id($sectionid);
+            if ($newsection && $newsection->visible) {
+                $actions->set_visibility($newsection, false);
+            }
         }
 
         $section = get_fast_modinfo($course->id)->get_section_info($number);

@@ -26,8 +26,10 @@ async function main() {
 
   const client = new MoodleClient(config);
   const write = config.readonly ? '' : ' Écriture (bac à sable du pont seulement, tout est créé masqué) : '
-    + 'moodle_create_course, moodle_upsert_section, moodle_create_module, puis moodle_get_module pour vérifier ; '
-    + 'moodle_delete_draft retire un brouillon encore masqué. Toujours un dry_run avant une création.';
+    + 'moodle_deploy_module déploie tout un module du skill moodle-ciel depuis son manifeste ; à l\'unité, '
+    + 'moodle_create_course, moodle_upsert_section, moodle_create_module, moodle_set_lesson_pages, '
+    + 'moodle_import_questions, moodle_set_quiz_layout, moodle_set_module_extras, puis moodle_get_module pour '
+    + 'vérifier ; moodle_delete_draft retire un brouillon encore masqué. Toujours un dry_run avant une création.';
   const server = new McpServer(
     { name: 'moodle', version: '0.2.0' },
     {

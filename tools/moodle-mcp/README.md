@@ -38,6 +38,11 @@ Outils d'écriture, proposés seulement avec `MOODLE_MCP_READONLY=0` (et refusé
 | `moodle_create_course` | Cours masqué dans une catégorie bac à sable. |
 | `moodle_upsert_section` | Section créée si elle manque (masquée), nom et résumé (`summary_file` : un fichier HTML). |
 | `moodle_create_module` | Activité masquée : `settings` = champs du formulaire Moodle de l'activité ; `settings_files` lit un champ dans un fichier (HTML du skill : contenu entre les marqueurs). |
+| `moodle_set_lesson_pages` | Pages d'une leçon depuis `lecon.html` (un bloc entre marqueurs = une page, titre = `<h1>`). |
+| `moodle_import_questions` | Fichier Moodle XML → catégorie de la banque du cours (`split_ai` : questions IA dans « <catégorie> — IA »). |
+| `moodle_set_quiz_layout` | Questions d'un test vide : fixes par idnumber, ou tirées au hasard dans une catégorie. |
+| `moodle_set_module_extras` | Activité surveillée, durée minimale, Avancement. |
+| `moodle_deploy_module` | Déploie tout un module du skill depuis `module.deploy.json` (réglages de chaque rôle dans `src/roles.js`), relit et renvoie les écarts. |
 | `moodle_delete_draft` | Supprime un brouillon du pont encore masqué (activité, section vide, cours). |
 
 Tous acceptent `dry_run: true` : Moodle vérifie tout et renvoie ce qu'il ferait, sans rien écrire.

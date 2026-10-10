@@ -42,12 +42,16 @@ Gabarit : `templates/module.deploy.json`.
 ```json
 {
   "format": "moodle-ciel/module@1",
-  "course": { "id": 123 },
+  "course": { "id": 123, "teacher_id": 2 },
   "section": { "number": 3, "name": "M2 - Titre du module" },
   "prefix": "IA",
   "activities": [ … dans l'ordre d'affichage … ]
 }
 ```
+
+`course.teacher_id` : identifiant Moodle de l'enseignant, désigné dans EFE pour chaque activité qui
+y remonte (sinon, le compte de service du pont serait désigné). `course.id` : le cours bac à sable
+cible (il peut aussi être donné à l'outil de déploiement).
 
 Champs d'une activité :
 
@@ -67,6 +71,7 @@ Champs d'une activité :
 | `efe` | `tp`, `quiz-ia`, `sommatif`, `finale` | `{ "competences": ["C04.3"], "ponctualite": ["C03.4.R4.T5"], "after_due": true }` — codes N2/N3 uniquement ; pas de ponctualité sur les tests |
 | `duedate` | `tp` (date du devoir), tests (date de rendu dans l'Avancement) | `"2026-11-03T17:40"` (heure de Paris) ; obligatoire avec `after_due` |
 | `supervised` | `sommatif`, `finale` | `{ "planned": "2026-11-03T14:00", "sessioncode": true, "exammode": true }` |
+| `minduration_minutes` | tests | durée minimale attendue d'une tentative (contrôle des tentatives), si l'enseignant la demande |
 | `overrides` | tous | écarts voulus aux réglages du rôle, par nom de champ Moodle : `{ "delay2": 86400 }` |
 
 Les réglages par défaut de chaque rôle sont ceux de `reglages-moodle.md` : n'écris dans le
@@ -79,15 +84,23 @@ Par le serveur MCP « moodle », quand ses outils d'écriture sont disponibles (
 
 1. Contrôle le module (`scripts/check-module.mjs`) : pas de déploiement avec une erreur.
 2. **Simulation** : `moodle_deploy_module` avec `dry_run: true` ; relis la liste des opérations.
-3. **Création** : même appel sans `dry_run`. Tout est créé **masqué**, dans l'ordre du manifeste :
-   section → leçon → vidéo → banque et QCM d'entraînement → TP → banque et test sommatif → options
-   surveillées.
+3. **Création** : même appel sans `dry_run` (avec `courseid` si le manifeste n'a pas de `course.id`).
+   Tout est créé **masqué**, dans l'ordre du manifeste. Pour chaque activité : questions importées
+   d'abord (banque du cours, une catégorie par test ; les questions IA de l'entraînement dans
+   « <catégorie> — IA »), puis l'activité avec les réglages de son rôle, ses pages (leçon) ou ses
+   questions (fixes par idnumber, ou tirées au hasard), enfin la surveillance et l'Avancement. Une
+   activité du même nom déjà présente dans la section fait refuser le déploiement : supprime d'abord
+   les brouillons (`moodle_delete_draft`). Les vidéos (`mod_videoqcm`) se créent encore à la main.
 4. Le rapport d'écart que renvoie l'outil (manifeste comparé à ce que Moodle a enregistré) doit être
    vide ; sinon, explique chaque écart.
 
 Sans les outils d'écriture (lecture seule, ou plugin pas encore à jour), produis pour l'enseignant
 la liste de création pas à pas, activité par activité, avec la valeur de chaque champ, tirée du
 manifeste et de `reglages-moodle.md`.
+
+Sur un test ou une leçon, la date de rendu de l'Avancement n'est jamais recopiée dans l'échéance
+native (`timeclose`, `deadline`) : le pont coupe cette synchronisation, sinon l'Avancement fermerait
+le test sommatif à sa date de rendu.
 
 ## 4. Vérifier après création
 

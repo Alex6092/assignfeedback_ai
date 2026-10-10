@@ -63,4 +63,25 @@ class guard {
         self::require_category((int)$course->category);
         return $course;
     }
+
+    /**
+     * Brouillon du pont : activité créée par le pont, encore masquée, dans un
+     * cours où l'écriture est permise. Seuls ces brouillons voient leur contenu
+     * remplacé (pages de leçon, questions d'un test, réglages des extensions).
+     *
+     * @param int         $cmid
+     * @param string|null $modname type attendu (lesson, quiz...)
+     * @return array [cours, cm]
+     */
+    public static function require_draft_cm(int $cmid, ?string $modname = null): array {
+        $cm = get_coursemodule_from_id((string)$modname, $cmid, 0, false, MUST_EXIST);
+        $course = self::require_course((int)$cm->course);
+        if (!created::has(created::CM, $cmid)) {
+            throw new \moodle_exception('error_notcreated', 'local_aibridge', '', 'cm ' . $cmid);
+        }
+        if ((int)$cm->visible !== 0) {
+            throw new \moodle_exception('error_draftvisible', 'local_aibridge', '', 'cm ' . $cmid);
+        }
+        return array($course, $cm);
+    }
 }

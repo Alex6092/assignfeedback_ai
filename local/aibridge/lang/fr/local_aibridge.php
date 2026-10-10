@@ -51,6 +51,20 @@ $string['error_draftgone'] = 'Objet introuvable, retiré du registre du pont ({$
 $string['error_draftvisible'] = 'Objet visible : un enseignant l\'a publié, le pont ne le supprime pas ({$a}).';
 $string['error_sectionzero'] = 'La section 0 d\'un cours ne se supprime pas.';
 $string['error_sectionnotempty'] = 'La section {$a} contient encore des activités : supprimez-les d\'abord.';
+$string['error_beforecmid'] = 'Position impossible : l\'activité {$a} n\'est pas dans cette section.';
+$string['error_lessonpages'] = 'Pages de la leçon attendues : une liste JSON de {title, contents}, non vide.';
+$string['error_lessonpage'] = 'Page {$a} de la leçon sans titre ou sans contenu.';
+$string['error_categoryname'] = 'Nom de catégorie de questions obligatoire.';
+$string['error_noquestions'] = 'Aucune question dans le fichier Moodle XML.';
+$string['error_categorynotempty'] = 'La catégorie « {$a} » contient déjà des questions : choisissez une autre catégorie, ou videz celle-ci dans Moodle.';
+$string['error_import'] = 'Import Moodle XML refusé : {$a}';
+$string['error_quiznotempty'] = 'Ce test contient déjà des questions : le pont ne remplit qu\'un test vide.';
+$string['error_quizattempts'] = 'Ce test a déjà des tentatives : sa structure ne peut plus être modifiée.';
+$string['error_randomcategory'] = 'Catégorie de tirage aléatoire introuvable dans les banques du cours : {$a}.';
+$string['error_randomcount'] = 'Pas assez de questions pour le tirage aléatoire ({$a}).';
+$string['error_questionidnumber'] = 'Question introuvable dans les banques du cours : idnumber « {$a} ».';
+$string['error_quizlayout'] = 'Structure du test attendue : {"slots": [...]} avec au moins un emplacement.';
+$string['error_extras'] = 'Réglages attendus : un objet JSON (supervised, minduration, avancement).';
 $string['error_coursenotdraft'] = 'Le cours contient une activité publiée ou qui ne vient pas du pont (activité {$a}) : suppression refusée.';
 
 // Vie privée.

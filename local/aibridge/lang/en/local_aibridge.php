@@ -51,6 +51,20 @@ $string['error_draftgone'] = 'Object not found, removed from the bridge registry
 $string['error_draftvisible'] = 'Object is visible: a teacher published it, the bridge will not delete it ({$a}).';
 $string['error_sectionzero'] = 'Section 0 of a course cannot be deleted.';
 $string['error_sectionnotempty'] = 'Section {$a} still contains activities: delete them first.';
+$string['error_beforecmid'] = 'Position not possible: activity {$a} is not in this section.';
+$string['error_lessonpages'] = 'Lesson pages expected: a non-empty JSON list of {title, contents}.';
+$string['error_lessonpage'] = 'Lesson page {$a} has no title or no contents.';
+$string['error_categoryname'] = 'A question category name is required.';
+$string['error_noquestions'] = 'No question in the Moodle XML file.';
+$string['error_categorynotempty'] = 'Category "{$a}" already contains questions: choose another category, or empty this one in Moodle.';
+$string['error_import'] = 'Moodle XML import refused: {$a}';
+$string['error_quiznotempty'] = 'This quiz already contains questions: the bridge only fills an empty quiz.';
+$string['error_quizattempts'] = 'This quiz already has attempts: its structure can no longer be changed.';
+$string['error_randomcategory'] = 'Random question category not found in the course banks: {$a}.';
+$string['error_randomcount'] = 'Not enough questions for the random draw ({$a}).';
+$string['error_questionidnumber'] = 'Question not found in the course banks: idnumber "{$a}".';
+$string['error_quizlayout'] = 'Quiz structure expected: {"slots": [...]} with at least one slot.';
+$string['error_extras'] = 'Settings expected: a JSON object (supervised, minduration, avancement).';
 $string['error_coursenotdraft'] = 'The course contains an activity that is published or not created by the bridge (activity {$a}): deletion refused.';
 
 // Privacy.
