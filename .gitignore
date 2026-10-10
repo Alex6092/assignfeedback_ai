@@ -13,3 +13,6 @@ Thumbs.db
 *.log
 *.tmp
 
+
+# Dépendances Node (serveur MCP)
+node_modules/
