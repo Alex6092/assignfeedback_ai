@@ -35,6 +35,23 @@ $string['task_purge_log'] = 'AI bridge log cleanup';
 // Errors.
 $string['error_json'] = 'Cannot encode the response as JSON: {$a}';
 $string['error_export'] = 'Moodle XML export failed.';
+$string['error_writesdisabled'] = 'Writing through the bridge is disabled (bridge setting "Allow writing").';
+$string['error_notsandbox'] = 'Category {$a} is not a bridge sandbox: writing refused.';
+$string['error_coursenames'] = 'The course full name and short name are required.';
+$string['error_sectionnumber'] = 'Invalid section number: {$a}.';
+$string['error_modname'] = 'Activity type not supported by the bridge: {$a}.';
+$string['error_settings'] = 'Settings must be a JSON object (named fields of the activity form).';
+$string['error_date'] = 'Invalid date (expected format YYYY-MM-DDTHH:MM): {$a}.';
+$string['error_scale'] = 'Scale not found: {$a}.';
+$string['error_efenocompetence'] = 'EFE reporting enabled without a competency: at least one code is required.';
+$string['error_efecode'] = 'EFE code refused: {$a} (level N2 at least, for example C04.3 or C04.3.D4.T4).';
+$string['error_drafttype'] = 'Unknown object type: {$a} (cm, section or course).';
+$string['error_notcreated'] = 'This object was not created by the bridge: deletion refused ({$a}).';
+$string['error_draftgone'] = 'Object not found, removed from the bridge registry ({$a}).';
+$string['error_draftvisible'] = 'Object is visible: a teacher published it, the bridge will not delete it ({$a}).';
+$string['error_sectionzero'] = 'Section 0 of a course cannot be deleted.';
+$string['error_sectionnotempty'] = 'Section {$a} still contains activities: delete them first.';
+$string['error_coursenotdraft'] = 'The course contains an activity that is published or not created by the bridge (activity {$a}): deletion refused.';
 
 // Privacy.
 $string['privacy:metadata:log'] = 'Log of calls to the AI bridge.';

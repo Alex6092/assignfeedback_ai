@@ -1,7 +1,11 @@
-// Outils MCP exposés à l'agent. Phase 1 : lecture seule.
+// Outils MCP exposés à l'agent : lecture, et écriture en bac à sable quand
+// MOODLE_MCP_READONLY=0. Les garde-fous de l'écriture (réglage du site,
+// catégories bac à sable, masquage, suppression des seuls brouillons) sont
+// vérifiés par Moodle : ces outils ne font que transmettre.
 
 import path from 'node:path';
 import { z } from 'zod';
+import { withFiles, readField } from './content.js';
 import { errorResult, textResult, truncateStrings } from './shape.js';
 import { snapshotCourse } from './snapshot.js';
 
@@ -9,6 +13,11 @@ import { snapshotCourse } from './snapshot.js';
 export const TRUNCATE_AT = 1500;
 
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const DELETE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+
+const dryRun = z.boolean().default(false)
+  .describe('Simulation : Moodle vérifie tout (droits, bac à sable, réglages) et renvoie ce qui serait fait, sans rien écrire.');
 
 const htmlMode = z.enum(['truncate', 'full']).default('truncate')
   .describe('« truncate » (défaut) coupe les contenus longs ; « full » les renvoie en entier (réponse volumineuse).');
@@ -18,9 +27,9 @@ const htmlMode = z.enum(['truncate', 'full']).default('truncate')
  *
  * @param {import('@modelcontextprotocol/sdk/server/mcp.js').McpServer} server
  * @param {import('./moodle-client.js').MoodleClient} client
- * @param {{log?: (msg: string) => void}} [options]
+ * @param {{log?: (msg: string) => void, readonly?: boolean}} [options]
  */
-export function registerTools(server, client, { log = () => {} } = {}) {
+export function registerTools(server, client, { log = () => {}, readonly = true } = {}) {
   const safe = (fn) => async (args) => {
     try {
       return await fn(args ?? {});
@@ -154,4 +163,110 @@ export function registerTools(server, client, { log = () => {} } = {}) {
       suite: 'Lire README.md dans le dossier pour le plan du cours et les liens vers chaque fichier.',
     });
   }));
+
+  if (!readonly) {
+    registerWriteTools(server, client, safe);
+  }
+}
+
+/**
+ * Outils d'écriture (bac à sable). Tout ce qu'ils créent est masqué ; seul ce
+ * qu'ils ont créé, encore masqué, peut être supprimé.
+ */
+function registerWriteTools(server, client, safe) {
+  const call = async (fn, params) => textResult(await client.callJson(fn, params));
+
+  server.registerTool('moodle_create_course', {
+    title: 'Moodle : créer un cours (bac à sable)',
+    description: 'Crée un cours MASQUÉ dans une catégorie bac à sable du pont : format Thématique, achèvement '
+      + 'activé. Refusé hors bac à sable ou si l\'écriture est désactivée sur le site.',
+    inputSchema: {
+      categoryid: z.number().int().positive().describe('Catégorie bac à sable (voir moodle_site_info, bridge.sandboxcategories).'),
+      fullname: z.string().min(1),
+      shortname: z.string().min(1).describe('Unique sur le site.'),
+      idnumber: z.string().default(''),
+      summary: z.string().default('').describe('Résumé HTML.'),
+      numsections: z.number().int().min(0).max(52).default(0).describe('Sections à créer en plus de la section 0.'),
+      startdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Date de début AAAA-MM-JJ (défaut : aujourd\'hui).'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ categoryid, fullname, shortname, idnumber, summary, numsections, startdate, dry_run: dryrun }) => call(
+    'local_aibridge_create_course',
+    { categoryid, fullname, shortname, idnumber, summary, numsections, startdate: startdate ? localMidnight(startdate) : 0, dryrun },
+  )));
+
+  server.registerTool('moodle_upsert_section', {
+    title: 'Moodle : créer ou renommer une section',
+    description: 'Crée la section n° « section » si elle manque (MASQUÉE, avec celles qui la précèdent), puis règle '
+      + 'son nom et son résumé. Une section existante garde sa visibilité.',
+    inputSchema: {
+      courseid: z.number().int().positive(),
+      section: z.number().int().min(0).max(100),
+      name: z.string().optional().describe('Nom (absent : inchangé). Convention : « M2 - Titre du module ».'),
+      summary: z.string().optional().describe('Résumé HTML (absent : inchangé).'),
+      summary_file: z.string().optional().describe('Fichier du résumé (HTML : contenu entre les marqueurs).'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async ({ courseid, section, name, summary, summary_file: summaryFile, dry_run: dryrun }) => {
+    const text = summaryFile ? await readField(summaryFile) : summary;
+    return call('local_aibridge_upsert_section', { courseid, section, name, summary: text, dryrun });
+  }));
+
+  server.registerTool('moodle_create_module', {
+    title: 'Moodle : créer une activité (bac à sable)',
+    description: 'Crée une activité MASQUÉE (page, label, url, lesson, quiz, assign) dans une section d\'un cours bac à '
+      + 'sable. « settings » reçoit les champs du formulaire de l\'activité (noms des champs Moodle : attempts, delay1, '
+      + 'duedate, assignsubmission_onlinetext_enabled, aichatenabled, efenotes_enabled, efenotes_competence...). '
+      + 'Dates au format AAAA-MM-JJTHH:MM (heure de Paris) ; « grade »: {"scale": "Barème officiel"} pour un barème ; '
+      + '« activity » pour les instructions d\'un devoir. « settings_files » lit un champ dans un fichier (HTML : '
+      + 'contenu entre les marqueurs). Utiliser d\'abord dry_run pour voir les champs transmis.',
+    inputSchema: {
+      courseid: z.number().int().positive(),
+      section: z.number().int().min(0).max(100),
+      modname: z.enum(['page', 'label', 'url', 'lesson', 'quiz', 'assign']),
+      name: z.string().describe('Nom affiché (peut être vide pour une étiquette).'),
+      intro: z.string().default('').describe('Description HTML.'),
+      intro_file: z.string().optional().describe('Fichier de la description (remplace « intro »).'),
+      settings: z.record(z.string(), z.unknown()).default({}).describe('Champs du formulaire de l\'activité.'),
+      settings_files: z.record(z.string(), z.string()).default({})
+        .describe('Champ → fichier, ex. {"content": "M5/page.html", "assignfeedback_ai_expectedanswer": "M5/tp1/corrige.txt"}.'),
+      dry_run: dryRun,
+    },
+    annotations: CREATE,
+  }, safe(async (args) => {
+    const intro = args.intro_file ? await readField(args.intro_file) : args.intro;
+    const settings = await withFiles(args.settings, args.settings_files);
+    return call('local_aibridge_create_module', {
+      courseid: args.courseid,
+      section: args.section,
+      modname: args.modname,
+      name: args.name,
+      intro,
+      settings: JSON.stringify(settings),
+      dryrun: args.dry_run,
+    });
+  }));
+
+  server.registerTool('moodle_delete_draft', {
+    title: 'Moodle : supprimer un brouillon du pont',
+    description: 'Supprime un objet que le pont a créé et qui est encore MASQUÉ : activité (cm), section vide '
+      + '(section : id de course_sections) ou cours entier (course : seulement s\'il ne contient que des brouillons '
+      + 'du pont). Tout objet publié ou créé à la main est refusé par Moodle.',
+    inputSchema: {
+      objecttype: z.enum(['cm', 'section', 'course']),
+      objectid: z.number().int().positive(),
+      dry_run: dryRun,
+    },
+    annotations: DELETE,
+  }, safe(async ({ objecttype, objectid, dry_run: dryrun }) => call(
+    'local_aibridge_delete_draft', { objecttype, objectid, dryrun },
+  )));
+}
+
+/** « AAAA-MM-JJ » → horodatage de minuit, heure locale du poste. */
+export function localMidnight(date) {
+  const [year, month, day] = date.split('-').map(Number);
+  return Math.floor(new Date(year, month - 1, day).getTime() / 1000);
 }

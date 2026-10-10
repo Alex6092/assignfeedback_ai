@@ -35,6 +35,23 @@ $string['task_purge_log'] = 'Nettoyage du journal du pont IA';
 // Erreurs.
 $string['error_json'] = 'Réponse impossible à encoder en JSON : {$a}';
 $string['error_export'] = 'Export Moodle XML impossible.';
+$string['error_writesdisabled'] = 'L\'écriture par le pont est désactivée (réglage « Autoriser l\'écriture » du pont).';
+$string['error_notsandbox'] = 'La catégorie {$a} n\'est pas un bac à sable du pont : écriture refusée.';
+$string['error_coursenames'] = 'Le nom complet et le nom abrégé du cours sont obligatoires.';
+$string['error_sectionnumber'] = 'Numéro de section invalide : {$a}.';
+$string['error_modname'] = 'Type d\'activité non pris en charge par le pont : {$a}.';
+$string['error_settings'] = 'Les réglages doivent être un objet JSON (champs nommés du formulaire de l\'activité).';
+$string['error_date'] = 'Date invalide (format attendu AAAA-MM-JJTHH:MM) : {$a}.';
+$string['error_scale'] = 'Barème introuvable : {$a}.';
+$string['error_efenocompetence'] = 'Report EFE activé sans compétence : au moins un code est obligatoire.';
+$string['error_efecode'] = 'Code EFE refusé : {$a} (niveau N2 au minimum, par exemple C04.3 ou C04.3.D4.T4).';
+$string['error_drafttype'] = 'Type d\'objet inconnu : {$a} (cm, section ou course).';
+$string['error_notcreated'] = 'Cet objet n\'a pas été créé par le pont : suppression refusée ({$a}).';
+$string['error_draftgone'] = 'Objet introuvable, retiré du registre du pont ({$a}).';
+$string['error_draftvisible'] = 'Objet visible : un enseignant l\'a publié, le pont ne le supprime pas ({$a}).';
+$string['error_sectionzero'] = 'La section 0 d\'un cours ne se supprime pas.';
+$string['error_sectionnotempty'] = 'La section {$a} contient encore des activités : supprimez-les d\'abord.';
+$string['error_coursenotdraft'] = 'Le cours contient une activité publiée ou qui ne vient pas du pont (activité {$a}) : suppression refusée.';
 
 // Vie privée.
 $string['privacy:metadata:log'] = 'Journal des appels au pont IA.';

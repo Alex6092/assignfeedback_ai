@@ -3,7 +3,8 @@
 Serveur MCP local (stdio) qui donne à un agent IA un accès **en lecture** à un site Moodle
 équipé du plugin [`local_aibridge`](../../local/aibridge). L'agent voit un cours dans le détail,
 réglages de nos plugins compris : Correction IA, Tuteur IA et son brief, EFE, activités
-surveillées, verrous, durée minimale, questions IA, etc.
+surveillées, verrous, durée minimale, questions IA, etc. Avec `MOODLE_MCP_READONLY=0`, il peut
+aussi **créer des brouillons masqués** dans les catégories bac à sable du pont.
 
 ```
 Claude Code / Codex ──stdio──> moodle-mcp (Node ≥ 20) ──HTTPS POST + jeton──> Moodle : local_aibridge
@@ -28,6 +29,18 @@ passe de test sont masqués. Chaque appel est inscrit au journal du pont, dans M
 Les contenus HTML longs sont tronqués par défaut (`html: "truncate"`), pour ne pas dépasser la
 taille maximale d'une réponse d'outil. Pour le texte intégral, passer `html: "full"`, ou faire un
 snapshot.
+
+Outils d'écriture, proposés seulement avec `MOODLE_MCP_READONLY=0` (et refusés par Moodle hors bac
+à sable ou si l'écriture n'y est pas activée) :
+
+| Outil | Rôle |
+|---|---|
+| `moodle_create_course` | Cours masqué dans une catégorie bac à sable. |
+| `moodle_upsert_section` | Section créée si elle manque (masquée), nom et résumé (`summary_file` : un fichier HTML). |
+| `moodle_create_module` | Activité masquée : `settings` = champs du formulaire Moodle de l'activité ; `settings_files` lit un champ dans un fichier (HTML du skill : contenu entre les marqueurs). |
+| `moodle_delete_draft` | Supprime un brouillon du pont encore masqué (activité, section vide, cours). |
+
+Tous acceptent `dry_run: true` : Moodle vérifie tout et renvoie ce qu'il ferait, sans rien écrire.
 
 ## 1. Côté Moodle (une fois, par l'administrateur)
 
@@ -64,7 +77,7 @@ Variables d'environnement :
 | `MOODLE_TOKEN` | Jeton du service `local_aibridge`. **Ne jamais le committer.** |
 | `MOODLE_TIMEOUT_MS` | Délai maximal d'un appel, par défaut `120000`. |
 | `MOODLE_ALLOW_HTTP` | `1` pour accepter `http` sur un réseau de confiance. Sinon, `http` n'est accepté que pour `localhost`. |
-| `MOODLE_MCP_READONLY` | Lecture seule par défaut. Les outils d'écriture (phase 3) ne seront proposés qu'avec `0`. |
+| `MOODLE_MCP_READONLY` | Lecture seule par défaut. Les outils d'écriture ne sont proposés qu'avec `0` (le `.mcp.json` du dépôt lit cette variable dans l'environnement Windows). |
 
 ### Claude Code
 
