@@ -133,6 +133,9 @@ de ce qui reste à faire à la main (relire le brief du tuteur, vérifier le cro
 les outils d'écriture du serveur MCP ne sont pas disponibles, produis la liste de création
 pas à pas tirée des manifestes.
 
+Propose enfin la trace PDF des leçons (`references/deploiement.md` § 6) : activation des « Leçons
+imprimables » dans le cours, ou export en lot par `moodle_export_lessons_pdf`.
+
 ## Organisation des fichiers d'un parcours
 
 ```

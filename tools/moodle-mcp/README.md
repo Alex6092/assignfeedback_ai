@@ -25,6 +25,7 @@ passe de test sont masqués. Chaque appel est inscrit au journal du pont, dans M
 | `moodle_get_questions` | Banques, catégories, questions, export Moodle XML (options IA comprises, sans clé). |
 | `moodle_get_efe_competences` | Référentiel EFE (N1, N2, N3) proposé par `local_efenotes`. |
 | `moodle_snapshot_course` | Écrit tout un cours sur le disque (plan `README.md`, JSON, HTML bruts, XML, SCSS du thème) pour le comparer aux fichiers sources d'un parcours. |
+| `moodle_export_lessons_pdf` | Un PDF par leçon et un PDF du parcours complet, avec la mise en page de Moodle (feuille de style du thème, règles d'impression de `local_lessonexport`), images comprises. Imprimé par Edge ou Chrome sans fenêtre, avec un profil temporaire (`MOODLE_PDF_BROWSER` pour un autre navigateur). Ne modifie rien dans Moodle. |
 
 Les contenus HTML longs sont tronqués par défaut (`html: "truncate"`), pour ne pas dépasser la
 taille maximale d'une réponse d'outil. Pour le texte intégral, passer `html: "full"`, ou faire un

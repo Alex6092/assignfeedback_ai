@@ -7,6 +7,7 @@
 3. Créer dans Moodle
 4. Vérifier après création
 5. Ce qui reste à faire à la main
+6. Trace PDF des leçons
 
 ## 1. Fichiers d'un module
 
@@ -120,3 +121,17 @@ le test sommatif à sa date de rendu.
 - rendre une copie de test sur un TP pour voir arriver la Correction IA ;
 - publier (rendre visible) quand tout est relu ; après chaque sommatif, publier la correction avec le
   bloc Avancement quand tout le monde l'a passé.
+
+## 6. Trace PDF des leçons
+
+Les élèves gardent une trace des leçons, lisible même quand Moodle ne l'est pas :
+
+- **Dans Moodle** (plugin `local_lessonexport`) : l'enseignant active « Leçons imprimables » pour le
+  cours ; chaque leçon a alors un bouton « Version imprimable », et la page « Leçons imprimables »
+  imprime tout le parcours (une leçon par page). L'élève choisit « Enregistrer au format PDF ».
+- **En lot, par l'agent** : `moodle_export_lessons_pdf` (cours, dossier) produit un PDF par leçon et
+  le parcours complet, avec la mise en page de Moodle. Utile en fin de formation, ou à distribuer avant
+  une coupure prévue.
+
+Le rendu suit le HTML de la leçon : un encadré trop long pour une page A4 est reporté entier à la page
+suivante (il n'est jamais coupé) ; préfère donc des encadrés courts (voir `style-html.md`).

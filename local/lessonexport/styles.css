@@ -1,0 +1,136 @@
+/* Leçons imprimables : règles limitées aux pages du plugin (body.local-lessonexport). */
+
+.lessonexport-launch {
+    margin: 1.5rem 0 .5rem;
+}
+
+body.local-lessonexport .lessonexport-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin: 0 0 1.5rem;
+}
+
+body.local-lessonexport .lessonexport-help {
+    color: #64748b;
+    font-size: .9rem;
+}
+
+body.local-lessonexport .lessonexport-meta {
+    color: #64748b;
+    font-size: .85rem;
+}
+
+body.local-lessonexport .lessonexport-name {
+    margin: .2rem 0 1rem;
+    padding-bottom: .3rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+body.local-lessonexport .lessonexport-lesson + .lessonexport-lesson {
+    margin-top: 3rem;
+}
+
+body.local-lessonexport .lessonexport-note {
+    color: #64748b;
+    font-style: italic;
+    font-size: .9rem;
+}
+
+/* Page imprimée nommée : les marges ne s'appliquent qu'aux pages du plugin. */
+@page lessonexport {
+    size: A4;
+    margin: 14mm 12mm;
+}
+
+@media print {
+    body.local-lessonexport {
+        page: lessonexport;
+        background: #fff !important;
+    }
+
+    /* Rien de Moodle autour du contenu. */
+    body.local-lessonexport .lessonexport-toolbar,
+    body.local-lessonexport .lessonexport-launch,
+    body.local-lessonexport nav.navbar,
+    body.local-lessonexport #page-header,
+    body.local-lessonexport .secondary-navigation,
+    body.local-lessonexport .drawer,
+    body.local-lessonexport .drawer-toggles,
+    body.local-lessonexport #page-footer,
+    body.local-lessonexport .btn-footer-popover,
+    body.local-lessonexport .footer-popover,
+    body.local-lessonexport #goto-top-link {
+        display: none !important;
+    }
+
+    body.local-lessonexport #page,
+    body.local-lessonexport #page-wrapper,
+    body.local-lessonexport #topofscroll,
+    body.local-lessonexport #region-main,
+    body.local-lessonexport .main-inner {
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-width: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Une leçon par page imprimée. */
+    body.local-lessonexport .lessonexport-lesson + .lessonexport-lesson {
+        margin-top: 0;
+        break-before: page;
+    }
+
+    body.local-lessonexport .contents .no-overflow {
+        overflow: visible !important;
+    }
+
+    /* Couleurs des encadrés conservées (fonds, bordures). */
+    body.local-lessonexport * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Ne pas couper un encadré, un bloc de code, un tableau, une image. */
+    body.local-lessonexport .objectif,
+    body.local-lessonexport .astuce,
+    body.local-lessonexport .danger,
+    body.local-lessonexport .suite,
+    body.local-lessonexport .cdc,
+    body.local-lessonexport .rendre,
+    body.local-lessonexport .phase,
+    body.local-lessonexport .install,
+    body.local-lessonexport .formule,
+    body.local-lessonexport .carte-item,
+    body.local-lessonexport pre,
+    body.local-lessonexport table,
+    body.local-lessonexport figure,
+    body.local-lessonexport img {
+        break-inside: avoid;
+    }
+
+    body.local-lessonexport h1,
+    body.local-lessonexport h2,
+    body.local-lessonexport h3,
+    body.local-lessonexport h4 {
+        break-after: avoid;
+    }
+
+    /* Le code long passe à la ligne au lieu d'être coupé au bord de la page. */
+    body.local-lessonexport pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    /* Sur papier, l'adresse des liens externes est écrite après le lien. */
+    body.local-lessonexport .contents a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: .8em;
+        color: #475569;
+        word-break: break-all;
+    }
+}

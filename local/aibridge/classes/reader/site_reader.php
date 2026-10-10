@@ -118,11 +118,36 @@ class site_reader {
         }
         return array(
             'name'           => $name,
+            'cssurl'         => self::css_url($name),
             'scsspre'        => $scsspre,
             'scss'           => $scss,
             'cielclasses'    => $found,
             'missingclasses' => $missing,
         );
+    }
+
+    /**
+     * Feuille de style compilée du thème (publique, sans connexion), comme la
+     * construit theme_config::css_urls() : sert à reproduire hors de Moodle la
+     * mise en page exacte des contenus (export PDF des leçons).
+     */
+    private static function css_url(string $name): ?string {
+        global $CFG;
+        $rev = theme_get_revision();
+        if ($rev <= -1) {
+            return null; // Thème en mode développeur : pas d'adresse stable.
+        }
+        $sub = theme_get_sub_revision_for_theme($name);
+        if ($sub && $sub > 0) {
+            $rev .= '_' . $sub;
+        }
+        $url = new \moodle_url('/theme/styles.php');
+        if (!empty($CFG->slasharguments)) {
+            $url->set_slashargument('/' . $name . '/' . $rev . '/all', 'noparam', true);
+        } else {
+            $url->params(array('theme' => $name, 'rev' => $rev, 'type' => 'all'));
+        }
+        return $url->out(false);
     }
 
     /** État du pont : écriture, bac à sable, droits d'écriture du compte. */

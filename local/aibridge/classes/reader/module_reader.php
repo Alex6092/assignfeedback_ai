@@ -62,6 +62,7 @@ class module_reader {
         return array(
             'cmid'         => (int)$cm->id,
             'courseid'     => (int)$course->id,
+            'contextid'    => (int)$context->id,
             'modname'      => $cm->modname,
             'name'         => $cm->name,
             'url'          => $cm->url ? $cm->url->out(false) : null,

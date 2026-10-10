@@ -7,6 +7,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { extractBlocks, withFiles, readField } from './content.js';
 import { deployModule, pageTitle, splitAiQuestions } from './deploy.js';
+import { exportLessonsPdf } from './pdf.js';
 import fs from 'node:fs/promises';
 import { errorResult, textResult, truncateStrings } from './shape.js';
 import { snapshotCourse } from './snapshot.js';
@@ -165,6 +166,22 @@ export function registerTools(server, client, { log = () => {}, readonly = true 
       suite: 'Lire README.md dans le dossier pour le plan du cours et les liens vers chaque fichier.',
     });
   }));
+
+  server.registerTool('moodle_export_lessons_pdf', {
+    title: 'Moodle : leçons en PDF',
+    description: 'Exporte les leçons d\'un cours en PDF sur le poste : un PDF par leçon et un PDF de tout le parcours '
+      + '(une leçon par page), avec la mise en page de Moodle (feuille de style du thème, balisage de mod_lesson, règles '
+      + 'd\'impression de local_lessonexport). Images des leçons comprises. Imprimé par Edge ou Chrome sans fenêtre. '
+      + 'Ne modifie rien dans Moodle.',
+    inputSchema: {
+      courseid: z.number().int().positive(),
+      outdir: z.string().min(1).describe('Dossier de destination ; un sous-dossier « <nom abrégé>-lecons-pdf » y est créé.'),
+      include_hidden: z.boolean().default(true).describe('Exporter aussi les leçons masquées aux élèves.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  }, safe(async ({ courseid, outdir, include_hidden: includeHidden }) => textResult(
+    await exportLessonsPdf(client, courseid, path.resolve(outdir), { includeHidden, log }),
+  )));
 
   if (!readonly) {
     registerWriteTools(server, client, safe);

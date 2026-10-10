@@ -1179,10 +1179,20 @@ Les plugins lus sont détectés à l'exécution : aucun n'est requis. Chaque ré
 - Service `local_aibridge` désactivé à l'installation, avec utilisateurs autorisés seulement.
 - **Journal** de chaque appel (compte, fonction, cible, durée, résultat) : *Administration du site
   → Plugins → Plugins locaux → Journal du pont IA*. Conservation réglable (90 jours par défaut).
-- Écriture (phase suivante) : désactivée par défaut, limitée aux catégories bac à sable, tout est
-  créé masqué.
+- Écriture : désactivée par défaut, limitée aux catégories bac à sable, tout y est créé masqué, et
+  le pont ne supprime que ses propres brouillons. `moodle_deploy_module` déploie tout un module du
+  skill « moodle-ciel » depuis son manifeste (leçon, questions, tests, TP, surveillance, Avancement).
 
 Mise en service pas à pas : [`local/aibridge/README.md`](local/aibridge/README.md) (Moodle) et [`tools/moodle-mcp/README.md`](tools/moodle-mcp/README.md) (poste).
+
+### Leçons imprimables (`local_lessonexport`)
+
+[`local/lessonexport`](local/lessonexport/README.md) donne à chaque leçon une version imprimable, avec
+la mise en page du thème (classes des parcours comprises) et des règles d'impression : A4, encadrés et
+code jamais coupés, couleurs conservées. L'élève l'enregistre en PDF depuis son navigateur, pour une
+trace hors ligne. Activable cours par cours ; respecte les restrictions d'accès et le mode examen.
+Pour l'enseignant, l'outil MCP `moodle_export_lessons_pdf` produit en lot un PDF par leçon et un PDF du
+parcours complet.
 
 ### Skill « moodle-ciel »
 
@@ -1302,10 +1312,12 @@ local/attemptcheck/                Contrôle des tentatives : hors créneau, ten
 │   └── logs.php                   Lecture du journal standard
 └── report.php                     Rapport du cours, confirmation de suppression
 
-local/aibridge/                    Pont IA : services web de lecture pour Claude Code et Codex
+local/aibridge/                    Pont IA : services web pour Claude Code et Codex (lecture, écriture en bac à sable)
 ├── classes/
-│   ├── external/                  Une classe par fonction (get_site_info, get_course, get_module...)
+│   ├── external/                  Une classe par fonction (get_course, create_module, import_questions...)
 │   ├── reader/                    Lecteurs : site, cours, activité, banques de questions (export XML)
+│   ├── writer/                    Écriture : garde-fous, registre des brouillons, cours, activités, leçons,
+│   │                              questions, structure des tests, surveillance et Avancement
 │   ├── extension/                 Adaptateurs des plugins (Correction IA, tuteur, EFE, surveillées...)
 │   ├── redactor.php               Masquage des secrets
 │   ├── audit.php                  Journal des appels
@@ -1313,8 +1325,15 @@ local/aibridge/                    Pont IA : services web de lecture pour Claude
 ├── log.php                        Page « Journal du pont IA »
 └── db/{access.php,install.xml,services.php,tasks.php}
 
+local/lessonexport/                Leçons imprimables (version imprimable, PDF par le navigateur)
+├── lesson.php, index.php          Une leçon ; les leçons du cours (liste, tout imprimer, activation)
+├── classes/{exporter,course_settings,hook_callbacks}.php
+└── styles.css                     Règles d'impression (A4, encadrés non coupés, couleurs)
+
 tools/moodle-mcp/                  Serveur MCP local (Node ≥ 20, sans build) branché sur local_aibridge
 ├── src/{index,config,moodle-client,tools,snapshot,shape}.js
+├── src/{deploy,roles,content}.js  Déploiement d'un module du skill depuis son manifeste
+├── src/pdf.js                     Export PDF des leçons (Edge ou Chrome sans fenêtre)
 └── test/                          node --test
 
 tools/install-skill.ps1            Installe le skill pour Claude Code et Codex

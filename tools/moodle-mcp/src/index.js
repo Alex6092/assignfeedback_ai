@@ -36,7 +36,8 @@ async function main() {
       instructions: 'Accès à Moodle via le plugin local_aibridge. Commencer par moodle_site_info, puis '
         + 'moodle_list_courses et moodle_get_course pour le plan d\'un cours, moodle_get_module pour le détail '
         + 'd\'une activité. Pour comparer un cours entier à des fichiers sources, moodle_snapshot_course écrit '
-        + 'tout sur le disque. Aucune donnée d\'élève ni aucun secret n\'est renvoyé.' + write,
+        + 'tout sur le disque ; moodle_export_lessons_pdf produit les leçons en PDF. Aucune donnée d\'élève ni '
+        + 'aucun secret n\'est renvoyé.' + write,
     },
   );
   registerTools(server, client, { log, readonly: config.readonly });
