@@ -1,5 +1,9 @@
 # Créer un parcours Moodle avec l'IA — outils disponibles et prompt type
 
+> Avec Claude Code ou Codex, préférez le skill [`skills/moodle-ciel`](../skills/moodle-ciel/SKILL.md) :
+> il reprend la partie A (dans `references/outils-ia.md`), les réglages réels des parcours et le
+> déploiement par le pont. Ce document reste utile pour un assistant sans skill (prompt à coller).
+
 Deux parties :
 
 1. **[Inventaire des outils IA](#partie-a--inventaire-des-outils-ia)** : ce que fait chaque

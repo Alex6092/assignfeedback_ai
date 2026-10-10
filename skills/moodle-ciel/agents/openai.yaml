@@ -1,0 +1,5 @@
+interface:
+  display_name: "Parcours Moodle BTS CIEL"
+  short_description: "Concevoir, contrôler et déployer des parcours Moodle BTS CIEL (leçons, QCM, TP, tests sommatifs)"
+policy:
+  allow_implicit_invocation: true
