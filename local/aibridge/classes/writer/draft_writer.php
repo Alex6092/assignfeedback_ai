@@ -9,15 +9,17 @@ use core_courseformat\formatactions;
  * Suppression des brouillons du pont. Seul ce que le pont a créé (registre
  * local_aibridge_created) peut être supprimé, et seulement tant que c'est
  * masqué : dès qu'un enseignant publie un objet, le pont n'y touche plus.
+ * Une catégorie de questions n'a pas de visibilité : elle n'est supprimée que
+ * si toutes ses questions viennent du compte du pont et ne servent plus.
  */
 class draft_writer {
 
-    const TYPES = array(created::CM, created::SECTION, created::COURSE);
+    const TYPES = array(created::CM, created::SECTION, created::COURSE, question_writer::CATEGORY);
 
     /**
      * Supprime un brouillon.
      *
-     * @param string $type   cm, section (id de course_sections) ou course
+     * @param string $type   cm, section (id de course_sections), course ou questioncategory
      * @param int    $id
      * @param bool   $dryrun vérifier sans supprimer
      * @return array
@@ -92,7 +94,84 @@ class draft_writer {
                     created::remove_course($id);
                 }
                 return array('deleted' => !$dryrun, 'type' => $type, 'id' => $id, 'courseid' => $id);
+
+            case question_writer::CATEGORY:
+                return self::delete_category($id, $dryrun);
         }
         return array();
+    }
+
+    /**
+     * Supprime une catégorie de questions créée par le pont, ses sous-catégories
+     * (« — IA ») et leurs questions, pour réimporter au même nom. Refusé si une
+     * sous-catégorie ne vient pas du pont, si une question (ou une de ses
+     * versions) a été créée ou modifiée par un autre compte, ou si une question
+     * sert encore : supprimer d'abord le test qui l'utilise.
+     *
+     * @return array
+     */
+    private static function delete_category(int $id, bool $dryrun): array {
+        global $CFG, $DB, $USER;
+        require_once($CFG->libdir . '/questionlib.php');
+
+        $type = question_writer::CATEGORY;
+        $category = $DB->get_record('question_categories', array('id' => $id));
+        if (!$category) {
+            created::remove($type, $id);
+            throw new \moodle_exception('error_draftgone', 'local_aibridge', '', $type . ' ' . $id);
+        }
+        $coursecontext = \context::instance_by_id((int)$category->contextid)->get_course_context(false);
+        if (!$coursecontext) {
+            throw new \moodle_exception('error_notcreated', 'local_aibridge', '', $type . ' ' . $id);
+        }
+        $course = guard::require_course((int)$coursecontext->instanceid);
+
+        $manager = new \core_question\category_manager();
+        $ids = self::category_tree($id);
+        $questionids = array();
+        foreach ($ids as $catid) {
+            if (!created::has($type, $catid)) {
+                throw new \moodle_exception('error_notcreated', 'local_aibridge', '', $type . ' ' . $catid);
+            }
+            $questionids = array_merge($questionids, $manager->get_real_question_ids_in_category($catid));
+        }
+        if ($questionids) {
+            list($insql, $params) = $DB->get_in_or_equal($questionids);
+            $params[] = (int)$USER->id;
+            if ($DB->record_exists_select('question', "id $insql AND createdby <> ?", $params)) {
+                throw new \moodle_exception('error_categoryforeign', 'local_aibridge', '', $category->name);
+            }
+            if (questions_in_use($questionids)) {
+                throw new \moodle_exception('error_categoryinuse', 'local_aibridge', '', $category->name);
+            }
+        }
+
+        if (!$dryrun) {
+            foreach ($ids as $catid) {
+                foreach ($manager->get_real_question_ids_in_category($catid) as $questionid) {
+                    question_delete_question($questionid);
+                }
+                $manager->delete_category($catid);
+                created::remove($type, $catid);
+            }
+        }
+        return array('deleted' => !$dryrun, 'type' => $type, 'id' => $id, 'courseid' => (int)$course->id,
+            'category' => $category->name, 'categories' => count($ids), 'questions' => count($questionids));
+    }
+
+    /**
+     * Une catégorie et toutes ses descendantes, les plus profondes d'abord
+     * (ordre de suppression).
+     *
+     * @return int[]
+     */
+    private static function category_tree(int $id): array {
+        global $DB;
+        $out = array();
+        foreach ($DB->get_fieldset_select('question_categories', 'id', 'parent = ?', array($id)) as $child) {
+            $out = array_merge($out, self::category_tree((int)$child));
+        }
+        $out[] = $id;
+        return $out;
     }
 }

@@ -12,7 +12,7 @@ use local_aibridge\writer\extras_writer;
 
 /**
  * Réglages hors formulaire d'une activité créée par le pont : activité
- * surveillée, durée minimale, Avancement.
+ * surveillée, activités à achever d'abord, durée minimale, Avancement.
  */
 class set_module_extras extends base {
 
@@ -20,7 +20,8 @@ class set_module_extras extends base {
         return new external_function_parameters(array(
             'cmid'   => new external_value(PARAM_INT, 'Activité (brouillon du pont)'),
             'extras' => new external_value(PARAM_RAW, 'JSON : {"supervised": {"planned": "AAAA-MM-JJTHH:MM", '
-                . '"sessioncode": true, "exammode": true}, "minduration": 300, "avancement": {"duedate": "AAAA-MM-JJTHH:MM"}}'),
+                . '"sessioncode": true, "exammode": true}, "requires": [cmid, …], "minduration": 300, '
+                . '"avancement": {"duedate": "AAAA-MM-JJTHH:MM"}}'),
             'dryrun' => new external_value(PARAM_BOOL, 'Vérifier sans modifier', VALUE_DEFAULT, false),
         ));
     }

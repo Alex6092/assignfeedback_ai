@@ -18,7 +18,7 @@ defined('MOODLE_INTERNAL') || die();
  * block_avancementlapro) sont détectés à l'exécution : aucun n'est requis.
  */
 $plugin->component = 'local_aibridge';
-$plugin->version   = 2026101100;       // YYYYMMDDXX
+$plugin->version   = 2026101300;       // YYYYMMDDXX
 $plugin->requires  = 2025041400;       // Moodle 5.0 (banques de questions en activités mod_qbank)
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.3.1';          // Écriture : pages de leçon, questions, structure des tests, surveillance, Avancement
+$plugin->release   = '0.3.4';          // Écriture : … images des leçons, suppression des catégories de questions du pont

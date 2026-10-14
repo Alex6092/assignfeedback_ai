@@ -66,7 +66,7 @@ $functions = array(
     ),
     'local_aibridge_set_lesson_pages' => array(
         'classname'    => 'local_aibridge\external\set_lesson_pages',
-        'description'  => 'Remplace les pages de contenu d\'une leçon créée par le pont (encore masquée).',
+        'description'  => 'Remplace les pages de contenu d\'une leçon créée par le pont (encore masquée), avec leurs images.',
         'type'         => 'write',
         'capabilities' => 'local/aibridge:write, moodle/course:manageactivities',
     ),

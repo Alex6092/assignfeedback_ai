@@ -139,16 +139,37 @@ résultat et message d'erreur de chaque appel.
 | `local_aibridge_create_course` | Écriture : cours masqué dans une catégorie bac à sable (format Thématique, achèvement activé). |
 | `local_aibridge_upsert_section` | Écriture : section créée si elle manque (masquée), nom et résumé. |
 | `local_aibridge_create_module` | Écriture : activité masquée (page, étiquette, URL, leçon, test, devoir) par `create_module()` du cœur, avec les champs de son formulaire ; Tuteur IA et EFE par leurs propres champs, Correction IA écrite après coup. |
-| `local_aibridge_set_lesson_pages` | Écriture : remplace les pages d'une leçon du pont (boutons Suivant / Précédent / Terminer). |
+| `local_aibridge_set_lesson_pages` | Écriture : remplace les pages d'une leçon du pont (boutons Suivant / Précédent / Terminer), avec les images qu'elles citent en relatif (`files`, voir ci-dessous). |
 | `local_aibridge_import_questions` | Écriture : Moodle XML dans une catégorie de la banque du cours (banque « système » créée masquée si besoin ; catégorie refusée si elle contient déjà des questions). |
 | `local_aibridge_set_quiz_layout` | Écriture : remplit un test vide du pont (questions fixes par idnumber, tirages aléatoires par catégorie, mélange). |
-| `local_aibridge_set_module_extras` | Écriture : activité surveillée (code de séance, mode examen, date prévue), durée minimale, Avancement (date de rendu ; jamais recopiée dans la fermeture d'un test). |
-| `local_aibridge_delete_draft` | Écriture : supprime une activité, une section vide ou un cours créés par le pont et encore masqués. |
+| `local_aibridge_set_module_extras` | Écriture : activité surveillée (code de séance, mode examen, date prévue), activités à achever d'abord (`requires` : conditions d'accès « achèvement », ajoutées aux conditions existantes), durée minimale, Avancement (date de rendu ; jamais recopiée dans la fermeture d'un test). |
+| `local_aibridge_delete_draft` | Écriture : supprime une activité, une section vide ou un cours créés par le pont et encore masqués ; ou (0.3.4) une catégorie de questions créée par le pont (`questioncategory`), avec ses sous-catégories et leurs questions, si toutes viennent du compte du pont et ne servent plus (supprimer d’abord le test), pour réimporter au même nom. |
 
 Chaque fonction d'écriture accepte `dryrun` : Moodle vérifie les droits, le bac à sable et les
 réglages, puis renvoie ce qu'il aurait fait, sans rien écrire. Garde-fous, vérifiés côté serveur :
 écriture activée, catégorie bac à sable, capacité `local/aibridge:write` sur la catégorie,
 `visible = 0` imposé à la création et vérifié après, EFE refusé sans compétence ou en code N1.
+
+### Images des leçons (0.3.3)
+
+`local_aibridge_set_lesson_pages` reçoit, à côté des pages, `files` : une liste JSON
+`[{"filename": "schema.png", "content": "<base64>"}]`. Pour chaque page, le pont remplace les `src`
+relatifs des balises `<img>` (`images/schema.png`, `./schema.png`) dont le dernier segment est le nom
+d'un fichier envoyé par `@@PLUGINFILE@@/schema.png`, et range le fichier dans la zone de fichiers de
+la page (`mod_lesson`, `page_contents`, `itemid` = id de la page) ; une image citée par deux pages est
+rangée dans les deux. Les commentaires HTML et les `src` absolus (`http:`, `data:`, `/…`,
+`@@PLUGINFILE@@`) ne sont pas touchés. Le retour liste les images de chaque page, et avertit d'un
+`src` relatif sans fichier envoyé (laissé tel quel) ou d'un fichier cité par aucune page (ignoré).
+
+Garde-fous, en plus de ceux de toute écriture (brouillon du pont encore masqué) :
+
+| Contrôle | Règle |
+|---|---|
+| Nom | lettres, chiffres, point, tiret, tiret bas ; extension `png`, `jpg`, `jpeg`, `gif` ou `svg` ; unique dans l'appel |
+| Contenu | base64 valide ; PNG, JPEG et GIF reconnus par `getimagesize` et conformes à l'extension ; SVG en UTF-8 avec une balise `<svg>`, sans script, gestionnaire `on…`, `javascript:`, objet incorporé ni entité XML |
+| Poids | 2 Mo par image (ou moins si la limite du site, du cours ou de PHP est plus basse), 4 Mo et 40 images par appel : la requête, en base64, reste sous un `post_max_size` de 8 Mo |
+
+Le journal ne garde que le nombre d'images, jamais leur contenu.
 
 ## Dépannage
 
@@ -162,4 +183,6 @@ réglages, puis renvoie ce qu'il aurait fait, sans rien écrire. Garde-fous, vé
 | `L'écriture par le pont est désactivée` | Réglage « Autoriser l'écriture » décoché (étape 9). |
 | `n'est pas un bac à sable du pont` | Le cours ou la catégorie visés sont hors des catégories bac à sable. |
 | `local/aibridge:write` manquant | Rôle Gestionnaire non attribué au compte dans la catégorie bac à sable. |
+| `Unexpected keys (files)` sur les pages d'une leçon | Pont antérieur à 0.3.3 sur le site : le mettre à jour pour envoyer les images. |
+| `Image … trop lourde` / `illisible` | Réduire ou compresser l'image (une capture passe souvent mieux en JPG) ; vérifier que l'extension correspond au format. |
 | Outils d'écriture absents dans l'agent | `MOODLE_MCP_READONLY` n'est pas à `0` sur le poste, ou la session n'a pas été rouverte. |
