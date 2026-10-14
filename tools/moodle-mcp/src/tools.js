@@ -5,8 +5,8 @@
 
 import path from 'node:path';
 import { z } from 'zod';
-import { extractBlocks, withFiles, readField } from './content.js';
-import { deployModule, pageTitle, splitAiQuestions } from './deploy.js';
+import { withFiles, readField } from './content.js';
+import { deployModule, readLesson, splitAiQuestions } from './deploy.js';
 import { exportLessonsPdf } from './pdf.js';
 import fs from 'node:fs/promises';
 import { errorResult, textResult, truncateStrings } from './shape.js';
@@ -274,21 +274,19 @@ function registerWriteTools(server, client, safe) {
     title: 'Moodle : pages d\'une leçon',
     description: 'Remplace les pages d\'une leçon créée par le pont (encore masquée) par les blocs entre marqueurs '
       + 'd\'un fichier lecon.html : une page par bloc, titre = texte du <h1> (sans emoji ni « Module n — »), '
-      + 'boutons Suivant / Précédent / Terminer.',
+      + 'boutons Suivant / Précédent / Terminer. Les images citées en relatif (src="images/schema.png", png, jpg, gif '
+      + 'ou svg ; 2 Mo par image, 4 Mo par leçon) partent avec les pages : Moodle les range dans la page qui les cite.',
     inputSchema: {
       cmid: z.number().int().positive(),
-      file: z.string().describe('lecon.html du module.'),
+      file: z.string().describe('lecon.html du module (images lues à côté).'),
       dry_run: dryRun,
     },
     annotations: CREATE,
   }, safe(async ({ cmid, file, dry_run: dryrun }) => {
-    const html = await fs.readFile(path.resolve(file), 'utf8');
-    const blocks = extractBlocks(html);
-    if (!blocks.length) {
-      throw new Error(`${file} : aucun bloc entre les marqueurs ▶ DÉBUT / FIN CONTENU MOODLE ◀.`);
-    }
-    const pages = blocks.map((contents, i) => ({ title: pageTitle(contents, `Page ${i + 1}`), contents }));
-    return call('local_aibridge_set_lesson_pages', { cmid, pages: JSON.stringify(pages), dryrun });
+    const { pages, files } = await readLesson(file);
+    return call('local_aibridge_set_lesson_pages', {
+      cmid, pages: JSON.stringify(pages), dryrun, ...(files.length ? { files: JSON.stringify(files) } : {}),
+    });
   }));
 
   server.registerTool('moodle_import_questions', {
@@ -339,9 +337,10 @@ function registerWriteTools(server, client, safe) {
     { cmid, layout: JSON.stringify({ slots, shufflequestions }), dryrun })));
 
   server.registerTool('moodle_set_module_extras', {
-    title: 'Moodle : surveillance, durée minimale, Avancement',
+    title: 'Moodle : surveillance, activités à achever, durée minimale, Avancement',
     description: 'Réglages hors formulaire d\'une activité créée par le pont : activité surveillée (code de séance, mode '
-      + 'examen, date prévue), durée minimale attendue (secondes), Avancement (suivi du cours, date de rendu ; sur un '
+      + 'examen, date prévue), activités à achever d\'abord (condition d\'accès « achèvement », ex. le TP bonus après les '
+      + 'TP évalués), durée minimale attendue (secondes), Avancement (suivi du cours, date de rendu ; sur un '
       + 'test ou une leçon, la date de rendu ne ferme jamais l\'activité).',
     inputSchema: {
       cmid: z.number().int().positive(),
@@ -350,6 +349,8 @@ function registerWriteTools(server, client, safe) {
         sessioncode: z.boolean().default(true),
         exammode: z.boolean().default(true),
       }).optional(),
+      requires: z.array(z.number().int().positive()).optional()
+        .describe('Activités (cmid du même cours) à achever avant d\'accéder à celle-ci ; ajoutées aux conditions existantes.'),
       minduration_seconds: z.number().int().min(0).optional(),
       avancement_duedate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional()
         .describe('Date de rendu dans l\'Avancement (déclenche le report EFE « après la date de rendu »).'),
@@ -361,6 +362,9 @@ function registerWriteTools(server, client, safe) {
     const extras = {};
     if (args.supervised) {
       extras.supervised = args.supervised;
+    }
+    if (args.requires?.length) {
+      extras.requires = args.requires;
     }
     if (args.minduration_seconds !== undefined) {
       extras.minduration = args.minduration_seconds;
@@ -375,7 +379,8 @@ function registerWriteTools(server, client, safe) {
     title: 'Moodle : déployer un module du skill',
     description: 'Déploie un module du skill moodle-ciel à partir de son manifeste module.deploy.json : section, puis '
       + 'chaque activité dans l\'ordre avec les réglages de son rôle (reglages-moodle.md), ses contenus (leçon, '
-      + 'questions, TP), sa surveillance et l\'Avancement ; relit enfin chaque activité et renvoie les écarts au '
+      + 'questions, TP ; images de la leçon et liens @@CM:clé@@ remplacés par l\'URL des activités), sa surveillance et '
+      + 'l\'Avancement ; relit enfin chaque activité et renvoie les écarts au '
       + 'manifeste. Tout est créé MASQUÉ dans un cours bac à sable. Toujours lancer d\'abord dry_run, et contrôler le '
       + 'module avec scripts/check-module.mjs du skill.',
     inputSchema: {
@@ -392,9 +397,12 @@ function registerWriteTools(server, client, safe) {
     title: 'Moodle : supprimer un brouillon du pont',
     description: 'Supprime un objet que le pont a créé et qui est encore MASQUÉ : activité (cm), section vide '
       + '(section : id de course_sections) ou cours entier (course : seulement s\'il ne contient que des brouillons '
-      + 'du pont). Tout objet publié ou créé à la main est refusé par Moodle.',
+      + 'du pont). Tout objet publié ou créé à la main est refusé par Moodle. questioncategory (id de '
+      + 'question_categories, voir moodle_get_questions) : catégorie créée par le pont, avec ses sous-catégories et '
+      + 'leurs questions, pour réimporter au même nom ; refusé si une question vient d\'un autre compte ou sert encore '
+      + '(supprimer d\'abord le test). Pont 0.3.4 au moins.',
     inputSchema: {
-      objecttype: z.enum(['cm', 'section', 'course']),
+      objecttype: z.enum(['cm', 'section', 'course', 'questioncategory']),
       objectid: z.number().int().positive(),
       dry_run: dryRun,
     },

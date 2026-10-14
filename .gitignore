@@ -17,5 +17,6 @@ Thumbs.db
 # Dépendances Node (serveur MCP)
 node_modules/
 
-# Exemples tirés des vrais parcours (questions de tests, corrigés) : jamais dans le dépôt
+# Exemples tirés des vrais parcours (questions de tests, sujets de TP évalués, corrigés) : jamais dans le dépôt
 skills/moodle-ciel/templates/exemples-ia/
+skills/moodle-ciel/templates/exemples-cpp/

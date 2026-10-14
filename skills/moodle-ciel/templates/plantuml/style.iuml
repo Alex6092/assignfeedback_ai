@@ -1,0 +1,62 @@
+' Style commun des diagrammes PlantUML d'un parcours (leçons, TD, activités).
+' À copier dans <parcours>/_commun/plantuml-style.iuml, puis en tête de chaque .puml :
+'   !include ../../_commun/plantuml-style.iuml
+' Couleurs sobres, lisibles en projection et à l'impression (trace PDF des leçons).
+
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam ArrowColor #334155
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #334155
+skinparam BackgroundColor transparent
+skinparam padding 2
+
+skinparam class {
+  BackgroundColor #F1F5F9
+  BorderColor #0284C7
+  HeaderBackgroundColor #E0F2FE
+  FontStyle bold
+  AttributeFontSize 13
+  StereotypeFontColor #0369A1
+}
+skinparam note {
+  BackgroundColor #FEF9C3
+  BorderColor #CA8A04
+  FontSize 12
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #94A3B8
+}
+skinparam node {
+  BackgroundColor #F1F5F9
+  BorderColor #0284C7
+}
+skinparam usecase {
+  BackgroundColor #F0FDF4
+  BorderColor #15803D
+}
+skinparam actor {
+  BorderColor #334155
+  BackgroundColor #FFFFFF
+}
+skinparam sequence {
+  LifeLineBorderColor #64748B
+  ParticipantBackgroundColor #E0F2FE
+  ParticipantBorderColor #0284C7
+  ActorBorderColor #334155
+}
+skinparam state {
+  BackgroundColor #F1F5F9
+  BorderColor #0284C7
+}
+skinparam activity {
+  BackgroundColor #F1F5F9
+  BorderColor #0284C7
+  DiamondBackgroundColor #FEF9C3
+}
+' Les attributs et méthodes s'écrivent avec leur visibilité en clair (-, +), plus lisible que les icônes.
+skinparam classAttributeIconSize 0
+hide circle
