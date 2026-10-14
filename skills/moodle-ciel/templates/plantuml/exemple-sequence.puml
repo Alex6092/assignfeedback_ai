@@ -1,0 +1,16 @@
+@startuml exemple-sequence
+' Exemple : diagramme de séquence (échange client / serveur), pour une leçon ou un TD de réseau.
+' Dans un parcours : images/<nom>.puml, avec le style commun du parcours :
+'   !include ../../_commun/plantuml-style.iuml
+' Ici, le style du gabarit (même dossier) :
+!include style.iuml
+hide footbox
+
+participant "CLIENT\n192.168.1.40" as C
+participant "SERVEUR\n192.168.1.25:5000 (écoute)" as S
+
+C -> S : connexion TCP
+C -> S : "Neo: Salut !"
+S -> C : "Neo: Salut !" (rediffusé)
+note over S : le serveur rediffuse à tous les clients
+@enduml

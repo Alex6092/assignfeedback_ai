@@ -29,6 +29,21 @@ Noms des champs : ceux des tables Moodle (`quiz`, `assign`, `lesson`…), pour q
 | `intro` | vide | |
 | Pages | une page de contenu par bloc entre marqueurs, chaînées : page suivante / précédente, la dernière mène à la fin de la leçon | |
 
+## `td` — TD, travail dirigé (`mod_quiz`)
+
+| Champ | Valeur | Pourquoi |
+|---|---|---|
+| `attempts` / `grademethod` | 0 (illimitées) / 1 | on y revient autant qu'on veut |
+| `delay1` / `delay2` / `timelimit` | 0 / 0 / 0 | rien à « gratter » : le TD n'est pas noté |
+| `questionsperpage`, `navmethod`, `shuffleanswers` | **0 (tout sur une page)**, `free`, 1 | le cas pratique se lit d'un tenant, textes et questions ensemble |
+| `preferredbehaviour` | **`interactive`** (interactif avec tentatives multiples) | bouton « Vérifier » par question, indice après un essai faux, nouvel essai (un par indice) |
+| Questions | **fixes, dans l'ordre du fichier** (idnumber), textes de guidage compris (`description`, 0 point), sans mélange | le TD est une progression |
+| Relecture | **tout, à tous les moments** (y compris bonne réponse et feedback général) | c'est un apprentissage guidé |
+| `grade` | **0** : le TD n'a pas d'élément dans le carnet de notes | non évalué |
+| Achèvement | une tentative faite (`completionminattempts = 1`) | |
+| EFE, surveillance, heures de cours | **aucun** | |
+| Avancement | inscrit, sans date de rendu | |
+
 ## `entrainement` — QCM d'entraînement (`mod_quiz`)
 
 | Champ | Valeur | Pourquoi |
@@ -48,7 +63,11 @@ Noms des champs : ceux des tables Moodle (`quiz`, `assign`, `lesson`…), pour q
 | EFE, surveillance, heures de cours | **aucun** | fait à la maison |
 | `showuserpicture`, `showblocks` | 0, 0 | |
 
-## `tp` — devoir (`mod_assign`)
+## `tp` — devoir (`mod_assign`) : TP d'entraînement, TP évalué, TP bonus
+
+Un seul rôle `tp` dans le manifeste. Trois variantes, qui ne se distinguent que par les champs
+`supervised`, `efe`, `requires` et `overrides` (tableau de variantes après les réglages communs). Les réglages
+ci-dessous sont ceux du **TP d'entraînement** ; les écarts des deux autres sont détaillés plus bas.
 
 | Champ | Valeur | Pourquoi |
 |---|---|---|
@@ -61,12 +80,34 @@ Noms des champs : ceux des tables Moodle (`quiz`, `assign`, `lesson`…), pour q
 | `requiresubmissionstatement` | 0 (1 si l'enseignant veut la déclaration « travail personnel ») | |
 | `maxattempts` / `attemptreopenmethod` | **2 / `manual`** | l'enseignant rouvre une 2e tentative s'il le juge utile |
 | Note | **échelle « Barème officiel »** (4 niveaux) | |
-| `duedate` | **fin de séance** (17 h 40 ou 17 h 45), ou 12 h ; `cutoffdate` = 0 | la date de rendu sert aussi au report EFE |
+| `duedate` | échéance indicative dans l'Avancement (suivi du cours) ; `cutoffdate` = 0 | un TP d'entraînement ne remonte pas à EFE : la date ne sert qu'au suivi |
 | Achèvement | remettre un travail (`completionsubmit = 1`) | |
 | Plugins de feedback | commentaires, fichiers, **Correction IA** ; pas d'annotation PDF ni de feuille hors ligne | |
-| Correction IA (`assignfeedback_ai`) | activée ; `systemprompt` **vide** (prompt par défaut du plugin, toujours à jour) ; `autograde = 1` (note appliquée directement ; l'enseignant passe en validation manuelle s'il le souhaite) ; `vision_enabled` = 0, ou 1 si la remise contient des captures à lire ; aucune surcharge d'URL, de modèle ou de clé | |
+| Correction IA (`assignfeedback_ai`) | activée ; `systemprompt` **vide** (prompt par défaut du plugin, toujours à jour) ; `autograde = 1` (note appliquée directement ; l'enseignant passe en validation manuelle s'il le souhaite) ; vision : réglage du site, ou imposée par `vision: true` (case « remplacer » cochée) dès que la remise contient une image à lire (diagramme exporté, capture) ; aucune surcharge d'URL, de modèle ou de clé | |
 | Tuteur IA (`local_aichat`) | activé ; consigne **non** transmise (`includeintro = 0`) ; brief transmis (`includebrief = 1`) ; recherche web : aucune (`websearch = 0`), sauf recherche de matériel justifiée | |
-| EFE | 1 code N2/N3 ; ponctualité activée sur un code C03.x ou C11.5 ; **reporter après la date de rendu : oui** | |
+| EFE | **aucun** (pas de clé `efe` dans le manifeste, ou `efe` avec `overrides.efenotes_enabled = 0` pour garder le code sans report) | un TP d'entraînement est fait à la maison, souvent avec une IA |
+| Surveillance, heures de cours | **aucune** | |
+
+### Variantes : TP évalué en classe et TP bonus
+
+| Champ | TP évalué | TP bonus | Pourquoi |
+|---|---|---|---|
+| Rôle et nom | `tp`, `TP évalué Mn.k - Titre` | `tp`, `TP bonus Mn - Titre` | |
+| Accès | `supervised: { sessioncode: true, exammode: false }` sans date prévue | idem, **plus** `requires` : les TP évalués du module (condition « achèvement » : remise faite) | fermé tant que l'enseignant n'ouvre pas la séance ; **pas de mode examen** : la leçon et le TD restent consultables (le mode examen est réservé au test sommatif) ; le bonus n'ouvre qu'à ceux qui ont rendu |
+| Heures de cours | ajoutées **automatiquement** par EFE (option « EFE auto » du cours) dès que le report est actif ; visible dans l'accès : `classhours` + `supervised` | idem | comme sur les TP des cours de référence |
+| Tuteur IA | **coupé** : `overrides.aichatenabled = 0` | idem | aucune aide en séance évaluée |
+| Correction IA | `autograde = 1` : **note directe** | idem | décision de l'enseignant pour Cpp1 ; il peut passer en validation manuelle |
+| Retours | commentaires et fichier de retour désactivés (`assignfeedback_comments_enabled = 0`, `assignfeedback_file_enabled = 0`) | idem | la Correction IA note seule |
+| Remise | fichier(s) (`.cpp,.h`…) ou texte en ligne | idem | |
+| Tentatives | 2 / `manual` | idem | une seconde se rouvre si l'élève envoie trop tôt |
+| EFE | 1 code N3, `after_due: false`, **report actif**, pas de ponctualité ; sans date de rendu | idem : **tout ce qui est évalué remonte** | la séance fermée rend la ponctualité sans objet |
+| Avancement | inscrit par le plugin (avec un délai de quelques minutes parfois) | idem | le pont ne sait pas retirer une activité de l'Avancement |
+| Barème / sujet | 3 ou 4 niveaux, dernier = défi, sur 100 | 4 niveaux | voir `anatomie-module.md` |
+
+Les TP évalués et le bonus se déploient avec un seul manifeste (`tp-evalues.deploy.json`, voir
+`deploiement.md`) : TP évalués d'abord, bonus ensuite, dont `requires` désigne les TP évalués par leur
+clé. Pour un module dont les TP évalués existent déjà, `make-tpe.mjs --bonus-seul <cmid,cmid>`
+produit le manifeste du seul bonus.
 
 ## `quiz-ia` — test court de questions IA (`mod_quiz`)
 

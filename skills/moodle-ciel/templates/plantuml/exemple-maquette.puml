@@ -1,0 +1,15 @@
+@startuml exemple-maquette
+' Modèle : maquette de fenêtre (module Salt de PlantUML), pour montrer l'interface attendue d'une application.
+' Le style commun ne s'applique pas à Salt ; scale agrandit le rendu, trop petit par défaut.
+scale 1.5
+salt
+{^"Titre de la fenêtre"
+  Pseudo : | "Neo          "
+  . | [ Se connecter ]
+  {#
+    [14:32] Neo : Salut
+    [14:33] Trinity : Bonjour
+  } | *
+  "Message      " | [ Envoyer ]
+}
+@enduml

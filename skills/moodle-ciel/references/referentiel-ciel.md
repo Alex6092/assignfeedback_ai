@@ -55,7 +55,9 @@ visé par le référentiel.
 - **Ponctualité** (TP) : en plus, une compétence de respect des délais est rapportée par la note de
   ponctualité. Dans les parcours existants, on trouve `C03.3.R4.T5` (l'équipe gère retards et aléas),
   `C03.4.R4.T5` (travaux livrés conformes), `C03.5.R4.T5` et `C11.5` (travail réalisé dans le calme
-  et les délais). Varie-les, toujours sur des codes N2/N3.
+  et les délais). Varie-les, toujours sur des codes N2/N3. Elle ne concerne que les TP rendus à une
+  échéance : ni les **TP évalués en classe** ni le **TP bonus** (la séance fermée tient lieu de
+  délai), ni les TP d'entraînement (sans EFE).
 - **Varier les compétences** au fil du parcours : le tableau de couverture doit montrer un éventail
   large, et pas la même compétence partout. Pour chaque bloc d'examen visé, couvre ses compétences.
 - **Libellé pour la Correction IA et les questions IA** : une ligne par compétence, au format

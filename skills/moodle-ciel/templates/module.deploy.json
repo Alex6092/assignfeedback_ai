@@ -11,6 +11,21 @@
       "file": "lecon.html"
     },
     {
+      "key": "td",
+      "role": "td",
+      "name": "TD M2 - Le capteur qui trie les fruits",
+      "questions": { "file": "td.xml", "category": "M2 - TD" }
+    },
+    {
+      "key": "tp1",
+      "role": "tp",
+      "name": "TP d'entrainement M2 - Programmer un perceptron",
+      "dir": "tp1",
+      "submission": { "type": "onlinetext" },
+      "tutor": { "websearch": "none" },
+      "duedate": "2026-10-07T17:45"
+    },
+    {
       "key": "entrainement",
       "role": "entrainement",
       "name": "QCM - Le neurone artificiel",
@@ -18,14 +33,25 @@
       "timelimit_minutes": 11
     },
     {
-      "key": "tp1",
+      "key": "tpe1",
       "role": "tp",
-      "name": "TP 2 - Programmer un perceptron",
-      "dir": "tp1",
+      "name": "TP évalué M2.1 - Le détecteur de défauts",
+      "dir": "tpe1",
       "submission": { "type": "onlinetext" },
-      "tutor": { "websearch": "none" },
-      "efe": { "competences": ["C08.3.D4.T5"], "ponctualite": ["C03.4.R4.T5"], "after_due": true },
-      "duedate": "2026-10-07T17:45"
+      "efe": { "competences": ["C08.3.D4.T5"], "after_due": false },
+      "supervised": { "sessioncode": true, "exammode": false },
+      "overrides": { "assignfeedback_comments_enabled": 0, "assignfeedback_file_enabled": 0, "aichatenabled": 0 }
+    },
+    {
+      "key": "tpb",
+      "role": "tp",
+      "name": "TP bonus M2 - Le neurone qui hésite",
+      "dir": "tpb",
+      "submission": { "type": "onlinetext" },
+      "efe": { "competences": ["C04.4.D4.T2"], "after_due": false },
+      "supervised": { "sessioncode": true, "exammode": false },
+      "requires": ["tpe1"],
+      "overrides": { "assignfeedback_comments_enabled": 0, "assignfeedback_file_enabled": 0, "aichatenabled": 0 }
     },
     {
       "key": "sommatif",

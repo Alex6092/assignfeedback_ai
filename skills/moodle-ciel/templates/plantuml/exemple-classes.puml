@@ -1,0 +1,43 @@
+@startuml exemple-classes
+' Exemple : diagramme de classes d'un module de programmation (composition et héritage).
+' Dans un parcours : images/<nom>.puml, avec le style commun du parcours :
+'   !include ../../_commun/plantuml-style.iuml
+' Ici, le style du gabarit (même dossier) :
+!include style.iuml
+
+title Le parc de bornes de recharge
+
+class Borne {
+  - identifiant : std::string
+  - puissanceKw : double
+  + Borne(id : std::string, puissanceKw : double)
+  + demarrerCharge(badge : const Badge&) : bool
+  + arreterCharge() : void
+}
+
+class BorneRapide {
+  - tensionContinue : int
+  + demarrerCharge(badge : const Badge&) : bool
+}
+
+class Badge {
+  - numero : std::string
+  - actif : bool
+  + estActif() : bool
+}
+
+class Parking {
+  - nom : std::string
+  + ajouterBorne(b : Borne) : void
+  + bornesLibres() : std::vector<Borne>
+}
+
+Parking *-- "1..*" Borne : contient
+Borne <|-- BorneRapide
+Borne ..> Badge : vérifie
+
+note right of BorneRapide
+  Une borne rapide **est une** borne :
+  elle redéfinit demarrerCharge().
+end note
+@enduml
