@@ -6,6 +6,7 @@
 export const ROLE_MODULES = {
   lecon: 'lesson',
   entrainement: 'quiz',
+  td: 'quiz',
   'quiz-ia': 'quiz',
   sommatif: 'quiz',
   finale: 'quiz',
@@ -51,6 +52,22 @@ function entrainement(activity) {
       attempt: ['during', ...ALL], correctness: ALL, maxmarks: ALL, marks: ALL, specificfeedback: ALL,
       overallfeedback: ALL, generalfeedback: [], rightanswer: [],
     }),
+    ...QUIZ_COMPLETION,
+  };
+}
+
+/**
+ * TD (travail dirigé) : textes de guidage et questions dans l'ordre, sur une seule page, en mode interactif
+ * (bouton Vérifier, indices, nouvel essai) ; tout est montré. Non noté : note maximale 0, donc rien dans le carnet
+ * de notes ; ni EFE ni surveillance.
+ */
+function td() {
+  return {
+    attempts: 0, grademethod: 1, delay1: 0, delay2: 0, timelimit: 0,
+    questionsperpage: 0, navmethod: 'free', shuffleanswers: 1, preferredbehaviour: 'interactive',
+    grade: 0, gradepass: 0, showuserpicture: 0, showblocks: 0,
+    // « Pendant la tentative » : ce que montre le bouton Vérifier (l'appréciation globale n'existe qu'à la fin).
+    ...review(Object.fromEntries(REVIEW_FIELDS.map((f) => [f, f === 'overallfeedback' ? ALL : ['during', ...ALL]]))),
     ...QUIZ_COMPLETION,
   };
 }
@@ -120,7 +137,9 @@ function tp(activity, manifest) {
     assignfeedback_comments_enabled: 1, assignfeedback_file_enabled: 1, assignfeedback_editpdf_enabled: 0,
     assignfeedback_offline_enabled: 0,
     assignfeedback_ai_enabled: 1, assignfeedback_ai_systemprompt: '', assignfeedback_ai_autograde: 1,
+    // vision absente : réglage du site ; true ou false : imposé à ce devoir (case « remplacer » cochée).
     assignfeedback_ai_vision_enabled: activity.vision ? 1 : 0,
+    assignfeedback_ai_vision_enabled_override: typeof activity.vision === 'boolean' ? 1 : 0,
     aichatenabled: 1, aichatincludeintro: 0, aichatincludebrief: 1,
     aichatwebsearch: WEBSEARCH[tutor.websearch] ?? 0,
     ...(tutor.sites ? { aichatwebsearchsites: tutor.sites.join('\n') } : {}),
@@ -145,6 +164,7 @@ export function roleSettings(activity, manifest) {
   switch (activity.role) {
     case 'lecon': base = { ...LECON }; break;
     case 'entrainement': base = entrainement(activity); break;
+    case 'td': base = td(); break;
     case 'sommatif': base = { ...sommatif(), ...efe(activity, manifest) }; break;
     case 'finale': base = { ...sommatif(), ...efe(activity, manifest) }; break;
     case 'quiz-ia': base = { ...quizIa(activity), ...efe(activity, manifest) }; break;

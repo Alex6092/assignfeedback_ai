@@ -97,3 +97,20 @@ test('moodle_create_course convertit la date de début en horodatage', async () 
   assert.equal(calls[0].params.startdate, localMidnight('2026-11-02'));
   assert.equal(calls[0].params.dryrun, false);
 });
+
+test('moodle_set_lesson_pages envoie les images citées en relatif, lues à côté de lecon.html', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'moodle-mcp-'));
+  await fs.mkdir(path.join(dir, 'images'));
+  await fs.writeFile(path.join(dir, 'images', 'classes.png'), Buffer.from('PNG'));
+  await fs.writeFile(path.join(dir, 'lecon.html'), html(['<h1>📘 Module 3 — Classes</h1><img src="images/classes.png" alt="c">',
+    '<h1>Suite</h1>']));
+  const { client, calls } = await connect({ readonly: false });
+  const result = await client.callTool({
+    name: 'moodle_set_lesson_pages', arguments: { cmid: 3001, file: path.join(dir, 'lecon.html'), dry_run: true },
+  });
+  assert.ok(!result.isError, result.content?.[0]?.text);
+  assert.equal(calls[0].fn, 'local_aibridge_set_lesson_pages');
+  assert.deepEqual(JSON.parse(calls[0].params.pages).map((p) => p.title), ['Classes', 'Suite']);
+  assert.deepEqual(JSON.parse(calls[0].params.files), [{ filename: 'classes.png', content: Buffer.from('PNG').toString('base64') }]);
+  assert.equal(calls[0].params.dryrun, true);
+});
