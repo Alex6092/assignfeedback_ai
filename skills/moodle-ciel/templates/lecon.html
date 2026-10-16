@@ -43,6 +43,11 @@
     .contents .no-overflow .modcode { display: inline-block; min-width: 2.1em; font-weight: bold; color: #0b7a3b; }
     .contents .no-overflow .capture { background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 8px; padding: .7rem 1rem; margin: 1rem 0; color: #475569; font-size: .92em; }
     .contents .no-overflow .capture strong { color: #334155; }
+    .contents .no-overflow details.reponse { margin: .6rem 0 0; }
+    .contents .no-overflow details.reponse > summary { display: inline-block; cursor: pointer; list-style: none; background: #0284c7; color: #fff; font-weight: bold; border-radius: 6px; padding: .2rem .8rem; }
+    .contents .no-overflow details.reponse > summary::-webkit-details-marker { display: none; }
+    .contents .no-overflow details.reponse[open] > summary { background: #0369a1; margin-bottom: .4rem; }
+    .contents .no-overflow details.reponse > p { background: #fff; border: 1px dashed #0284c7; border-radius: 6px; padding: .4rem .8rem; margin: 0; }
   </style>
 </head>
 <body>
@@ -70,7 +75,11 @@
 <!-- Capture d'écran utile que tu ne peux pas produire : un encadré « capture » qui dit ce qu'elle doit montrer,
      et « (TODO : Captures) » à la fin du nom de la leçon dans le manifeste (style-html.md § 3). -->
 <div class="capture">📸 <strong>Capture suggérée :</strong> …</div>
-<div class="suite"><strong>➡️ À toi ! — …</strong><br><br>… <em>Indice : …</em></div>
+<!-- Exercice « À toi ! » : indice visible, résultat attendu masqué derrière le bouton details.reponse (style-html.md § 4). -->
+<div class="suite"><strong>➡️ À toi ! — …</strong><br><br>… <em>Indice : …</em>
+<details class="reponse"><summary>👀 Voir le résultat attendu</summary>
+<p>…</p>
+</details></div>
 <div class="objectif"><strong>✅ À retenir :</strong>
 <ul><li>…</li></ul></div>
 <div class="suite">➡️ <strong>Et maintenant :</strong> le QCM d'entraînement, puis le TP.</div>
