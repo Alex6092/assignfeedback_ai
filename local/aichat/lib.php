@@ -166,6 +166,67 @@ function local_aichat_extend_settings_navigation(settings_navigation $settingsna
 }
 
 /**
+ * Sert les fichiers joints au tuteur : à l'élève qui les a envoyés, et à qui
+ * peut lire les conversations de l'activité. Seules les images s'affichent
+ * dans le navigateur ; le reste est téléchargé (un .html servi tel quel
+ * s'exécuterait sur le domaine de Moodle).
+ *
+ * @param stdClass $course
+ * @param stdClass $cm
+ * @param context  $context
+ * @param string   $filearea
+ * @param array    $args
+ * @param bool     $forcedownload
+ * @param array    $options
+ * @return bool false si le fichier n'est pas servi
+ */
+function local_aichat_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = array()) {
+    global $DB, $USER;
+    if ($filearea !== \local_aichat\attachment::FILEAREA || !($context instanceof context_module)) {
+        return false;
+    }
+    require_login($course, false, $cm);
+
+    $itemid = (int)array_shift($args);
+    $row = $DB->get_record(\local_aichat\attachment::TABLE, array('id' => $itemid, 'contextid' => $context->id));
+    if (!$row) {
+        return false;
+    }
+    $own = ((int)$row->userid === (int)$USER->id) && has_capability('local/aichat:use', $context);
+    if (!$own && !has_capability('local/aichat:viewconversations', $context)) {
+        return false;
+    }
+
+    $filename = array_pop($args);
+    $file = get_file_storage()->get_file($context->id, 'local_aichat', \local_aichat\attachment::FILEAREA,
+        $itemid, '/', $filename);
+    if (!$file || $file->is_directory()) {
+        return false;
+    }
+    send_stored_file($file, DAYSECS, 0, ($row->kind !== 'image') || $forcedownload, $options);
+}
+
+/**
+ * Lien « Quotas du tuteur IA » dans la navigation du cours, pour les
+ * enseignants, dès que le tuteur est activé sur une activité du cours.
+ *
+ * @param navigation_node $navigation
+ * @param stdClass        $course
+ * @param context_course  $context
+ */
+function local_aichat_extend_navigation_course(navigation_node $navigation, stdClass $course,
+        context_course $context) {
+    global $DB;
+    if (!has_capability('local/aichat:managequota', $context)
+            || !$DB->record_exists('local_aichat_activity', array('courseid' => (int)$course->id, 'enabled' => 1))) {
+        return;
+    }
+    $navigation->add(get_string('quotas_page', 'local_aichat'),
+        new moodle_url('/local/aichat/quotas.php', array('courseid' => $course->id)),
+        navigation_node::TYPE_SETTING, null, 'localaichatquotas', new pix_icon('i/chat_topic', ''));
+}
+
+/**
  * Lien « Tuteur IA : mes clés de recherche » dans les Préférences de
  * l'utilisateur (section « Compte utilisateur »), comme le fait auth_oauth2
  * pour ses comptes liés. Seulement pour son propre compte, et si la recherche

@@ -25,6 +25,19 @@ $capabilities = array(
         ),
     ),
 
+    // Suivre la fenêtre de quota des élèves du cours, la réinitialiser ou leur
+    // accorder un bonus (page « Quotas du tuteur IA »).
+    'local/aichat:managequota' => array(
+        'captype'      => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'riskbitmask'  => RISK_PERSONAL,
+        'archetypes'   => array(
+            'teacher'        => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager'        => CAP_ALLOW,
+        ),
+    ),
+
     // Lire les conversations des élèves avec le tuteur.
     'local/aichat:viewconversations' => array(
         'captype'      => 'read',

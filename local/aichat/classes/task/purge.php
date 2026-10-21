@@ -49,6 +49,7 @@ class purge extends \core\task\scheduled_task {
         // Par lots : une classe entière sur une année peut représenter beaucoup
         // de lignes, et get_in_or_equal a ses limites.
         foreach (array_chunk($conversationids, 500) as $chunk) {
+            \local_aichat\attachment::delete_for_conversations($chunk);
             list($insql, $params) = $DB->get_in_or_equal($chunk);
             $DB->delete_records_select('local_aichat_message', "conversationid $insql", $params);
             $DB->delete_records_select('local_aichat_conversation', "id $insql", $params);

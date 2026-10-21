@@ -14,6 +14,7 @@ define('AJAX_SCRIPT', true);
 require_once(__DIR__ . '/../../config.php');
 
 use local_aichat\activity;
+use local_aichat\attachment;
 use local_aichat\conversation;
 use local_aichat\moderation;
 use local_aichat\quota;
@@ -52,9 +53,12 @@ switch ($action) {
     //  Historique (chargement initial du widget, reprise après F5)
     // -----------------------------------------------------------------
     case 'history':
-        $messages = array();
-        foreach (conversation::messages($conv->id) as $row) {
-            $messages[] = conversation::export($row);
+        $rows        = conversation::messages($conv->id);
+        $attachments = attachment::for_messages(array_keys($rows));
+        $messages    = array();
+        foreach ($rows as $row) {
+            $messages[] = conversation::export($row,
+                isset($attachments[(int)$row->id]) ? $attachments[(int)$row->id] : array());
         }
         $busy = conversation::busy_message($conv->id);
         local_aichat_reply(array(
@@ -84,8 +88,10 @@ switch ($action) {
     //  Envoi d'une question
     // -----------------------------------------------------------------
     case 'send':
-        $content = trim(required_param('content', PARAM_RAW));
-        if ($content === '') {
+        $content = trim(optional_param('content', '', PARAM_RAW));
+        $uploads = attachment::uploads();
+        // Des fichiers seuls suffisent (« regarde ma capture »).
+        if ($content === '' && empty($uploads)) {
             local_aichat_error('empty', get_string('error_empty', 'local_aichat'));
         }
         $maxchars = (int)get_config('local_aichat', 'maxmessagechars');
@@ -108,7 +114,10 @@ switch ($action) {
         $quota = quota::check($USER->id);
         if (!$quota->ok) {
             local_aichat_error('quota',
-                get_string('error_quota', 'local_aichat', format_time($quota->retryafter)),
+                get_string('error_quota', 'local_aichat', (object)array(
+                    'time'  => $quota->resetlabel,
+                    'delay' => format_time((int)ceil($quota->retryafter / MINSECS) * MINSECS),
+                )),
                 array('quota' => (array)$quota));
         }
 
@@ -116,7 +125,27 @@ switch ($action) {
             local_aichat_error('noserver', get_string('error_noserver', 'local_aichat'));
         }
 
+        // Fichiers lus et vérifiés avant tout enregistrement : un refus ne
+        // laisse ni message ni fichier derrière lui.
+        try {
+            $prepared = attachment::prepare($uploads);
+        } catch (\moodle_exception $e) {
+            local_aichat_error('attach', $e->getMessage());
+        }
+
+        // Premier message depuis la fin de la fenêtre précédente : la
+        // nouvelle démarre maintenant (avant l'enregistrement du message).
+        quota::open_window($USER->id);
         $pair   = conversation::add_exchange($conv, $content);
+        if ($prepared) {
+            try {
+                attachment::save($prepared, $pair->usermsgid, $USER->id, $access->context);
+            } catch (\Throwable $e) {
+                debugging('local_aichat: fichiers non enregistrés — ' . $e->getMessage(), DEBUG_DEVELOPER);
+                conversation::delete_exchange($conv, $pair);
+                local_aichat_error('attach', get_string('attach_saveerror', 'local_aichat'));
+            }
+        }
         $slotid = pool::request(pool::PURPOSE_TUTOR, $USER->id, 'local_aichat',
             $pair->assistantid);
         conversation::attach_slot($pair->assistantid, $slotid);
@@ -125,7 +154,9 @@ switch ($action) {
         // sur la réponse du tuteur. Un échec de mise en file ne doit jamais
         // empêcher l'élève d'obtenir sa réponse.
         try {
-            moderation::schedule($pair->usermsgid);
+            if ($content !== '') {
+                moderation::schedule($pair->usermsgid);
+            }
         } catch (\Throwable $e) {
             debugging('local_aichat: modération non planifiée — ' . $e->getMessage(), DEBUG_DEVELOPER);
         }
@@ -134,7 +165,8 @@ switch ($action) {
             'ok'          => true,
             'messageid'   => (int)$pair->assistantid,
             'usermessage' => conversation::export(
-                $DB->get_record('local_aichat_message', array('id' => $pair->usermsgid))),
+                $DB->get_record('local_aichat_message', array('id' => $pair->usermsgid)),
+                attachment::for_messages(array($pair->usermsgid))[$pair->usermsgid] ?? array()),
             'quota'       => (array)quota::check($USER->id),
         ));
         break;

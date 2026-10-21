@@ -101,6 +101,7 @@ if ($conversationid > 0) {
         '← ' . get_string('backtolist', 'local_aichat')));
 
     $messages = conversation::messages($conv->id);
+    $files = \local_aichat\attachment::for_messages(array_keys($messages), true);
     $hasfailed = false;
     foreach ($messages as $message) {
         if ($message->role === 'user' && $message->flagstatus === 'failed') {
@@ -121,6 +122,28 @@ if ($conversationid > 0) {
             ? html_writer::tag('div', nl2br(s((string)$message->content)))
             : format_text((string)$message->contenthtml, FORMAT_HTML,
                 array('context' => $context, 'noclean' => false));
+
+        // Fichiers joints par l'élève : miniatures et liens de téléchargement.
+        if ($isuser && isset($files[(int)$message->id])) {
+            $items = array();
+            foreach ($files[(int)$message->id] as $file) {
+                $url = \local_aichat\attachment::url($file, $file->kind !== 'image');
+                if ($file->kind === 'image') {
+                    $items[] = html_writer::link($url, html_writer::empty_tag('img', array('src' => $url,
+                        'alt' => $file->filename, 'style' => 'max-width: 240px; max-height: 160px;',
+                        'class' => 'img-thumbnail')), array('target' => '_blank', 'title' => $file->filename));
+                    continue;
+                }
+                $detail = display_size((int)$file->filesize) . ', '
+                    . get_string('attach_chars', 'local_aichat', (int)$file->chars);
+                if (\local_aichat\attachment::truncated($file)) {
+                    $detail .= ', ' . get_string('attach_truncated', 'local_aichat');
+                }
+                $items[] = html_writer::link($url, '📄 ' . s($file->filename))
+                    . ' ' . html_writer::span('(' . s($detail) . ')', 'text-muted small');
+            }
+            $body .= html_writer::div(implode(' ', $items), 'd-flex flex-wrap gap-2 align-items-center mt-2');
+        }
         if (!$isuser && trim((string)$message->contenthtml) === '') {
             $body = html_writer::tag('em', s(get_string('status_' . $message->status,
                 'local_aichat')));
@@ -265,6 +288,11 @@ if ($canconfigure) {
 // ---------------------------------------------------------------------------
 if ($canview) {
     echo $OUTPUT->heading(get_string('conversations_heading', 'local_aichat'), 3);
+    if (has_capability('local/aichat:managequota', context_course::instance($course->id))) {
+        echo html_writer::tag('p', html_writer::link(
+            new moodle_url('/local/aichat/quotas.php', array('courseid' => $course->id)),
+            get_string('quotas_link', 'local_aichat'), array('class' => 'btn btn-sm btn-outline-secondary')));
+    }
 
     $rows = $DB->get_records_sql(
         "SELECT c.id, c.userid, c.status, c.msgcount, c.timecreated, c.timemodified,

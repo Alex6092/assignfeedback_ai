@@ -313,6 +313,99 @@
     color: #fff;
 }
 
+/* --- Fichiers joints ------------------------------------------------------ */
+.local-aichat-attach {
+    padding: 6px 8px;
+    border: 1px solid #ccd3da;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.local-aichat-attach:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+/* Fichiers en attente d'envoi, au-dessus de la zone de saisie. */
+.local-aichat-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 8px 0;
+    border-top: 1px solid #e1e6ec;
+    background: #fff;
+}
+
+.local-aichat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 4px 2px 6px;
+    border: 1px solid #ccd3da;
+    border-radius: 6px;
+    background: #f5f7f9;
+    font-size: 12px;
+}
+
+.local-aichat-chipthumb {
+    width: 28px;
+    height: 28px;
+    object-fit: cover;
+    border-radius: 3px;
+}
+
+.local-aichat-chipname {
+    overflow: hidden;
+    max-width: 180px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.local-aichat-chipremove {
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    color: #6b7684;
+    cursor: pointer;
+}
+
+/* Fichiers d'un message envoyé (dans la bulle de l'élève). */
+.local-aichat-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    white-space: normal;
+}
+
+.local-aichat-usertext + .local-aichat-files {
+    margin-top: 8px;
+}
+
+.local-aichat-file {
+    color: inherit;
+    font-size: 12.5px;
+    text-decoration: underline;
+}
+
+.local-aichat-thumb {
+    display: block;
+    max-width: 180px;
+    max-height: 120px;
+    border-radius: 6px;
+    background: #fff;
+}
+
+/* Fichier glissé au-dessus de la fenêtre. */
+.local-aichat-dropping {
+    outline: 3px dashed #0f6cbf;
+    outline-offset: -6px;
+}
+
 .local-aichat-quota {
     margin: 0;
     padding: 0 12px 8px;

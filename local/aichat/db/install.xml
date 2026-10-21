@@ -62,7 +62,7 @@
         <FIELD NAME="status"         TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="done" COMMENT="done|pending|streaming|failed|cancelled"/>
         <FIELD NAME="slotid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Pool ticket id"/>
         <FIELD NAME="serverid"       TYPE="int"  LENGTH="2"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Exact if reported by the server, estimated otherwise"/>
+        <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Assistant turns: tokens counted against the student quota, i.e. the student question + the answer shown (estimated from the text)"/>
         <FIELD NAME="websearches"    TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0" COMMENT="Web searches sent to the provider for this answer (per-student quota)"/>
         <FIELD NAME="pagereads"      TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0" COMMENT="Pages or documents read for this answer (per-student quota)"/>
         <FIELD NAME="toolcalls"      TYPE="text"             NOTNULL="false" COMMENT="JSON log of the web searches of this answer (query, outcome), for the teacher"/>
@@ -83,6 +83,48 @@
         <INDEX NAME="user_time"      UNIQUE="false" FIELDS="userid, timecreated"/>
         <INDEX NAME="status"         UNIQUE="false" FIELDS="status"/>
         <INDEX NAME="flagstatus"     UNIQUE="false" FIELDS="flagstatus"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aichat_attachment" COMMENT="Files attached by a student to a tutor question; the original is in the File API (area attachment, itemid = id)">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="messageid"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Student message (role user)"/>
+        <FIELD NAME="userid"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="contextid"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Module context of the stored file"/>
+        <FIELD NAME="filename"    TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="kind"        TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="text" COMMENT="image|text"/>
+        <FIELD NAME="mimetype"    TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="filesize"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="chars"       TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Length of the extracted text before truncation"/>
+        <FIELD NAME="content"     TYPE="text"              NOTNULL="false" COMMENT="Text given to the model (extracted, UTF-8, truncated); null for images"/>
+        <FIELD NAME="tokens"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Tokens counted against the student quota"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="messageid" UNIQUE="false" FIELDS="messageid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_aichat_quota" COMMENT="Per-student quota window of the tutor (shared by all activities) and bonus granted by a teacher">
+      <FIELDS>
+        <FIELD NAME="id"            TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid"        TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="windowstart"   TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Start of the current window (first message after the previous one ended), 0 = never opened or reset by a teacher"/>
+        <FIELD NAME="bonustokens"   TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Extra tokens for the current window (or the next one if none is open)"/>
+        <FIELD NAME="bonusmessages" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Extra messages, same rule"/>
+        <FIELD NAME="grantedby"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Teacher who last reset the window or granted a bonus"/>
+        <FIELD NAME="granttime"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"  TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid" UNIQUE="true" FIELDS="userid"/>
       </INDEXES>
     </TABLE>
 

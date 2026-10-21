@@ -140,13 +140,7 @@ try {
     $forcetool = null;
 }
 
-$messages    = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
-$prompttext  = '';
-foreach ($messages as $m) {
-    if (is_string($m['content'])) {
-        $prompttext .= $m['content'];
-    }
-}
+$messages = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
 
 // Pas d'URL imposée : le serveur vient du contexte du pool, ce qui autorise
 // le basculement.
@@ -195,17 +189,23 @@ try {
             array('id' => $messageid));
     }
 
+    // Quota : la question (fichiers joints compris) et ce que l'élève a vu de
+    // la réponse (voir quota).
+    $asked    = conversation::student_message((int)$conv->id, (int)$messageid);
+    $question = ($asked !== null) ? (string)$asked->content : '';
+    $filetokens = ($asked !== null) ? \local_aichat\attachment::tokens_for_message((int)$asked->id) : 0;
+
     if (!empty($result['aborted']) || $aborted) {
         conversation::store_partial($messageid, $result['content']);
         conversation::fail_message($messageid, 'cancelled', null, $access->context);
+        quota::record($messageid, $question, (string)$result['content'], $filetokens);
         pool::release(pool::current_slot(), 'cancelled');
         pool::clear_current();
         exit;
     }
 
     conversation::finish_message($messageid, $result['content'], $access->context, 'done');
-    quota::record($messageid, isset($result['usage']) ? $result['usage'] : null,
-        $prompttext, (string)$result['content'], $result['toolchars']);
+    quota::record($messageid, $question, (string)$result['content'], $filetokens);
     pool::release(pool::current_slot(), 'done');
     pool::clear_current();
 

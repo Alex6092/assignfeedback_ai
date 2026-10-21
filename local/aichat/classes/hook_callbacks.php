@@ -71,6 +71,9 @@ class hook_callbacks {
             'streamurl'    => (new \moodle_url('/local/aichat/stream.php'))->out(false),
             'pollinterval' => self::poll_interval(),
             'maxchars'     => self::setting('maxmessagechars', 2000),
+            'decsep'       => get_string('decsep', 'langconfig'),
+            // Fichiers joints (null = désactivés) : types, nombre et taille admis.
+            'attach'       => attachment::client_config(),
             'notice'       => self::student_notice(),
             'strings'      => self::strings(),
             // Activité avec recherche Web, mais l'élève n'a pas de clé : le
@@ -131,8 +134,10 @@ class hook_callbacks {
             'widget_placeholder', 'widget_send', 'widget_stop', 'widget_retry',
             'widget_welcome', 'widget_connecting', 'widget_generating',
             'widget_queued_next', 'widget_queued_n', 'widget_interrupted',
-            'widget_quota', 'widget_networkerror', 'widget_sendhint', 'widget_searching', 'widget_reading',
+            'widget_quota', 'widget_quota_reset', 'widget_networkerror', 'widget_sendhint', 'widget_searching', 'widget_reading',
             'widget_needkeys', 'widget_needkeys_link',
+            'widget_attach', 'widget_attach_remove', 'attach_toomany', 'attach_toobig',
+            'attach_badtype', 'attach_noimages', 'attach_toobigtotal',
         );
         $out = array();
         foreach ($keys as $key) {

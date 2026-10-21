@@ -168,5 +168,78 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026093002, 'local', 'aichat');
     }
 
+    // 2026102100 : quota de l'élève revu.
+    //   - Ne compte plus que la question de l'élève et la réponse affichée,
+    //     et non toute la requête (prompt système, contexte, historique
+    //     renvoyé, résultats de recherche) : les échanges passés sont recomptés
+    //     selon la nouvelle règle, pour que les statistiques restent comparables.
+    //   - Fenêtre fixe ouverte au premier message (heure de réinitialisation
+    //     connue), réinitialisable par l'enseignant, avec bonus. La table
+    //     arrive vide : chaque élève repart sur une fenêtre neuve.
+    if ($oldversion < 2026102100) {
+        $table = new xmldb_table('local_aichat_quota');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('windowstart', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('bonustokens', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('bonusmessages', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('grantedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('granttime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('userid', XMLDB_INDEX_UNIQUE, array('userid'));
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Recomptage : la question précède toujours sa réponse dans la
+        // conversation. Les réponses en échec ou annulées restent à 0.
+        $conversationid = 0;
+        $question = '';
+        $rs = $DB->get_recordset('local_aichat_message', null, 'conversationid ASC, id ASC',
+            'id, conversationid, role, status, content');
+        foreach ($rs as $row) {
+            if ((int)$row->conversationid !== $conversationid) {
+                $conversationid = (int)$row->conversationid;
+                $question = '';
+            }
+            if ($row->role === 'user') {
+                $question = (string)$row->content;
+                continue;
+            }
+            if ($row->status === 'done') {
+                $tokens = (int)ceil(core_text::strlen($question) / 4)
+                    + (int)ceil(core_text::strlen((string)$row->content) / 4);
+                $DB->set_field('local_aichat_message', 'tokens', $tokens, array('id' => (int)$row->id));
+            }
+        }
+        $rs->close();
+
+        upgrade_plugin_savepoint(true, 2026102100, 'local', 'aichat');
+    }
+
+    // 2026102101 : fichiers joints par les élèves (captures, code, PDF).
+    if ($oldversion < 2026102101) {
+        $table = new xmldb_table('local_aichat_attachment');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('messageid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('contextid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('filename', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('kind', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'text');
+        $table->add_field('mimetype', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('filesize', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('chars', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('content', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('tokens', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('messageid', XMLDB_INDEX_NOTUNIQUE, array('messageid'));
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+        upgrade_plugin_savepoint(true, 2026102101, 'local', 'aichat');
+    }
+
     return true;
 }

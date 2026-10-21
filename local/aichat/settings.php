@@ -108,6 +108,53 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // === Fichiers joints ===
+    $settings->add(new admin_setting_heading(
+        'local_aichat/attach_heading',
+        new lang_string('attach_heading', 'local_aichat'),
+        new lang_string('attach_heading_desc', 'local_aichat')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/attach_enabled',
+        new lang_string('setting_attachenabled', 'local_aichat'),
+        new lang_string('setting_attachenabled_help', 'local_aichat'),
+        1
+    ));
+
+    // Par défaut : le réglage « vision » de la correction IA. Le tuteur peut
+    // tourner sur un autre modèle, d'où un réglage à part.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/attach_images',
+        new lang_string('setting_attachimages', 'local_aichat'),
+        new lang_string('setting_attachimages_help', 'local_aichat'),
+        (int)!empty(get_config('local_aifeedback', 'vision_enabled'))
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/attach_maxfiles',
+        new lang_string('setting_attachmaxfiles', 'local_aichat'),
+        new lang_string('setting_attachmaxfiles_help', 'local_aichat'),
+        \local_aichat\attachment::DEFAULT_MAXFILES,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/attach_maxmb',
+        new lang_string('setting_attachmaxmb', 'local_aichat'),
+        new lang_string('setting_attachmaxmb_help', 'local_aichat'),
+        \local_aichat\attachment::DEFAULT_MAXMB,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aichat/attach_maxchars',
+        new lang_string('setting_attachmaxchars', 'local_aichat'),
+        new lang_string('setting_attachmaxchars_help', 'local_aichat'),
+        \local_aichat\attachment::DEFAULT_MAXCHARS,
+        PARAM_INT
+    ));
+
     // === Modération ===
     $settings->add(new admin_setting_heading(
         'local_aichat/moderation_heading',
