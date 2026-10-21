@@ -132,6 +132,20 @@ class conversation {
         return (object)array('usermsgid' => (int)$usermsgid, 'assistantid' => (int)$assistantid);
     }
 
+    /**
+     * Annule un échange qui vient d'être créé (fichiers joints impossibles à
+     * enregistrer) : rien ne doit en rester.
+     *
+     * @param \stdClass $conv
+     * @param \stdClass $pair sortie de add_exchange()
+     */
+    public static function delete_exchange(\stdClass $conv, \stdClass $pair) {
+        global $DB;
+        attachment::delete_for_messages(array($pair->usermsgid));
+        $DB->delete_records_list(self::TABLE_MSG, 'id', array($pair->usermsgid, $pair->assistantid));
+        $DB->set_field(self::TABLE, 'msgcount', (int)$conv->msgcount, array('id' => (int)$conv->id));
+    }
+
     /** Associe un ticket de file au message assistant. */
     public static function attach_slot($messageid, $slotid) {
         global $DB;
@@ -229,10 +243,22 @@ class conversation {
      * @return string
      */
     public static function student_question($conversationid, $assistantid) {
+        $row = self::student_message($conversationid, $assistantid);
+        return ($row === null) ? '' : (string)$row->content;
+    }
+
+    /**
+     * Message de l'élève auquel répond le message assistant donné.
+     *
+     * @param int $conversationid
+     * @param int $assistantid
+     * @return \stdClass|null {id, content}
+     */
+    public static function student_message($conversationid, $assistantid) {
         global $DB;
         $rows = $DB->get_records_select(self::TABLE_MSG, 'conversationid = ? AND id < ? AND role = ?',
             array((int)$conversationid, (int)$assistantid, 'user'), 'id DESC', 'id, content', 0, 1);
-        return empty($rows) ? '' : (string)reset($rows)->content;
+        return empty($rows) ? null : reset($rows);
     }
 
     /**
@@ -276,16 +302,20 @@ class conversation {
      * Le HTML n'est envoyé que pour les messages de l'assistant (markdown
      * assaini côté serveur) ; la question de l'élève est renvoyée en texte brut
      * et sera insérée avec textContent.
+     *
+     * @param \stdClass   $row
+     * @param \stdClass[] $attachments pièces jointes du message (attachment::for_messages)
      */
-    public static function export(\stdClass $row) {
+    public static function export(\stdClass $row, array $attachments = array()) {
         return array(
-            'id'      => (int)$row->id,
-            'role'    => (string)$row->role,
-            'status'  => (string)$row->status,
-            'content' => ($row->role === 'user') ? (string)$row->content : null,
-            'html'    => ($row->role === 'assistant') ? (string)$row->contenthtml : null,
-            'error'   => ($row->status === 'failed') ? (string)$row->error : null,
-            'time'    => (int)$row->timecreated,
+            'id'          => (int)$row->id,
+            'role'        => (string)$row->role,
+            'status'      => (string)$row->status,
+            'content'     => ($row->role === 'user') ? (string)$row->content : null,
+            'html'        => ($row->role === 'assistant') ? (string)$row->contenthtml : null,
+            'error'       => ($row->status === 'failed') ? (string)$row->error : null,
+            'time'        => (int)$row->timecreated,
+            'attachments' => attachment::export($attachments),
         );
     }
 }

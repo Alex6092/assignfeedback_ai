@@ -280,6 +280,7 @@ class activity {
         $conversationids = $DB->get_fieldset_select('local_aichat_conversation', 'id',
             'cmid = ?', array($cmid));
         if (!empty($conversationids)) {
+            attachment::delete_for_conversations($conversationids);
             foreach (array_chunk($conversationids, 500) as $chunk) {
                 list($insql, $params) = $DB->get_in_or_equal($chunk);
                 $DB->delete_records_select('local_aichat_message', "conversationid $insql", $params);

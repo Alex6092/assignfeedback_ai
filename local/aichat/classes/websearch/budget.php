@@ -151,9 +151,11 @@ class budget {
     }
 
     /**
-     * Recherches faites par un élève sur la fenêtre de son quota (4 h par
-     * défaut), toutes activités confondues. Exact : un élève n'a jamais qu'une
-     * génération en cours à la fois (conversation::busy_message).
+     * Recherches faites par un élève dans la fenêtre en cours de son quota
+     * (4 h par défaut), toutes activités confondues : elles repartent de zéro
+     * avec elle, y compris quand l'enseignant la réinitialise. Exact : un
+     * élève n'a jamais qu'une génération en cours à la fois
+     * (conversation::busy_message).
      *
      * @param int $userid
      * @return int
@@ -173,10 +175,13 @@ class budget {
         return self::user_sum($userid, 'pagereads');
     }
 
-    /** Somme d'un compteur des messages d'un élève sur la fenêtre de son quota. */
+    /** Somme d'un compteur des messages d'un élève dans la fenêtre en cours de son quota. */
     private static function user_sum($userid, $field) {
         global $DB;
-        $since = time() - \local_aichat\quota::window_hours() * HOURSECS;
+        $since = \local_aichat\quota::window_start($userid);
+        if ($since === 0) {
+            return 0; // aucune fenêtre ouverte
+        }
         $sum = $DB->get_field_sql(
             "SELECT COALESCE(SUM($field), 0) FROM {local_aichat_message}
               WHERE userid = ? AND timecreated >= ?",

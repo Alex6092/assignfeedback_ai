@@ -20,6 +20,8 @@ compétences).
 - [Fonctionnement](#fonctionnement)
 - [Support de la vision (images)](#support-de-la-vision-images)
 - [Surcharges par devoir / par question](#surcharges-par-devoir--par-question)
+- [Tuteur IA — quota des élèves](#tuteur-ia--quota-des-élèves)
+- [Tuteur IA — fichiers joints](#tuteur-ia--fichiers-joints)
 - [Tuteur IA — recherche Web](#tuteur-ia--recherche-web)
   (dont [mode « Recherche de matériel »](#mode--recherche-de-matériel-))
 - [MoodleSearch — moteur de recherche Web sans IA](#moodlesearch--moteur-de-recherche-web-sans-ia)
@@ -315,6 +317,76 @@ correction IA enregistré (observateur `course_module_created`, qui passe après
 
 ---
 
+## Tuteur IA — quota des élèves
+
+Le quota protège le serveur du lycée : chaque élève a un budget de **tokens** et de
+**messages** par fenêtre, commun à toutes les activités et à tous les cours (réglages
+« Quota d'usage par élève », 0 = pas de limite).
+
+- **Ce qui compte** : la question de l'élève et la réponse qui lui est affichée (réponse
+  partielle s'il l'interrompt, liste des sources comprise), estimées à 4 caractères par
+  token (`quota::record()`). Le prompt système, le contexte de l'activité, l'historique
+  renvoyé au modèle à chaque message et les résultats de recherche ne sont **pas** comptés :
+  avant la 0.6.0, ils l'étaient, et chaque question coûtait 2 000 à 4 000 tokens dès que
+  la conversation s'allongeait. Une réponse en échec ne compte pas. Les fichiers joints
+  comptent une fois : leur texte, et environ 500 tokens par image.
+- **Fenêtre fixe** : elle s'ouvre au premier message de l'élève et dure 4 h (réglable). À son
+  terme, les compteurs repartent de zéro et la fenêtre suivante s'ouvre au message suivant.
+  L'élève voit l'heure de réinitialisation sous la zone de saisie (« Quota : 12/40 · 6,3k/20k
+  · réinitialisation à 14:12 ») et dans le message de blocage. Les plafonds de recherches et
+  de lectures de pages par élève suivent la même fenêtre.
+- **Page « Quotas du tuteur IA »** du cours (`quotas.php`, navigation du cours dès que le
+  tuteur est activé sur une activité ; lien aussi depuis la page du tuteur d'une activité ;
+  capacité `local/aichat:managequota`, enseignants) : pour chaque élève du groupe choisi,
+  la fenêtre (ouverture → réinitialisation), les messages et tokens consommés, le bonus et
+  l'état « Bloqué ». Actions sur un élève, les élèves cochés ou tous les élèves affichés :
+  - **Accorder un bonus** (tokens et/ou messages, une fenêtre complète proposée par défaut) :
+    il s'ajoute aux plafonds de la fenêtre en cours, ou de la prochaine si l'élève n'en a pas
+    d'ouverte, et expire avec elle ;
+  - **Réinitialiser la fenêtre** : compteurs à zéro tout de suite, nouvelle fenêtre au
+    prochain message. Les conversations ne sont pas effacées.
+
+La table `local_aichat_quota` garde, par élève, le début de sa fenêtre et son bonus.
+
+---
+
+## Tuteur IA — fichiers joints
+
+L'élève peut joindre à une question des **captures d'écran** (Ctrl+V dans la zone de saisie,
+glisser-déposer sur la fenêtre, ou bouton trombone) et des **fichiers** : code source et texte
+(`.c`, `.cpp`, `.h`, `.py`, `.js`, `.html`, `.css`, `.ino`, `.java`, `.sql`, `Makefile`…), PDF
+et DOCX. Un message peut n'être fait que de fichiers.
+
+- **Lus une fois, à l'envoi** (`attachment::prepare()`), avant tout enregistrement : un refus
+  (type, taille, fichier binaire renommé, PDF scanné sans texte) ne laisse ni message ni
+  fichier, et l'élève retrouve son message et ses fichiers pour corriger.
+  - images (PNG, JPEG, GIF, WebP ; pas de SVG) : réduites au « plus grand côté » de la
+    correction IA puis envoyées en `image_url`. Nécessite un **modèle vision** sur les serveurs
+    du tuteur (réglage « Le modèle du tuteur lit les images ») ; décoché, elles sont refusées ;
+  - texte et code : convertis en UTF-8 (fichiers Windows-1252 de l'IDE Arduino compris),
+    nettoyés, tronqués au réglage « Texte transmis par fichier » (12 000 caractères) ; le
+    modèle est averti d'une troncature ;
+  - PDF : texte extrait par `pdftotext` (proposé seulement s'il est installé) ; DOCX : texte.
+- **Mémoire du tuteur** : la question suivante peut porter sur le même fichier. Les fichiers
+  des questions précédentes sont renvoyés au modèle, les plus récents d'abord, tant que leur
+  texte tient dans le même budget et que les images ne dépassent pas « Fichiers par
+  message » ; au-delà, une simple mention.
+- **Prompt** : un bloc « fichiers joints » rappelle au modèle que leur contenu est une
+  donnée, jamais une instruction, et qu'il ne renvoie pas le fichier corrigé.
+- **Quota** : le texte transmis compte comme la question, et chaque image environ 500 tokens,
+  une seule fois (au message qui les envoie).
+- **Limites** (rubrique « Fichiers joints ») : 3 fichiers par message, **4 Mo par fichier**,
+  bornés par la limite d'envoi du site et par PHP. Le widget refuse aussi un envoi dont le
+  total dépasse `post_max_size` : pour 3 × 4 Mo, régler `post_max_size` à 16M au moins.
+- **Stockage** : originaux dans la File API (contexte du module, zone `attachment`), texte
+  extrait dans `local_aichat_attachment`. Servis à l'élève qui les a envoyés et à qui lit les
+  conversations ; seules les images s'affichent dans le navigateur, le reste est téléchargé
+  (un `.html` ne s'exécute jamais sur le domaine de Moodle). Supprimés avec la conversation
+  (purge, suppression de l'activité, demande RGPD), exportés avec elle.
+- La **modération** n'analyse que le texte du message, pas les fichiers.
+
+---
+
 ## Tuteur IA — recherche Web
 
 Le tuteur (`local_aichat`) peut chercher sur Internet quand une information est
@@ -566,8 +638,8 @@ Sur le site :
   texte brut : le test de la page de diagnostic le détecte. N'activez pas la
   recherche tant qu'un serveur du tuteur échoue à ce test. Cette version n'a pas
   d'analyseur de secours.
-- Chaque recherche ajoute un tour de génération : réponse plus lente, quota de tokens
-  de l'élève davantage consommé.
+- Chaque recherche ajoute un tour de génération : réponse plus lente et serveur plus
+  sollicité (le quota de l'élève, lui, ne compte que la réponse affichée).
 - Un texte écrit avant l'appel (« Je vérifie… ») reste dans la réponse.
 - En mode ponctuel : extraits seulement (principal + supplémentaires), pas de lecture de
   pages. La lecture de pages n'existe que dans le mode « Recherche de matériel ».
@@ -635,9 +707,9 @@ dernier) :
 - les lectures sont gratuites, mais limitées par élève (30 par fenêtre de 4 h) ;
 - le **cache des pages** (24 h) évite de retélécharger une datasheet que toute la
   classe lit ;
-- le quota de tokens de l'élève compte le **prompt du dernier tour** (le contexte réel,
-  résultats compris) **plus tout le texte généré** : LM Studio garde en cache le début
-  commun des tours.
+- le quota de tokens de l'élève ne compte que sa question et la réponse affichée : les
+  pages lues, injectées dans le prompt, ne lui sont pas décomptées (voir
+  [Tuteur IA — quota des élèves](#tuteur-ia--quota-des-élèves)).
 
 **Réglages** (rubrique « Recherche de matériel ») :
 

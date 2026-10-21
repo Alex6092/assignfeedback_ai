@@ -106,7 +106,29 @@
     status.hidden = true;
     panel.appendChild(status);
 
+    // Fichiers joints en attente d'envoi (sous la zone de saisie).
+    var ATTACH = CFG.attach || null;
+    var pending = [];          // {file, url (aperçu d'image ou '')}
+    var chips = el('div', 'local-aichat-chips');
+    chips.hidden = true;
+    panel.appendChild(chips);
+
     var form = el('form', 'local-aichat-form');
+    var fileInput = null;
+    var btnAttach = null;
+    if (ATTACH) {
+        fileInput = el('input', 'local-aichat-fileinput');
+        fileInput.type = 'file';
+        fileInput.multiple = true;
+        fileInput.accept = ATTACH.accept || '';
+        fileInput.hidden = true;
+        btnAttach = el('button', 'local-aichat-attach', '📎');
+        btnAttach.type = 'button';
+        btnAttach.title = S.widget_attach || '';
+        btnAttach.setAttribute('aria-label', S.widget_attach || '');
+        form.appendChild(fileInput);
+        form.appendChild(btnAttach);
+    }
     var input = el('textarea', 'local-aichat-input');
     input.rows = 2;
     input.placeholder = S.widget_placeholder || '';
@@ -140,9 +162,48 @@
         return body;
     }
 
+    // Pièces d'un message : miniatures cliquables pour les images, lien de
+    // téléchargement pour le reste. items : {name, kind, size, url}.
+    function renderAttachments(body, items) {
+        if (!items || !items.length) {
+            return;
+        }
+        var box = el('div', 'local-aichat-files');
+        items.forEach(function (item) {
+            // Sans adresse (fichier pas encore enregistré) : simple étiquette.
+            var link = el(item.url ? 'a' : 'span', 'local-aichat-file');
+            if (item.url) {
+                link.href = item.url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+            }
+            link.title = item.name + (item.size ? ' (' + item.size + ')' : '');
+            if (item.kind === 'image' && item.url) {
+                var img = el('img', 'local-aichat-thumb');
+                img.src = item.url;
+                img.alt = item.name;
+                link.appendChild(img);
+            } else {
+                link.textContent = '📄 ' + item.name;
+            }
+            box.appendChild(link);
+        });
+        body.appendChild(box);
+    }
+
+    function renderUser(text, items) {
+        var body = addBubble('user');
+        if (text) {
+            body.appendChild(el('div', 'local-aichat-usertext', text));
+        }
+        renderAttachments(body, items);
+        scrollDown();
+        return body;
+    }
+
     function renderMessage(message) {
         if (message.role === 'user') {
-            addBubble('user').textContent = message.content || '';
+            renderUser(message.content || '', message.attachments);
             return;
         }
         var extra = (message.status === 'failed') ? 'local-aichat-error' : '';
@@ -184,6 +245,15 @@
         status.hidden = false;
     }
 
+    // 850 → « 850 », 2340 → « 2,3k », 20000 → « 20k ».
+    function kilo(n) {
+        if (n < 1000) {
+            return String(n);
+        }
+        var k = (n < 10000) ? Math.round(n / 100) / 10 : Math.round(n / 1000);
+        return String(k).replace('.', CFG.decsep || '.') + 'k';
+    }
+
     function setQuota(quota) {
         if (!quota || (!quota.messagesmax && !quota.tokensmax)) {
             quotaLine.hidden = true;
@@ -194,8 +264,13 @@
             parts.push(quota.messagesused + '/' + quota.messagesmax);
         }
         if (quota.tokensmax) {
-            parts.push(Math.round(quota.tokensused / 1000) + 'k/'
-                + Math.round(quota.tokensmax / 1000) + 'k');
+            parts.push(kilo(quota.tokensused) + '/' + kilo(quota.tokensmax));
+        }
+        // Fenêtre ouverte : l'élève sait quand ses compteurs repartent de zéro.
+        if (quota.resetlabel) {
+            parts.push((S.widget_quota_reset || '').replace('{$a}', function () {
+                return quota.resetlabel;
+            }));
         }
         quotaLine.textContent = (S.widget_quota || '') + ' ' + parts.join(' · ');
         quotaLine.hidden = false;
@@ -205,22 +280,150 @@
         btnSend.hidden = busy;
         btnStop.hidden = !busy;
         input.disabled = busy;
+        if (btnAttach) {
+            btnAttach.disabled = busy;
+        }
+    }
+
+    // --- Fichiers joints ----------------------------------------------------
+    // Les contrôles d'ici évitent un envoi voué au refus ; le serveur refait
+    // tous les contrôles.
+
+    // Remplit {$a} / {$a->clé} d'une chaîne (résolue sans paramètre côté serveur).
+    function fill(text, values) {
+        return (text || '').replace(/\{\$a(?:->(\w+))?\}/g, function (all, key) {
+            var value = key ? values[key] : values.a;
+            return (value === undefined) ? all : String(value);
+        });
+    }
+
+    function extensionOf(name) {
+        var pos = name.lastIndexOf('.');
+        return (pos > 0) ? name.slice(pos).toLowerCase() : '';
+    }
+
+    function isImage(file) {
+        return /^image\/(png|jpeg|gif|webp)$/.test(file.type || '');
+    }
+
+    function refusal(file) {
+        if (pending.length >= ATTACH.maxfiles) {
+            return fill(S.attach_toomany, {a: ATTACH.maxfiles});
+        }
+        var ext = extensionOf(file.name);
+        if ((ATTACH.extensions || []).indexOf(ext) < 0
+                && (ATTACH.names || []).indexOf(file.name.toLowerCase()) < 0) {
+            return fill((isImage(file) && !ATTACH.images) ? S.attach_noimages : S.attach_badtype,
+                {a: file.name});
+        }
+        if (file.size > ATTACH.maxbytes) {
+            return fill(S.attach_toobig, {name: file.name, max: ATTACH.maxlabel});
+        }
+        var total = pending.reduce(function (sum, item) {
+            return sum + item.file.size;
+        }, file.size);
+        if (ATTACH.maxtotal && total > ATTACH.maxtotal) {
+            return fill(S.attach_toobigtotal, {a: ATTACH.totallabel});
+        }
+        return '';
+    }
+
+    function addFiles(list) {
+        if (!ATTACH || state !== 'idle') {
+            return;
+        }
+        var refused = '';
+        Array.prototype.forEach.call(list, function (file) {
+            var reason = refusal(file);
+            if (reason) {
+                refused = refused || reason;
+                return;
+            }
+            pending.push({file: file, url: (isImage(file) && window.URL) ? window.URL.createObjectURL(file) : ''});
+        });
+        renderChips();
+        setStatus(refused, refused ? 'error' : '');
+        input.focus();
+    }
+
+    function revoke(item) {
+        if (item.url && window.URL) {
+            window.URL.revokeObjectURL(item.url);
+        }
+    }
+
+    function renderChips() {
+        chips.innerHTML = '';
+        pending.forEach(function (item, index) {
+            var chip = el('span', 'local-aichat-chip');
+            if (item.url) {
+                var thumb = el('img', 'local-aichat-chipthumb');
+                thumb.src = item.url;
+                thumb.alt = '';
+                chip.appendChild(thumb);
+            }
+            chip.appendChild(el('span', 'local-aichat-chipname', item.file.name));
+            var remove = el('button', 'local-aichat-chipremove', '✕');
+            remove.type = 'button';
+            remove.title = fill(S.widget_attach_remove, {a: item.file.name});
+            remove.setAttribute('aria-label', remove.title);
+            remove.addEventListener('click', function () {
+                revoke(pending.splice(index, 1)[0]);
+                renderChips();
+            });
+            chip.appendChild(remove);
+            chips.appendChild(chip);
+        });
+        chips.hidden = (pending.length === 0);
+    }
+
+    // Capture collée : le navigateur la nomme « image.png » ; on lui donne
+    // l'heure, pour que l'élève et l'enseignant s'y retrouvent.
+    function pastedName(file, index) {
+        var d = new Date();
+        var pad = function (n) {
+            return (n < 10 ? '0' : '') + n;
+        };
+        var ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        return 'capture-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds())
+            + (index ? '-' + index : '') + '.' + ext;
+    }
+
+    function hasFiles(event) {
+        var types = event.dataTransfer && event.dataTransfer.types;
+        return !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
     }
 
     // --- Appels réseau ------------------------------------------------------
-    function post(action, params) {
-        var body = new URLSearchParams();
-        body.set('cmid', CFG.cmid);
-        body.set('sesskey', CFG.sesskey);
-        body.set('action', action);
+    // Avec des fichiers : multipart (FormData) ; sinon formulaire encodé.
+    function post(action, params, files) {
+        var fields = {cmid: CFG.cmid, sesskey: CFG.sesskey, action: action};
         Object.keys(params || {}).forEach(function (key) {
-            body.set(key, params[key]);
+            fields[key] = params[key];
         });
+        var body;
+        var headers = {};
+        if (files && files.length) {
+            body = new FormData();
+            Object.keys(fields).forEach(function (key) {
+                body.append(key, fields[key]);
+            });
+            files.forEach(function (file) {
+                body.append('files[]', file, file.name);
+            });
+        } else {
+            var encoded = new URLSearchParams();
+            Object.keys(fields).forEach(function (key) {
+                encoded.set(key, fields[key]);
+            });
+            body = encoded.toString();
+            headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        }
         return fetch(CFG.ajaxurl, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-            body: body.toString()
+            headers: headers,
+            body: body
         }).then(function (response) {
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
@@ -431,7 +634,7 @@
     // --- Actions ------------------------------------------------------------
     function send() {
         var text = input.value.trim();
-        if (text === '' || state !== 'idle') {
+        if ((text === '' && pending.length === 0) || state !== 'idle') {
             return;
         }
         state = 'sending';
@@ -442,16 +645,42 @@
         if (welcome) {
             welcome.remove();
         }
-        addBubble('user').textContent = text;
+        // Bulle affichée tout de suite, avec les aperçus locaux des images.
+        var sent = pending;
+        var bubble = renderUser(text, sent.map(function (item) {
+            return {name: item.file.name, kind: item.url ? 'image' : 'file', url: item.url, size: ''};
+        }));
         input.value = '';
+        pending = [];
+        renderChips();
 
-        post('send', {content: text}).then(function (data) {
+        post('send', {content: text}, sent.map(function (item) {
+            return item.file;
+        })).then(function (data) {
             if (!data.ok) {
+                // Rien n'a été enregistré : l'élève retrouve son message et
+                // ses fichiers, pour corriger et renvoyer.
+                bubble.parentNode.remove();
+                if (input.value === '') {
+                    input.value = text;
+                }
+                pending = sent.concat(pending);
+                renderChips();
+                showWelcome();
                 fail(data.message);
                 if (data.error === 'quota' && data.quota) {
                     setQuota(data.quota);
                 }
                 return;
+            }
+            // Aperçus locaux remplacés par les fichiers enregistrés.
+            if (sent.length && data.usermessage) {
+                var box = bubble.querySelector('.local-aichat-files');
+                if (box) {
+                    box.remove();
+                }
+                renderAttachments(bubble, data.usermessage.attachments);
+                sent.forEach(revoke);
             }
             currentMessageId = data.messageid;
             state = 'queued';
@@ -671,6 +900,66 @@
             send();
         }
     });
+
+    if (ATTACH) {
+        btnAttach.addEventListener('click', function () {
+            fileInput.click();
+        });
+        fileInput.addEventListener('change', function () {
+            addFiles(fileInput.files);
+            fileInput.value = '';   // permet de rechoisir le même fichier
+        });
+        // Ctrl+V d'une capture d'écran. Un presse-papiers qui contient aussi
+        // du texte (cellule de tableur, page Web) est collé comme texte.
+        input.addEventListener('paste', function (event) {
+            var items = (event.clipboardData && event.clipboardData.items) || [];
+            var files = [];
+            var hastext = false;
+            Array.prototype.forEach.call(items, function (item) {
+                if (item.kind === 'file') {
+                    var file = item.getAsFile();
+                    if (file) {
+                        files.push(file);
+                    }
+                } else if (item.type === 'text/plain') {
+                    hastext = true;
+                }
+            });
+            if (!files.length || hastext) {
+                return;
+            }
+            event.preventDefault();
+            addFiles(files.map(function (file, index) {
+                if (!isImage(file) || (file.name && file.name !== 'image.png')) {
+                    return file;
+                }
+                try {
+                    return new File([file], pastedName(file, index), {type: file.type});
+                } catch (e) {
+                    return file;
+                }
+            }));
+        });
+        // Glisser-déposer sur la fenêtre du tuteur.
+        panel.addEventListener('dragover', function (event) {
+            if (hasFiles(event)) {
+                event.preventDefault();
+                panel.classList.add('local-aichat-dropping');
+            }
+        });
+        panel.addEventListener('dragleave', function (event) {
+            if (!event.relatedTarget || !panel.contains(event.relatedTarget)) {
+                panel.classList.remove('local-aichat-dropping');
+            }
+        });
+        panel.addEventListener('drop', function (event) {
+            if (hasFiles(event)) {
+                event.preventDefault();
+                panel.classList.remove('local-aichat-dropping');
+                addFiles(event.dataTransfer.files);
+            }
+        });
+    }
 
     try {
         if (window.localStorage.getItem(STORAGE_KEY) === '1') {
