@@ -41,7 +41,7 @@ const HTML_ROLES = ['lecon', 'page', 'label'];
 const NOT_DEPLOYED = ['video', 'resource']; // rôles que le pont ne crée pas (à créer à la main)
 const AI_QTYPES = ['aiessay', 'aishortanswer'];
 const THEME_CLASSES = ['objectif', 'astuce', 'danger', 'suite', 'formule', 'comp', 'carte', 'carte-item', 'icon',
-  'cdc', 'rendre', 'phase', 'install', 'sev-crit', 'sev-high', 'sev-med', 'sev-low', 'modcode', 'img-fluid', 'capture'];
+  'cdc', 'rendre', 'phase', 'install', 'sev-crit', 'sev-high', 'sev-med', 'sev-low', 'modcode', 'img-fluid', 'capture', 'reponse'];
 // Nom d'une leçon qui contient encore des captures d'écran suggérées (encadrés class="capture") à faire par l'enseignant
 const TODO_CAPTURES = /\(TODO : Captures\)\s*$/;
 const N1 = /^C(0[1-9]|1[01])$/;
@@ -240,6 +240,10 @@ function checkDrawings(where, text) {
 function checkCmLinks(where, html, owner) {
   const index = owner ? activities.indexOf(owner) : -1;
   const deferrable = !owner || owner.role === 'lecon';
+  // Un lien mal fermé (« @@CM:td" ») n'est remplacé ni par le déploiement ni par les outils à l'unité : il reste cassé.
+  for (const m of html.matchAll(/@@CM:([^@"'\s<>]*)(@@)?/g)) {
+    if (!m[2] || !/^[A-Za-z0-9_-]+$/.test(m[1])) err(where, `lien « ${m[0]} » mal formé : écrire @@CM:clé@@ (deux @ de chaque côté), sinon il n'est pas remplacé et reste cassé`);
+  }
   for (const ref of new Set([...html.matchAll(/@@CM:([A-Za-z0-9_-]+)@@/g)].map((m) => m[1]))) {
     const target = activities.findIndex((a) => a.key === ref);
     if (/^\d+$/.test(ref)) info(where, `lien @@CM:${ref}@@ vers l'activité ${ref} du cours (vérifiée au déploiement)`);
@@ -264,6 +268,19 @@ function checkLesson(name, owner) {
     const h1 = (block.match(/<h1[\s>]/gi) ?? []).length;
     if (h1 !== 1) warn(where, `${h1} titre(s) <h1> : un seul par page (il donne le titre de la page)`);
     checkHtmlFragment(where, block, owner);
+    // Exercices « À toi ! » : le résultat attendu se cache derrière un bouton dépliant (<details class="reponse">).
+    for (const d of block.matchAll(/<details\b[^>]*>[\s\S]*?<\/details>/gi)) {
+      if (/class="[^"]*\breponse\b/.test(d[0]) && !/<summary[\s>]/i.test(d[0])) warn(where, '<details class="reponse"> sans <summary> : le bouton n\'a pas de libellé (« 👀 Voir le résultat attendu »)');
+    }
+    // Seuls les encadrés d'exercice comptent (un tableau de recette peut avoir une colonne « Résultat attendu »).
+    for (const s of block.matchAll(/<div class="suite">([\s\S]*?)<\/div>/g)) {
+      if (!/À toi/i.test(s[1])) continue;
+      const visible = s[1].replace(/<details\b[^>]*class="[^"]*\breponse\b[^"]*"[^>]*>[\s\S]*?<\/details>/gi, '');
+      if (/résultat attendu/i.test(textOf(visible))) {
+        warn(where, 'résultat attendu d\'un exercice « À toi ! » visible d\'emblée : le mettre dans <details class="reponse"><summary>👀 Voir le résultat attendu</summary>…</details> (style-html.md § 4)');
+        break;
+      }
+    }
     if (/⏱|durée\s+(estimée|de lecture)|<strong>\s*durée\s*:/i.test(block)) {
       warn(where, 'durée affichée dans la leçon : elle va dans la fiche enseignant (un élève qui la lit prend son temps)');
     }

@@ -175,8 +175,8 @@ le test sommatif à sa date de rendu.
 - tester l'**ouverture d'une séance surveillée** sur un TP évalué avec un compte élève (code de
   séance), puis vérifier que le bonus ne s'ouvre qu'après la remise des TP évalués ;
 - faire les **captures suggérées** (encadrés 📸 `capture` des leçons nommées « … (TODO : Captures) »),
-  les mettre à la place des encadrés, puis retirer la mention du nom ; ajouter la classe `capture` au
-  SCSS du thème si ce n'est pas fait (`style-html.md` § 2) ;
+  les mettre à la place des encadrés, puis retirer la mention du nom ; ajouter les classes `capture`
+  et `reponse` au SCSS du thème si ce n'est pas fait (`style-html.md` § 2) ;
 - fournir les images marquées `IMAGE À FOURNIR` dans la leçon, et déposer dans l'éditeur les images
   en relatif d'une page, d'une étiquette ou d'une consigne de TP (avertissement « non envoyée(s) »
   du rapport) ; celles de la leçon sont déjà en place ;

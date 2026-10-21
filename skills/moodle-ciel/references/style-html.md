@@ -50,6 +50,7 @@ Vérifie la liste avec `moodle_site_info` (`theme.cielclasses` et `theme.missing
 | `sev-crit`, `sev-high`, `sev-med`, `sev-low` | texte coloré gras | gravité (CVSS, risque) |
 | `modcode` | code de module en vert | `M2` dans la carte du parcours (page d'accueil) |
 | `capture` | encadré gris à bord pointillé | **capture d'écran suggérée**, à faire par l'enseignant (📸, voir § 3) |
+| `reponse` (sur `<details>`) | bouton bleu qui déplie la réponse | **résultat attendu** d'un exercice « ➡️ À toi ! », masqué jusqu'au clic (voir § 4) |
 
 `install`, `sev-*` et `modcode` ont été ajoutées au SCSS du thème en octobre 2026. Si
 `missingclasses` les liste encore, ne les utilise pas et signale-le.
@@ -61,6 +62,19 @@ du site → Présentation → Thèmes → Boost → Réglages avancés), à rapp
 ```css
 .capture{background:#f8fafc;border:2px dashed #94a3b8;border-radius:8px;padding:.7rem 1rem;margin:1rem 0;color:#475569;font-size:.92em}
 .capture strong{color:#334155}
+```
+
+`reponse` (octobre 2026, à la demande de l'enseignant) habille la balise HTML native `<details>` en bouton.
+Sans cette règle, le bouton fonctionne quand même (triangle par défaut du navigateur). Règle à ajouter
+au même endroit :
+
+```css
+details.reponse{margin:.6rem 0 0}
+details.reponse>summary{display:inline-block;cursor:pointer;list-style:none;background:#0284c7;color:#fff;font-weight:bold;border-radius:6px;padding:.2rem .8rem}
+details.reponse>summary::-webkit-details-marker{display:none}
+details.reponse>summary:hover,details.reponse>summary:focus-visible{background:#0369a1}
+details.reponse[open]>summary{margin-bottom:.4rem}
+details.reponse>p{background:#fff;border:1px dashed #0284c7;border-radius:6px;padding:.4rem .8rem;margin:0}
 ```
 
 Classes Moodle/Bootstrap utilisables : `img-fluid` (image adaptative), `table` n'est pas
@@ -79,7 +93,9 @@ Pas de `<center>` ni de `<br>` autour de l'icône : le thème la centre et l'esp
 
 - **Balises** : `h1` (un seul par page), `h2` (sections), `h3`, `p`, `ul`/`ol`/`li`, `strong`,
   `em`, `code`, `pre><code`, `table`/`thead`/`tbody`/`tr`/`th`/`td`, `br` (avec parcimonie), `a`,
-  `img`, `div` et `span` porteurs des classes du thème.
+  `img`, `div` et `span` porteurs des classes du thème ; `details class="reponse"` et son `summary`
+  pour le résultat attendu d'un exercice de leçon (§ 4). Les pages de leçon sont affichées sans
+  nettoyage du HTML, ce qui garde `<details>` ; ailleurs (page, étiquette, consigne), ne t'y fie pas.
 - **Interdit** : `<script>`, `<style>`, `<iframe>`, `<center>`, `<font>`, attributs `on…`, CSS
   externe, classes inventées.
 - **Code** : dans `<pre><code>`, échappe `<`, `>` et `&` (`2&gt;/dev/null`, `&lt;?php`). Commente
@@ -240,8 +256,16 @@ Les leçons existantes l'affichent encore (exemple `lecon-M2-moodle.html`) : ne 
 du code commenté, des encadrés `astuce` / `danger` là où ils servent. Les exercices non notés :
 ```html
 <div class="suite"><strong>➡️ À toi ! — Lire l'état d'un port</strong><br><br>
-Consigne courte et précise.<br><em>Indice : …</em><br><strong>Résultat attendu :</strong> …</div>
+Consigne courte et précise.<br><em>Indice : …</em>
+<details class="reponse"><summary>👀 Voir le résultat attendu</summary>
+<p>…</p>
+</details></div>
 ```
+Le **résultat attendu ne s'affiche jamais d'emblée** : l'élève qui le voit en même temps que la
+consigne ne cherche plus. L'indice reste visible ; le résultat est dans `<details class="reponse">`,
+un bouton natif qui se déplie au clic, sans JavaScript (décision de l'enseignant, octobre 2026).
+`check-module.mjs` signale un « Résultat attendu » laissé visible. Dans la trace PDF des leçons, le
+bouton reste replié.
 
 **Dernière page** (ou fin de la page unique) :
 ```html

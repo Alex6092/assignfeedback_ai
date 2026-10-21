@@ -58,7 +58,8 @@ Contenu attendu (détails dans `style-html.md`) :
   « programmation » (🎯, 🐍 Python au menu, 📦 données) ; **jamais de durée** (elle est dans la
   fiche enseignant) ;
 - des sections courtes, des exemples, du code commenté, des encadrés astuce/danger ;
-- des exercices « ➡️ À toi ! » non notés, avec indice et résultat attendu ;
+- des exercices « ➡️ À toi ! » non notés, avec un indice visible et le résultat attendu masqué
+  derrière un bouton (`<details class="reponse">`, `style-html.md` § 4) ;
 - là où une capture d'écran aiderait (fenêtre d'un logiciel, console, étape d'installation), un
   encadré **📸 Capture suggérée** qui dit ce qu'elle doit montrer ; la leçon s'appelle alors
   « Titre (TODO : Captures) » jusqu'à ce que l'enseignant les ait faites (`style-html.md` § 3) ;
