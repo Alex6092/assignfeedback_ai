@@ -19,6 +19,13 @@ require_once($CFG->libdir . '/filelib.php'); // pour la classe curl
 class api {
 
     /**
+     * Balises de réflexion des modèles à raisonnement, quand le serveur la
+     * laisse dans le texte de la réponse : <think> (Qwen3, QwQ, DeepSeek-R1)
+     * et [THINK] (Magistral).
+     */
+    const THINK_TAGS = array('<think>' => '</think>', '[THINK]' => '[/THINK]');
+
+    /**
      * Effectue un appel chat/completions (bloquant).
      *
      * @param array $messages messages OpenAI (role + content string ou array multimodal)
@@ -30,7 +37,7 @@ class api {
      *   - 'temperature'   (float, défaut 0.2)
      *   - 'max_tokens'    (int, défaut 2048)
      *   - 'extra_body'    (array|null) champs additionnels (ex: enable_thinking=false)
-     *   - 'timeout'       (int, défaut 180)
+     *   - 'timeout'       (int, défaut 180 ; 600 avec un budget de réflexion)
      *
      * @return array Le tableau parsé depuis choices[0].message.content
      *               (en JSON si response_format=json_schema/json_object,
@@ -59,9 +66,12 @@ class api {
     private static function call_once(array $messages, array $options) {
         $req = self::prepare($messages, $options);
 
+        // Un modèle qui réfléchit avant de répondre met bien plus longtemps.
+        $timeout = (self::reasoning_budget() > 0) ? 600 : 180;
+
         $curl = new \curl();
         $curl->setopt(array(
-            'CURLOPT_TIMEOUT'        => isset($options['timeout']) ? (int)$options['timeout'] : 180,
+            'CURLOPT_TIMEOUT'        => isset($options['timeout']) ? (int)$options['timeout'] : $timeout,
             'CURLOPT_CONNECTTIMEOUT' => 15,
             'CURLOPT_RETURNTRANSFER' => true,
             'CURLOPT_HTTPHEADER'     => $req['headers'],
@@ -85,7 +95,12 @@ class api {
         $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
 
         $data = json_decode($raw, true);
-        if (!is_array($data) || !isset($data['choices'][0]['message']['content'])) {
+        $message = (is_array($data) && isset($data['choices'][0]['message'])
+                && is_array($data['choices'][0]['message'])) ? $data['choices'][0]['message'] : array();
+        // Réflexion rendue à part (LM Studio, vLLM, Ollama récents) : ce n'est
+        // pas la réponse, mais elle explique une réponse vide.
+        $reasoning = self::reasoning_length($message);
+        if (!isset($message['content']) && $reasoning === 0) {
             // Réponse inexploitable : on remonte le code HTTP + le corps brut.
             // Les API compatibles OpenAI renvoient en cas d'erreur un objet
             // {"error":{"message":"...","type":"...","code":"..."}} : ce message
@@ -105,7 +120,18 @@ class api {
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
-        $content = trim((string)$data['choices'][0]['message']['content']);
+        $finish = isset($data['choices'][0]['finish_reason'])
+            ? $data['choices'][0]['finish_reason'] : '?';
+
+        // Réflexion laissée dans le texte (<think>…</think>) : retirée.
+        list($content, $inline) = self::split_reasoning(isset($message['content']) ? $message['content'] : '');
+        $reasoning += $inline;
+        if ($content === '' && $reasoning > 0) {
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                self::reasoning_only_detail($finish, $reasoning)
+                . ' [model=' . $req['model'] . ', url=' . $req['url'] . ']');
+        }
+
         // Retire les balises markdown si le modèle en ajoute.
         $content = preg_replace('/^```(?:json)?\s*/i', '', $content);
         $content = preg_replace('/\s*```\s*$/i', '', $content);
@@ -134,8 +160,6 @@ class api {
             // parce que les reasoning tokens ont épuisé max_completion_tokens
             // (finish_reason='length'). On remonte donc finish_reason, la
             // longueur du contenu, l'usage des tokens et un extrait.
-            $finish = isset($data['choices'][0]['finish_reason'])
-                ? $data['choices'][0]['finish_reason'] : '?';
             $usage = '';
             if (isset($data['usage']) && is_array($data['usage'])) {
                 $u = $data['usage'];
@@ -152,7 +176,8 @@ class api {
             if ($content === '') {
                 $detail .= ', contenu VIDE → probablement max_tokens trop bas '
                         .  'pour un modèle raisonneur (reasoning tokens). '
-                        .  'Augmentez max_tokens ou réduisez reasoning_effort';
+                        .  'Augmentez le « Budget de réflexion » (local_aifeedback) '
+                        .  'ou réduisez reasoning_effort';
             } else {
                 $detail .= ', extrait=' . substr($content, 0, 200);
             }
@@ -237,6 +262,10 @@ class api {
             'errbody'  => '',   // corps de réponse quand le HTTP n'est pas 200
             'httpcode' => 0,
             'tools'    => array(), // appels d'outils en cours de reconstitution
+            'think'    => 'detect', // detect | inside | outside (voir filter_think)
+            'thinkend' => '',   // balise fermante attendue dans l'état « inside »
+            'pending'  => '',   // texte retenu le temps de reconnaître une balise
+            'reasoning' => 0,   // caractères de réflexion reçus (jamais montrés)
         );
 
         $curl = new \curl();
@@ -269,6 +298,15 @@ class api {
         ) + self::heartbeat_options());
 
         $curl->post($req['url'], json_encode($payload, JSON_UNESCAPED_UNICODE));
+
+        // Réponse très courte encore retenue (elle ressemblait au début d'une
+        // balise de réflexion) : on la rend.
+        if (!$state->aborted && $state->think === 'detect' && trim($state->pending) !== '') {
+            $tail = ltrim($state->pending);
+            $state->pending = '';
+            $state->content .= $tail;
+            $ondelta($tail);
+        }
 
         $errno    = $curl->get_errno();
         $info     = is_array($curl->info) ? $curl->info : array();
@@ -314,8 +352,19 @@ class api {
         // elle n'est vide que si l'on n'a reçu ni l'un ni l'autre.
         $toolcalls = self::finish_tool_calls($state);
         if (trim($state->content) === '' && empty($toolcalls)) {
+            $detail = ($state->reasoning > 0)
+                ? self::reasoning_only_detail($state->finish, $state->reasoning)
+                : 'flux vide (aucun delta reçu)';
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                'flux vide (aucun delta reçu) [model=' . $req['model'] . ', url=' . $req['url'] . ']');
+                $detail . ' [model=' . $req['model'] . ', url=' . $req['url'] . ']');
+        }
+
+        // Réflexion passée malgré tout dans le texte (balise fermante seule :
+        // la balise ouvrante était dans le prompt). Déjà affichée pendant le
+        // flux, mais retirée de la réponse enregistrée.
+        list($clean, $removed) = self::split_reasoning($state->content);
+        if ($removed > 0 && $clean !== '') {
+            $state->content = $clean;
         }
 
         return array(
@@ -390,6 +439,10 @@ class api {
                 && is_array($chunk['choices'][0]['delta']['tool_calls'])) {
             self::accumulate_tool_calls($state, $chunk['choices'][0]['delta']['tool_calls']);
         }
+        // Réflexion rendue à part : comptée, jamais montrée.
+        if (isset($chunk['choices'][0]['delta']) && is_array($chunk['choices'][0]['delta'])) {
+            $state->reasoning += self::reasoning_length($chunk['choices'][0]['delta']);
+        }
         $delta = null;
         if (isset($chunk['choices'][0]['delta']['content'])) {
             $delta = (string)$chunk['choices'][0]['delta']['content'];
@@ -397,8 +450,154 @@ class api {
         if ($delta === null || $delta === '') {
             return true;
         }
+        $delta = self::filter_think($state, $delta);
+        if ($delta === '') {
+            return true;
+        }
         $state->content .= $delta;
         return ($ondelta($delta) !== false);
+    }
+
+    /**
+     * Retire du flux la réflexion laissée dans le texte : un bloc
+     * <think>…</think> en tête de réponse n'est jamais transmis à $ondelta.
+     *
+     * États : « detect » (début de réponse, on regarde si elle ouvre une
+     * balise), « inside » (dans la réflexion, jusqu'à la balise fermante),
+     * « outside » (la réponse : tout passe). Les balises peuvent arriver
+     * coupées entre deux fragments : le texte ambigu attend dans
+     * $state->pending.
+     *
+     * @param \stdClass $state
+     * @param string    $delta
+     * @return string texte à transmettre (éventuellement vide)
+     */
+    private static function filter_think(\stdClass $state, $delta) {
+        if ($state->think === 'outside') {
+            return $delta;
+        }
+        $state->pending .= $delta;
+
+        if ($state->think === 'detect') {
+            $head = ltrim($state->pending);
+            if ($head === '') {
+                return '';
+            }
+            foreach (self::THINK_TAGS as $open => $close) {
+                if (strpos($head, $open) === 0) {
+                    $state->think    = 'inside';
+                    $state->thinkend = $close;
+                    $state->pending  = substr($head, strlen($open));
+                    return self::filter_think($state, '');
+                }
+                if (strpos($open, $head) === 0) {
+                    return ''; // début possible d'une balise : on attend la suite
+                }
+            }
+            $state->think   = 'outside';
+            $state->pending = '';
+            return $head;
+        }
+
+        // « inside » : on cherche la fin de la réflexion.
+        $end = strpos($state->pending, $state->thinkend);
+        if ($end === false) {
+            // On ne garde que de quoi reconnaître une balise coupée en deux.
+            $keep = strlen($state->thinkend) - 1;
+            if (strlen($state->pending) > $keep) {
+                $state->reasoning += strlen($state->pending) - $keep;
+                $state->pending = substr($state->pending, -$keep);
+            }
+            return '';
+        }
+        $state->reasoning += $end;
+        $rest = substr($state->pending, $end + strlen($state->thinkend));
+        // La réponse commence après la balise ; ses retours ligne de tête sont
+        // retirés par l'état « detect ».
+        $state->think   = 'detect';
+        $state->pending = '';
+        return ($rest === '') ? '' : self::filter_think($state, $rest);
+    }
+
+    /**
+     * Sépare la réflexion d'un modèle à raisonnement de sa réponse, quand le
+     * serveur la laisse dans le texte (LM Studio sans l'option « séparer
+     * reasoning_content », llama.cpp, anciens Ollama…) :
+     *   - bloc <think>…</think> : retiré ;
+     *   - balise ouvrante jamais refermée (budget épuisé) : tout ce qui suit ;
+     *   - balise fermante seule (le gabarit du modèle ouvre la balise dans le
+     *     prompt) : tout ce qui précède.
+     *
+     * @param string $text
+     * @return array [string réponse (trim), int caractères de réflexion retirés]
+     */
+    public static function split_reasoning($text) {
+        $text    = (string)$text;
+        $removed = 0;
+        foreach (self::THINK_TAGS as $open => $close) {
+            while (($start = strpos($text, $open)) !== false) {
+                $end = strpos($text, $close, $start + strlen($open));
+                if ($end === false) {
+                    $removed += strlen($text) - $start;
+                    $text = substr($text, 0, $start);
+                    break;
+                }
+                $removed += $end + strlen($close) - $start;
+                $text = substr($text, 0, $start) . substr($text, $end + strlen($close));
+            }
+            $end = strrpos($text, $close);
+            if ($end !== false) {
+                $removed += $end + strlen($close);
+                $text = substr($text, $end + strlen($close));
+            }
+        }
+        return array(trim($text), $removed);
+    }
+
+    /**
+     * Longueur de la réflexion rendue à part dans un message ou un fragment
+     * de flux : « reasoning_content » (vLLM, DeepSeek, LM Studio) ou
+     * « reasoning » (LM Studio récent, Ollama, OpenRouter).
+     *
+     * @param array $message choices[0].message ou choices[0].delta
+     * @return int caractères
+     */
+    private static function reasoning_length(array $message) {
+        $len = 0;
+        foreach (array('reasoning_content', 'reasoning') as $key) {
+            if (isset($message[$key]) && is_string($message[$key])) {
+                $len += strlen($message[$key]);
+            }
+        }
+        return $len;
+    }
+
+    /**
+     * Diagnostic d'une réponse faite uniquement de réflexion.
+     *
+     * @param string|null $finish    finish_reason
+     * @param int         $reasoning caractères de réflexion reçus
+     * @return string
+     */
+    private static function reasoning_only_detail($finish, $reasoning) {
+        $detail = 'le modèle a réfléchi (' . (int)$reasoning . ' caractères) sans écrire de réponse'
+            . ' [finish_reason=' . ($finish === null ? '?' : $finish) . ']';
+        if ($finish === 'length') {
+            $detail .= ' → la réflexion a épuisé max_tokens (' . self::reasoning_budget()
+                . ' tokens de budget de réflexion actuellement) : augmentez le « Budget de réflexion » '
+                . 'dans les réglages de local_aifeedback, ou désactivez le raisonnement du modèle';
+        }
+        return $detail;
+    }
+
+    /**
+     * Tokens ajoutés à max_tokens de chaque appel pour laisser un modèle à
+     * raisonnement réfléchir avant d'écrire sa réponse (réglage, 0 = aucun).
+     *
+     * @return int
+     */
+    private static function reasoning_budget() {
+        return max(0, (int)get_config('local_aifeedback', 'reasoning_budget'));
     }
 
     /**
@@ -616,17 +815,17 @@ class api {
             $apikey = secret::decrypt((string)get_config('local_aifeedback', 'apikey'));
         }
 
+        // max_tokens est calibré pour la RÉPONSE ; un modèle à raisonnement
+        // décompte sa réflexion du même budget, d'où le supplément réglable.
+        $maxtokens = isset($options['max_tokens']) ? (int)$options['max_tokens'] : 2048;
         $payload = array(
             'model'       => $model,
             'temperature' => isset($options['temperature']) ? (float)$options['temperature'] : 0.2,
-            'max_tokens'  => isset($options['max_tokens'])  ? (int)$options['max_tokens']    : 2048,
+            'max_tokens'  => $maxtokens + self::reasoning_budget(),
             'messages'    => $messages,
         );
         if (!empty($options['response_format'])) {
             $payload['response_format'] = $options['response_format'];
-        }
-        if (!empty($options['extra_body']) && is_array($options['extra_body'])) {
-            $payload['extra_body'] = $options['extra_body'];
         }
         // Outils proposés au modèle (appel de fonctions). Absents = payload
         // strictement identique à celui d'avant cette fonctionnalité.
@@ -659,9 +858,26 @@ class api {
         if ($flavor === 'auto') {
             $flavor = (stripos($url, 'openai.com') !== false) ? 'openai' : 'generic';
         }
+        if ($flavor !== 'openai' && !empty($options['extra_body']) && is_array($options['extra_body'])) {
+            // extra_body est une notion du SDK Python, qui en fusionne les
+            // champs à la racine de la requête : envoyé tel quel, aucun serveur
+            // ne le lit (enable_thinking=false restait sans effet). On fait
+            // comme le SDK, sans écraser un champ déjà posé.
+            foreach ($options['extra_body'] as $key => $value) {
+                if (!array_key_exists($key, $payload)) {
+                    $payload[$key] = $value;
+                }
+            }
+            // vLLM, SGLang et llama.cpp passent le réglage au gabarit du modèle
+            // par chat_template_kwargs.
+            if (isset($options['extra_body']['enable_thinking']) && !isset($payload['chat_template_kwargs'])) {
+                $payload['chat_template_kwargs'] = array(
+                    'enable_thinking' => (bool)$options['extra_body']['enable_thinking'],
+                );
+            }
+        }
         if ($flavor === 'openai') {
-            // 1. extra_body inexistant côté OpenAI.
-            unset($payload['extra_body']);
+            // 1. extra_body inexistant côté OpenAI : il n'est pas transmis.
             // 2. max_tokens → max_completion_tokens.
             if (isset($payload['max_tokens'])) {
                 $payload['max_completion_tokens'] = (int)$payload['max_tokens'];

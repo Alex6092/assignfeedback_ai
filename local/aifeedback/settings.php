@@ -135,6 +135,16 @@ if ($hassiteconfig) {
         0
     ));
 
+    // Supplément de tokens pour les modèles à raisonnement : leur réflexion
+    // est décomptée du même max_tokens que la réponse.
+    $settings->add(new admin_setting_configtext(
+        'local_aifeedback/reasoning_budget',
+        new lang_string('reasoning_budget', 'local_aifeedback'),
+        new lang_string('reasoning_budget_help', 'local_aifeedback'),
+        0,
+        PARAM_INT
+    ));
+
     // === Accessibilité ===
     $settings->add(new admin_setting_heading(
         'local_aifeedback/accessibility_heading',

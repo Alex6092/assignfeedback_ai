@@ -82,6 +82,8 @@ $string['server_use_feedback_help']  = 'Si activé, ce serveur peut traiter les 
 $string['server_use_tutor']          = 'Autoriser le tuteur IA (chat des élèves)';
 $string['server_use_tutor_help']     = 'Si activé, ce serveur peut traiter les conversations du tuteur IA. Dédier un serveur au tuteur évite que les corrections ne fassent attendre les élèves.';
 $string['stream_usage']              = 'Demander le décompte des tokens en streaming';
+$string['reasoning_budget']          = 'Budget de réflexion (tokens)';
+$string['reasoning_budget_help']     = 'Pour les modèles à raisonnement (Qwen3, gpt-oss, DeepSeek-R1, Magistral…). Leur réflexion est décomptée du même nombre maximal de tokens que la réponse, calibré pour la réponse seule (700 pour le tuteur, 2048 pour la correction) : la réflexion l\'épuise et la réponse revient vide. Ce nombre est ajouté au maximum de chaque appel (correction, tuteur, génération de questions, Missions…) ; avec une valeur supérieure à 0, le délai des appels non diffusés passe aussi de 3 à 10 minutes. 0 = aucun supplément (modèles sans raisonnement). Conseillé : 4096 à 8192. La réflexion n\'est jamais montrée ni enregistrée. Avec vLLM, le contexte du modèle doit pouvoir contenir le prompt plus ce maximum.';
 $string['stream_usage_help']         = 'Si activé, les appels en streaming demandent au serveur le nombre exact de tokens consommés (« stream_options ») pour un quota plus juste. Certains serveurs anciens refusent cette option et renvoient une erreur HTTP 400 : dans ce cas, laissez désactivé (les tokens sont alors estimés). Sans effet sur OpenAI, où l\'option est toujours envoyée.';
 
 // Accessibilité

@@ -147,6 +147,11 @@ Tous les réglages globaux sont centralisés dans
   Laisser vide si le serveur n'exige pas d'authentification.
 - **`defaultsystemprompt`** — prompt système par défaut (un prompt pédagogique est
   fourni si laissé vide).
+- **`reasoning_budget`** — tokens ajoutés au maximum de chaque appel pour les **modèles
+  à raisonnement** (Qwen3, gpt-oss, DeepSeek-R1…), dont la réflexion est décomptée du
+  même budget que la réponse (défaut 0 ; conseillé 4096 à 8192 avec un tel modèle).
+  La réflexion, qu'elle arrive à part (`reasoning_content` / `reasoning`) ou dans le
+  texte (`<think>…</think>`), n'est jamais montrée ni enregistrée.
 
 ### Vision
 - **`vision_enabled`** — autoriser l'envoi d'images au modèle.
