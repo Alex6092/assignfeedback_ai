@@ -12,11 +12,11 @@ defined('MOODLE_INTERNAL') || die();
  *     servant de base au brief — le corrigé lui-même n'est JAMAIS transmis au
  *     tuteur.
  */
-$plugin->version   = 2026102101;       // YYYYMMDDXX
+$plugin->version   = 2026102200;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4 (hook before_footer_html_generation)
 $plugin->component = 'local_aichat';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.7.0';          // Fichiers joints par les élèves (captures d'écran, code, PDF, texte)
+$plugin->release   = '0.7.1';          // Règles de forme et règles non négociables désactivables
 $plugin->dependencies = array(
     // Dépendance DURE : couche LLM partagée + pool de serveurs + streaming
     // (>= 1.11.0 pour l'appel d'outils dans api::stream).

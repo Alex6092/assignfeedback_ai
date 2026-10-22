@@ -10,8 +10,9 @@ defined('MOODLE_INTERNAL') || die();
  *   1. le prompt système pédagogique (modifiable par l'administrateur) ;
  *   2. le CONTEXTE de l'activité (consigne, compétences, brief, consignes de
  *      l'enseignant) — jamais le corrigé ni le barème ;
- *   3. les règles d'intégrité, NON modifiables, qui empêchent le tuteur de se
- *      faire retourner par un élève insistant.
+ *   3. les règles d'intégrité, non modifiables par l'enseignant, qui
+ *      empêchent le tuteur de se faire retourner par un élève insistant
+ *      (l'administrateur peut les désactiver, ainsi que les règles de forme).
  */
 class tutor {
 
@@ -77,7 +78,24 @@ class tutor {
         if ($attachments) {
             $prompt .= "\n\n" . self::attachment_rules();
         }
-        return $prompt . "\n\n" . self::format_rules() . "\n\n" . self::integrity_rules();
+        if (self::block_enabled('formatrules')) {
+            $prompt .= "\n\n" . self::format_rules();
+        }
+        if (self::block_enabled('integrityrules')) {
+            $prompt .= "\n\n" . self::integrity_rules();
+        }
+        return $prompt;
+    }
+
+    /**
+     * Bloc complémentaire activé dans les réglages du plugin. Un réglage
+     * jamais enregistré (get_config() renvoie false) vaut « activé ».
+     *
+     * @param string $name formatrules | integrityrules
+     * @return bool
+     */
+    private static function block_enabled($name) {
+        return get_config('local_aichat', $name) !== '0';
     }
 
     /**
@@ -98,8 +116,9 @@ class tutor {
     }
 
     /**
-     * Forme des réponses. Bloc toujours ajouté, même quand l'administrateur a
-     * remplacé le prompt de base : le widget affiche du markdown simple, pas
+     * Forme des réponses. Bloc ajouté (sauf réglage « formatrules » décoché),
+     * même quand l'administrateur a remplacé le prompt de base : le widget
+     * affiche du markdown simple, pas
      * des mathématiques, et les puces écrites à la suite ne se voient pas.
      * L'affichage répare déjà les deux (content::tidy_markdown) ; mieux vaut
      * néanmoins que le modèle n'en produise pas.
@@ -330,8 +349,9 @@ class tutor {
     }
 
     /**
-     * Règles d'intégrité, toujours ajoutées après le contexte (donc non
-     * modifiables par l'enseignant ni par l'administrateur).
+     * Règles d'intégrité, ajoutées en dernier (donc non modifiables par
+     * l'enseignant). Seul l'administrateur peut les retirer (réglage
+     * « integrityrules »).
      */
     public static function integrity_rules() {
         $c  = "=== RÈGLES NON NÉGOCIABLES ===\n";
