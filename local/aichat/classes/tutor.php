@@ -13,6 +13,7 @@ defined('MOODLE_INTERNAL') || die();
  *   3. les règles d'intégrité, non modifiables par l'enseignant, qui
  *      empêchent le tuteur de se faire retourner par un élève insistant
  *      (l'administrateur peut les désactiver, ainsi que les règles de forme).
+ * Le réglage « Prompt système seul » ne garde que la couche 1.
  */
 class tutor {
 
@@ -63,6 +64,10 @@ class tutor {
         $base = (string)get_config('local_aichat', 'tutorprompt');
         if (trim($base) === '') {
             $base = self::default_system_prompt();
+        }
+        // « Prompt système seul » : le texte du réglage, sans aucun bloc ajouté.
+        if (!empty(get_config('local_aichat', 'promptonly'))) {
+            return $base;
         }
 
         $prompt = $base . "\n\n" . self::activity_context($access);
