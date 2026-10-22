@@ -82,6 +82,8 @@ $string['server_use_feedback_help']  = 'If enabled, this server can process defe
 $string['server_use_tutor']          = 'Allow the AI tutor (student chat)';
 $string['server_use_tutor_help']     = 'If enabled, this server can process AI tutor conversations. Dedicating a server to the tutor prevents gradings from making students wait.';
 $string['stream_usage']              = 'Request token counts when streaming';
+$string['reasoning_budget']          = 'Reasoning budget (tokens)';
+$string['reasoning_budget_help']     = 'For reasoning models (Qwen3, gpt-oss, DeepSeek-R1, Magistral…). Their reasoning counts against the same maximum number of tokens as the answer, which is sized for the answer alone (700 for the tutor, 2048 for grading): the reasoning uses it up and the answer comes back empty. This number is added to the maximum of every call (grading, tutor, question generation, Missions…); when above 0, the timeout of non-streamed calls also goes from 3 to 10 minutes. 0 = no extra (non-reasoning models). Recommended: 4096 to 8192. The reasoning is never shown or stored. With vLLM, the model context must fit the prompt plus this maximum.';
 $string['stream_usage_help']         = 'If enabled, streaming calls ask the server for the exact number of tokens used ("stream_options") so quotas are accurate. Some older servers reject this option with an HTTP 400 error: leave it disabled in that case (tokens are then estimated). No effect on OpenAI, where the option is always sent.';
 
 // Accessibility
