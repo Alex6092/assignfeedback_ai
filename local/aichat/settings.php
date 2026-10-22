@@ -27,6 +27,15 @@ if ($hassiteconfig) {
         PARAM_RAW
     ));
 
+    // Le prompt ci-dessus, sans contexte ni bloc ajouté. Décoché par défaut :
+    // sert à tester un prompt personnalisé tel quel.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/promptonly',
+        new lang_string('setting_promptonly', 'local_aichat'),
+        new lang_string('setting_promptonly_help', 'local_aichat'),
+        0
+    ));
+
     // Blocs ajoutés après le prompt et le contexte. Cochés par défaut : les
     // décocher sert surtout à tester un prompt personnalisé.
     $settings->add(new admin_setting_configcheckbox(
