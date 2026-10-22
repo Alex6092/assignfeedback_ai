@@ -27,6 +27,22 @@ if ($hassiteconfig) {
         PARAM_RAW
     ));
 
+    // Blocs ajoutés après le prompt et le contexte. Cochés par défaut : les
+    // décocher sert surtout à tester un prompt personnalisé.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/formatrules',
+        new lang_string('setting_formatrules', 'local_aichat'),
+        new lang_string('setting_formatrules_help', 'local_aichat'),
+        1
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_aichat/integrityrules',
+        new lang_string('setting_integrityrules', 'local_aichat'),
+        new lang_string('setting_integrityrules_help', 'local_aichat'),
+        1
+    ));
+
     // Case « Transmettre la consigne au tuteur » d'une activité nouvellement
     // configurée (formulaire, devoirs créés par Missions). Décochée : avec la
     // consigne, le modèle peut dire à l'élève si sa réponse est juste.
