@@ -8,5 +8,8 @@
     { "id": 1, "time": 60, "question": "…", "choices": ["…", "…", "…", "…"], "correct": 0 },
     { "id": 2, "time": "end", "question": "…", "choices": ["…", "…", "…", "…"], "correct": 0 }
   ],
-  "livequestions": []
+  "livequestions": [
+    { "id": 1, "question": "…", "choices": ["…", "…", "…", "…"], "correct": 0 }
+  ],
+  "efe": { "competences": ["CXX.X.RX.TX"], "after_due": false }
 }

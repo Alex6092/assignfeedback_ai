@@ -1,0 +1,4 @@
+{
+ "01-accroche": "Il est trois heures du matin. Ton serveur dort… mais quelqu'un frappe à sa porte.",
+ "02-exemple": "Pour voir qui frappe, on lit le journal du service SSH. La commande journalctl affiche chaque tentative, avec l'adresse qui la tente."
+}
