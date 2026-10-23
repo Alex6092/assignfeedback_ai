@@ -30,10 +30,16 @@ questions, demande-lui de copier la **transcription** YouTube (« Afficher la tr
 les minutages. Le plugin sait aussi récupérer les sous-titres et générer des questions avec le LLM
 local (bouton de génération dans l'activité) : c'est une alternative si l'enseignant préfère.
 
-**2. Une animation produite (pilote, plus tard)** : le code d'une animation explicative (Remotion ou
-Motion Canvas), rendu en MP4 sur le poste de l'enseignant puis mis en ligne par lui en « non
-répertoriée ». C'est bien plus coûteux (50 à 150 k tokens par animation) : réservé à un concept
-pour lequel aucune vidéo existante ne convient, et seulement quand l'enseignant le demande.
+**2. Une animation produite, sur la voix de l'enseignant** : une animation explicative (Remotion)
+rendue en MP4, que l'enseignant met en ligne en « non répertoriée ».
+- **Jamais muette.** Tu écris un script de voix off en blocs, il l'enregistre, puis tu cales chaque
+  apparition sur le mot qui la nomme.
+- Réservée à un concept pour lequel aucune vidéo existante ne convient, et seulement quand
+  l'enseignant la demande. C'est la production la plus coûteuse du skill : pour 3 minutes, compter
+  une demi-journée de travail et plusieurs rendus de 15 à 20 minutes.
+- Méthode complète : `references/video-production.md` (script, enregistrement, calage mot à mot,
+  montage, son, sous-titres, contrôles, pièges). Modèle de projet : `templates/video-remotion/`.
+  Exemple abouti : `templates/exemples-video/fail2ban-M3/`.
 
 ## Le fichier `video.json`
 
@@ -50,7 +56,8 @@ pour lequel aucune vidéo existante ne convient, et seulement quand l'enseignant
   ],
   "livequestions": [
     { "id": 1, "question": "…", "choices": ["…", "…", "…", "…"], "correct": 1 }
-  ]
+  ],
+  "efe": { "competences": ["C11.2.R3.T5"], "after_due": false }
 }
 ```
 
@@ -58,7 +65,10 @@ Contraintes du plugin (vérifiées à l'enregistrement) :
 - chaque question a **exactement 4 choix** et `correct` est l'index de la bonne réponse (0 à 3) ;
 - `time` = la seconde où la vidéo s'arrête pour poser la question ; `"end"` = juste avant la fin
   (garantit que l'élève a tout regardé) ;
-- `livequestions` n'a pas de `time` ; laisser `[]` s'il n'y a pas de QCM en classe.
+- `livequestions` n'a pas de `time`. **Il n'est jamais vide** : l'enseignant joue toujours le QCM
+  en classe.
+- `efe` est **toujours renseigné** : un code N3 (N2 au minimum), choisi dans `efe-competences.json`
+  et différent de ceux des autres activités notées du module. C'est le QCM live qui remonte.
 
 ## Les questions pendant la vidéo
 
@@ -75,9 +85,11 @@ Contraintes du plugin (vérifiées à l'enregistrement) :
 - 5 à 8 questions **différentes** de celles de la vidéo, qui font transférer la notion à une
   situation nouvelle.
 - Barème du plugin : +1 bonne réponse, −0,25 mauvaise, +0,25 pour « je ne sais pas ».
-- Il reste **formatif** : pas d'EFE par défaut. L'évaluation qui compte est le test sommatif.
+- Il est joué en classe et **reporté à EFE** (code de `video.json` › `efe`), sans date de rendu.
+  Les questions portent sur ce que le code évalue, par exemple interpréter une sortie pour un code
+  `C11.2` ou choisir un réglage pour un code `C11.1`.
 
 ## Réglages
 
-Rôle `video` dans `reglages-moodle.md` : note sur 10, achèvement « terminer le visionnage », pas
-d'EFE, visionnage hors des heures de cours (réglage du site).
+Rôle `video` dans `reglages-moodle.md` : note sur 10, achèvement « terminer le visionnage », report
+EFE du QCM live, visionnage hors des heures de cours (réglage du site).

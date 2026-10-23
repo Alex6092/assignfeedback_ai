@@ -8,7 +8,7 @@ tels qu'ils sont configurés dans Moodle. Les réglages de chaque rôle sont dan
 | Ordre | Rôle | Activité Moodle | Rôle pédagogique | EFE |
 |---|---|---|---|---|
 | 1 | `lecon` | Leçon (`mod_lesson`) | apprendre la notion ; exercices « À toi ! » non notés | non |
-| 2 | `video` *(optionnel)* | Vidéo + QCM (`mod_videoqcm`) | visualiser un concept dynamique difficile, à la maison | non |
+| 2 | `video` *(optionnel)* | Vidéo + QCM (`mod_videoqcm`) | visualiser un concept dynamique difficile, à la maison ; QCM live (5 à 8 questions) joué en classe | **oui**, pour le QCM live (code N3) |
 | 3 | `td` — **TD** | Test (`mod_quiz`) | mettre en œuvre la leçon pas à pas sur un cas pratique : textes de guidage et questions à indices, 20 à 30 min | **jamais** (non noté) |
 | 4 | `tp` (1 ou 2) — **TP d'entraînement** | Devoir (`mod_assign`) | appliquer, produire un livrable, **à la maison**, avec le Tuteur IA ; l'IA est tolérée | **non** |
 | 5 | `entrainement` — **QCM d'entraînement** | Test (`mod_quiz`) | s'entraîner autant qu'on veut, à la maison, avec des questions du style du sommatif | **jamais** |

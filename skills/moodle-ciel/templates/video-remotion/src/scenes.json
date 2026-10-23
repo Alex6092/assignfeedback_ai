@@ -1,0 +1,10 @@
+{
+  "fps": 30,
+  "note": "lead = pause entre la fin de la transition d'entrée et le début de la voix ; tail = maintien après la voix, avant la transition suivante (secondes). in : none (1re scène), scan, iris (avec \"iris\": [x, y]), cut, fade, zoom. ambiance : nuit, protection, attaque, neutre, alerte. question : n° de la question d'interruption posée à la fin de la scène.",
+  "scenes": [
+    { "id": "accroche", "bloc": "01-accroche", "lead": 1.0, "tail": 0.3, "in": "none", "ambiance": "nuit" },
+    { "id": "titre", "dur": 3.6, "in": "zoom", "ambiance": "protection" },
+    { "id": "exemple", "bloc": "02-exemple", "lead": 0.2, "tail": 0.9, "in": "scan", "ambiance": "neutre", "chapitre": "Un exemple de scène", "question": 1 },
+    { "id": "fin", "dur": 4.2, "in": "fade", "ambiance": "nuit", "question": 2 }
+  ]
+}

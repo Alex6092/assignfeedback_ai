@@ -1,0 +1,66 @@
+{
+ "fps": 30,
+ "total": 815,
+ "scenes": [
+  {
+   "id": "accroche",
+   "bloc": "01-accroche",
+   "in": "none",
+   "ambiance": "nuit",
+   "chapitre": null,
+   "question": null,
+   "iris": null,
+   "start": 0,
+   "dur": 239,
+   "overlapIn": 0,
+   "overlapOut": 10,
+   "voiceStart": 30,
+   "voiceF": 190
+  },
+  {
+   "id": "titre",
+   "bloc": null,
+   "in": "zoom",
+   "ambiance": "protection",
+   "chapitre": null,
+   "question": null,
+   "iris": null,
+   "start": 229,
+   "dur": 134,
+   "overlapIn": 10,
+   "overlapOut": 16,
+   "voiceStart": 10,
+   "voiceF": 0
+  },
+  {
+   "id": "exemple",
+   "bloc": "02-exemple",
+   "in": "scan",
+   "ambiance": "neutre",
+   "chapitre": "Un exemple de scène",
+   "question": 1,
+   "iris": null,
+   "start": 347,
+   "dur": 342,
+   "overlapIn": 16,
+   "overlapOut": 14,
+   "voiceStart": 22,
+   "voiceF": 279
+  },
+  {
+   "id": "fin",
+   "bloc": null,
+   "in": "fade",
+   "ambiance": "nuit",
+   "chapitre": null,
+   "question": 2,
+   "iris": null,
+   "start": 675,
+   "dur": 140,
+   "overlapIn": 14,
+   "overlapOut": 0,
+   "voiceStart": 14,
+   "voiceF": 0
+  }
+ ]
+}

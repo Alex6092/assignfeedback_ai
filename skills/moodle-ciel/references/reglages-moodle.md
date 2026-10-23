@@ -164,11 +164,11 @@ Comme `sommatif`, sauf :
 |---|---|
 | `youtubeurl` | vidéo YouTube (existante, ou produite et mise en ligne « non répertoriée » par l'enseignant) |
 | `questions` | questions pendant la vidéo (JSON, voir `video.md`) |
-| `livequestions` | QCM joué en classe (JSON), ou vide |
+| `livequestions` | QCM joué en classe (JSON), **5 à 8 questions, jamais vide** |
 | `grade` | 10 (visionnage : +1 par bonne réponse aux questions de la vidéo) |
 | `allowtablet` | 0 |
 | Achèvement | terminer le visionnage (`completionfinish = 1`) |
-| EFE | aucun par défaut (le QCM live peut remonter si l'enseignant le demande) |
+| EFE | **toujours** : un code N3 (N2 au minimum) pour le QCM live, `after_due: false`, différent des autres codes du module (`video.json` › `efe`) |
 
 Le visionnage est bloqué pendant les heures de cours par le réglage du site : c'est un travail à la
 maison.

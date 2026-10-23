@@ -135,7 +135,7 @@ Pour chaque module, dans un dossier `Mx-sujet/`, dans l'ordre du déroulé :
 | `entrainement.xml` | **QCM d'entraînement** : banque de 15 à 25 questions dans le style du sommatif, dont 1 à 3 corrigées par IA | `templates/exemples-ia/entrainement-M2.xml` |
 | `tp-evalues.mjs` → `tpe1/`, `tpe2/`, `tpb/` | les **TP évalués en classe** et le **TP bonus** : un fichier de données (sujet en niveaux, corrigé, barème, erreurs typiques, jeux d'essai) d'où `scripts/make-tpe.mjs` tire les dossiers de TP, le manifeste `tp-evalues.deploy.json` (TP évalués puis bonus) et la `fiche-tp-evalues.html` | `references/anatomie-module.md` § Les TP, `templates/tp-evalue/tp-evalues.mjs`, `templates/exemples-cpp/tp-evalues-M2.mjs` |
 | `sommatif.xml` | le test sommatif (ou dans le dossier du test apparié) | `templates/exemples-ia/sommatif-M1.xml` et sa fiche |
-| `video.json` | seulement si une vidéo est vraiment pertinente | `references/video.md`, `templates/video.json` |
+| `video.json` | seulement si une vidéo est vraiment pertinente ; si elle est produite (sur la voix de l'enseignant, jamais muette), le projet Remotion va dans `video/` | `references/video.md`, `templates/video.json` ; production : `references/video-production.md`, `templates/video-remotion/`, `templates/exemples-video/` |
 | `fiche-enseignant.html` | barème, points de vigilance, corrigés, vérifications de labo | `templates/fiche-enseignant.html` |
 | `module.deploy.json` | le manifeste : section, activités, rôles, dates, EFE | `references/deploiement.md` § 2, `templates/module.deploy.json` |
 
@@ -192,6 +192,8 @@ imprimables » dans le cours, ou export en lot par `moodle_export_lessons_pdf`.
 │   ├── tp-evalues.mjs           TP évalués + bonus (source), puis générés : tpe1/, tpe2/, tpb/,
 │   │                            tp-evalues.deploy.json, fiche-tp-evalues.html
 │   ├── sommatif.xml
+│   ├── video/                   vidéo produite (si besoin) : voix-off.md, voix/ (enregistrements),
+│   │                            projet Remotion, video.json, out/ (MP4, sous-titres)
 │   ├── fiche-enseignant.html
 │   └── module.deploy.json
 ├── T4-enumeration-elevation/    test sommatif commun à deux modules (sommatif.xml + manifeste)
@@ -242,6 +244,7 @@ compétence annoncée).
 | `references/style-html.md` | toute écriture de HTML (leçon, consigne de TP, page d'accueil), images et diagrammes PlantUML |
 | `references/reglages-moodle.md` | réglages de chaque rôle d'activité (ce que le déploiement applique) |
 | `references/video.md` | décider s'il faut une vidéo, la choisir, écrire ses questions |
+| `references/video-production.md` | produire une vidéo sur la voix de l'enseignant : script de voix off, calage mot à mot, montage Remotion, son, sous-titres, contrôles, pièges |
 | `references/outils-ia.md` | générateur de tests IA, Missions client IA, limites et coûts des outils IA |
 | `references/deploiement.md` | manifeste, création dans Moodle, vérifications après coup |
 

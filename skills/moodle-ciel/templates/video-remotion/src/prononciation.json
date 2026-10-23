@@ -1,0 +1,9 @@
+{
+ "_note": "Graphie « à la française » de la prononciation des termes techniques, pour la reconnaissance vocale (scripts/voix/caler.py). Clé : le mot tel qu'écrit dans texte.json, en minuscules et sans ponctuation.",
+ "journalctl": "journal cé té elle",
+ "ufw": "u eff double vé",
+ "nginx": "ène gine x",
+ "mariadb": "maria dé bé",
+ "localhost": "local hoste",
+ "sudo": "soudo"
+}
