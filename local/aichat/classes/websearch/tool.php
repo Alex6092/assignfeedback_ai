@@ -226,9 +226,6 @@ class tool implements \local_aichat\toolset {
             }
             $tried++;
 
-            // Le ticket du pool reste tenu pendant la recherche (quelques
-            // secondes) : on entretient son battement de cœur.
-            \local_aifeedback\pool::heartbeat_current();
             try {
                 $result = $engine->provider->search($query, $this->maxresults);
             } catch (\Throwable $e) {
@@ -236,7 +233,6 @@ class tool implements \local_aichat\toolset {
                 // quand même, la conversation continue.
                 $result = result::failure('provider_error', true, 60, get_class($e));
             }
-            \local_aifeedback\pool::heartbeat_current();
 
             budget::settle($ticket, $result->billable);
             if ($result->billable) {

@@ -4,58 +4,64 @@ namespace local_aichat;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Handler de la file de jobs partagée (local_aifeedback) pour les traitements
- * différés du tuteur :
+ * Handler de la file partagée (local_aifeedback) pour les traitements
+ * différés du tuteur, confiés au load balancer comme jobs asynchrones :
  *   - {messageid} : analyse de modération d'un message d'élève ;
  *   - {cmid}      : génération du brief pédagogique d'une activité.
  *
  * Les conversations elles-mêmes ne passent PAS par cette file : elles sont
- * interactives et empruntent le pool de serveurs (voir stream.php).
+ * interactives et utilisent le mode streaming du load balancer (stream.php).
  */
-class job_handler implements \local_aifeedback\job_handler {
+class job_handler implements \local_aifeedback\async_handler {
 
-    public function execute(\stdClass $payload): void {
+    public function build_request(\stdClass $payload): ?\local_aifeedback\request {
         if (!empty($payload->messageid)) {
-            moderation::analyse((int)$payload->messageid);
-            return;
+            return moderation::build_request((int)$payload->messageid);
         }
-
         $cmid = isset($payload->cmid) ? (int)$payload->cmid : 0;
-        if ($cmid <= 0) {
-            return;
+        return ($cmid > 0) ? brief::build_request($cmid) : null;
+    }
+
+    public function complete(\stdClass $payload, array $result, ?array $usage): ?\stdClass {
+        if (!empty($payload->messageid)) {
+            moderation::complete((int)$payload->messageid, $result);
+        } else if (!empty($payload->cmid)) {
+            brief::complete((int)$payload->cmid, $result);
         }
-        $config = activity::get($cmid);
-        if ($config === null || $config->briefstatus !== 'pending') {
-            return; // déjà traité, ou activité reconfigurée entre-temps
+        return null;
+    }
+
+    public function fail(\stdClass $payload, string $error, bool $permanent): ?int {
+        if (!empty($payload->messageid)) {
+            return moderation::fail((int)$payload->messageid, $permanent);
         }
-        brief::generate($cmid);
+        if (!empty($payload->cmid)) {
+            return brief::fail((int)$payload->cmid, $error, $permanent);
+        }
+        return null;
     }
 
     /**
-     * Prochain travail en attente, pour le drainage de la file. Les analyses
-     * passent avant les briefs : un signalement doit arriver vite, un brief
-     * peut attendre. Les analyses en « retry » ne sont PAS reprises ici (elles
-     * attendent leur tâche différée), ce qui évite de reboucler sur un serveur
-     * indisponible.
+     * Analyses et briefs restés en attente sans job (mise en file perdue).
+     * Les analyses en « retry » attendent leur tâche différée : elles ne sont
+     * reprises que si elles attendent depuis longtemps.
      */
-    public function find_drainable_payloads(): array {
+    public function pending_payloads(int $before): array {
         global $DB;
+        $out = array();
 
-        $rows = $DB->get_records(conversation::TABLE_MSG,
-            array('flagstatus' => 'pending'), 'id ASC', 'id', 0, 1);
-        if (!empty($rows)) {
-            $payload = new \stdClass();
-            $payload->messageid = (int)reset($rows)->id;
-            return array($payload);
+        $ids = $DB->get_fieldset_select(conversation::TABLE_MSG, 'id',
+            'role = ? AND flagstatus IN (?, ?) AND timecreated < ? AND (flagtime = 0 OR flagtime < ?)',
+            array('user', 'pending', 'retry', $before, $before - moderation::RETRY_DELAY));
+        foreach (array_slice($ids, 0, 50) as $id) {
+            $out[] = (object)array('messageid' => (int)$id);
         }
 
-        $rows = $DB->get_records('local_aichat_activity',
-            array('briefstatus' => 'pending'), 'timemodified ASC', 'id, cmid', 0, 1);
-        if (!empty($rows)) {
-            $payload = new \stdClass();
-            $payload->cmid = (int)reset($rows)->cmid;
-            return array($payload);
+        $cmids = $DB->get_fieldset_select('local_aichat_activity', 'cmid',
+            'briefstatus = ? AND timemodified < ?', array('pending', $before));
+        foreach (array_slice($cmids, 0, 20) as $cmid) {
+            $out[] = (object)array('cmid' => (int)$cmid);
         }
-        return array();
+        return $out;
     }
 }

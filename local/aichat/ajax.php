@@ -3,6 +3,10 @@
  * Point d'entrée JSON du tuteur IA (tout sauf le flux de génération).
  *
  * Actions : history | newconv | send | poll | cancel
+ *
+ * La génération elle-même passe par stream.php, qui attend son tour dans la
+ * file du load balancer d'inférence ; « poll » renvoie pendant ce temps le
+ * rang estimé de la demande.
  * Toutes exigent la connexion, le sesskey, la capacité local/aichat:use et une
  * activité où le tuteur est activé (voir activity::require_access()).
  *
@@ -18,7 +22,8 @@ use local_aichat\attachment;
 use local_aichat\conversation;
 use local_aichat\moderation;
 use local_aichat\quota;
-use local_aifeedback\pool;
+use local_aichat\tutor;
+use local_aifeedback\lb\client;
 
 /**
  * Émet la réponse JSON et termine.
@@ -121,7 +126,7 @@ switch ($action) {
                 array('quota' => (array)$quota));
         }
 
-        if (!pool::has_server_for(pool::PURPOSE_TUTOR)) {
+        if (!client::configured() || tutor::model() === '') {
             local_aichat_error('noserver', get_string('error_noserver', 'local_aichat'));
         }
 
@@ -146,10 +151,6 @@ switch ($action) {
                 local_aichat_error('attach', get_string('attach_saveerror', 'local_aichat'));
             }
         }
-        $slotid = pool::request(pool::PURPOSE_TUTOR, $USER->id, 'local_aichat',
-            $pair->assistantid);
-        conversation::attach_slot($pair->assistantid, $slotid);
-
         // Analyse de modération en parallèle, via la file de jobs : sans effet
         // sur la réponse du tuteur. Un échec de mise en file ne doit jamais
         // empêcher l'élève d'obtenir sa réponse.
@@ -172,7 +173,7 @@ switch ($action) {
         break;
 
     // -----------------------------------------------------------------
-    //  Attente : place dans la file, ou réponse prête
+    //  Attente : rang dans la file du load balancer, ou réponse prête
     // -----------------------------------------------------------------
     case 'poll':
         $messageid = required_param('messageid', PARAM_INT);
@@ -193,31 +194,39 @@ switch ($action) {
             ));
         }
 
-        // Génération déjà lancée ailleurs : on laisse le flux se terminer.
-        if ($message->status === 'streaming') {
-            local_aichat_reply(array('ok' => true, 'status' => 'running', 'position' => 0));
-        }
-
-        $state = pool::poll((int)$message->slotid);
-        if ($state->status === 'queued') {
-            local_aichat_reply(array(
-                'ok'       => true,
-                'status'   => 'queued',
-                'position' => (int)$state->position,
-            ));
-        }
-        if ($state->status === 'reserved') {
-            // Le serveur est réservé : le widget peut ouvrir le flux.
+        // Flux pas encore ouvert (nouvel onglet, rechargement) : le widget
+        // peut l'ouvrir ; la demande prendra alors sa place dans la file.
+        if ($message->status === 'pending') {
             local_aichat_reply(array('ok' => true, 'status' => 'ready', 'position' => 0));
         }
-        if ($state->status === 'running') {
-            local_aichat_reply(array('ok' => true, 'status' => 'running', 'position' => 0));
-        }
 
-        // Ticket perdu (réservation expirée, file purgée, serveur tombé).
-        conversation::fail_message($messageid, 'failed',
-            get_string('error_expired', 'local_aichat'), $access->context);
-        local_aichat_error('expired', get_string('error_expired', 'local_aichat'));
+        // Flux ouvert : la demande attend son tour au load balancer, ou est
+        // déjà en cours de génération. Le rang est une estimation du service.
+        $reply = array('ok' => true, 'status' => 'queued', 'position' => null, 'reason' => '');
+        if ((string)$message->lbjobid !== '') {
+            try {
+                $job = client::get_job((string)$message->lbjobid);
+                if (isset($job['status']) && $job['status'] === 'queued') {
+                    $queue = (isset($job['queue']) && is_array($job['queue'])) ? $job['queue'] : array();
+                    $reply['position'] = (isset($queue['estimated_jobs_ahead'])
+                        && $queue['estimated_jobs_ahead'] !== null) ? (int)$queue['estimated_jobs_ahead'] : null;
+                    $reply['reason'] = isset($queue['reason']) ? (string)$queue['reason'] : '';
+                } else if (isset($job['status']) && $job['status'] !== 'running'
+                        && !empty($job['finished_at']) && strtotime((string)$job['finished_at']) < time() - 120) {
+                    // Génération terminée depuis longtemps mais message jamais
+                    // finalisé : le processus du flux a disparu.
+                    conversation::fail_message($messageid, 'failed',
+                        get_string('error_expired', 'local_aichat'), $access->context);
+                    local_aichat_error('expired', get_string('error_expired', 'local_aichat'));
+                } else {
+                    $reply = array('ok' => true, 'status' => 'running', 'position' => 0);
+                }
+            } catch (\Throwable $e) {
+                // Rang momentanément inconnu : le flux, lui, continue.
+                debugging('local_aichat: rang indisponible — ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+        local_aichat_reply($reply);
         break;
 
     // -----------------------------------------------------------------
@@ -231,9 +240,9 @@ switch ($action) {
             local_aichat_error('notfound', get_string('error_notfound', 'local_aichat'));
         }
         if (in_array($message->status, conversation::BUSY_STATUSES, true)) {
-            // Si la génération a déjà démarré, c'est l'abandon de la requête
-            // HTTP côté navigateur qui l'interrompt ; ici on libère la place.
-            pool::cancel((int)$message->slotid);
+            // Le job est annulé au load balancer, qu'il attende encore son tour
+            // ou qu'il soit en cours (le navigateur coupe aussi le flux).
+            conversation::cancel_lbjob($message);
             conversation::fail_message($messageid, 'cancelled', null, $access->context);
         }
         local_aichat_reply(array('ok' => true, 'status' => 'cancelled'));

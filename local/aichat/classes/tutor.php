@@ -286,13 +286,26 @@ class tutor {
     }
 
     /**
+     * Modèle du tuteur (catalogue du load balancer) : réglage du plugin, ou à
+     * défaut le modèle des corrections IA.
+     *
+     * @return string
+     */
+    public static function model() {
+        return \local_aifeedback\models::for_component('local_aichat', 'model_tutor');
+    }
+
+    /**
      * Options de génération du tuteur (partagées par le flux et la page de
      * diagnostic, pour que le test reproduise les vraies conditions).
      *
+     * @param int $userid élève pour qui la réponse est générée (quotas du load balancer)
      * @return array
      */
-    public static function generation_options() {
+    public static function generation_options($userid = 0) {
         $options = array(
+            'model'       => self::model(),
+            'userid'      => (int)$userid,
             'temperature' => (float)get_config('local_aichat', 'temperature'),
             'max_tokens'  => (int)get_config('local_aichat', 'maxtokens'),
             'extra_body'  => array('enable_thinking' => false),

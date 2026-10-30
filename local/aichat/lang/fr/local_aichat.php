@@ -10,7 +10,7 @@ $string['aichat:viewconversations']  = 'Consulter les conversations des élèves
 $string['aichat:managequota']        = 'Suivre les quotas des élèves avec le tuteur IA, les réinitialiser et accorder des bonus';
 
 // === Réglages ===
-$string['serversnote']               = 'Le tuteur utilise les <strong>serveurs LLM</strong> déclarés dans le plugin <em>Correction IA (bibliothèque partagée)</em>, sur les emplacements dont l\'usage « tuteur » est autorisé. Dédier un serveur au tuteur évite que les corrections de devoirs ne fassent attendre les élèves.';
+$string['serversnote']               = 'Le tuteur passe par le <strong>load balancer IA</strong> configuré dans le plugin <em>Correction IA (bibliothèque partagée)</em> : chaque question d\'élève y attend son tour (l\'élève voit son rang), puis la réponse s\'affiche au fil de sa génération. Le load balancer sert les conversations en priorité sur les traitements de fond (corrections, modération).';
 $string['tutor_heading']             = 'Comportement du tuteur';
 $string['setting_tutorprompt']       = 'Prompt système du tuteur';
 $string['setting_tutorprompt_help']  = 'Instructions de base envoyées au modèle. Le contexte de l\'activité, puis les règles de forme et les règles non négociables (si elles sont activées ci-dessous), sont ajoutés automatiquement APRÈS ce texte, sauf avec « Prompt système seul ». Laisser vide pour revenir au prompt par défaut.';
@@ -32,7 +32,7 @@ $string['setting_maxmessagechars']      = 'Longueur maximale d\'un message d\'é
 $string['setting_maxmessagechars_help'] = 'Nombre de caractères qu\'un élève peut envoyer en une fois. Défaut : 2000.';
 
 $string['quota_heading']              = 'Quota d\'usage par élève';
-$string['quota_heading_desc']         = 'Protège le serveur du lycée : sans plafond, une classe entière qui « discute » avec l\'IA le sature et plus personne n\'obtient de réponse. Les compteurs sont calculés sur une fenêtre qui s\'ouvre au premier message de l\'élève, pour l\'élève et TOUTES activités confondues. Mettre 0 désactive le plafond correspondant. Les enseignants suivent les fenêtres de leurs élèves, les réinitialisent ou accordent un bonus depuis la page « Quotas du tuteur IA » du cours.';
+$string['quota_heading_desc']         = 'Protège les serveurs IA du lycée : sans plafond, une classe entière qui « discute » avec l\'IA les sature et plus personne n\'obtient de réponse. Les compteurs sont calculés sur une fenêtre qui s\'ouvre au premier message de l\'élève, pour l\'élève et TOUTES activités confondues. Mettre 0 désactive le plafond correspondant. Les enseignants suivent les fenêtres de leurs élèves, les réinitialisent ou accordent un bonus depuis la page « Quotas du tuteur IA » du cours. Les quotas éventuels du load balancer s\'appliquent en plus.';
 $string['setting_quotawindow']        = 'Durée de la fenêtre (heures)';
 $string['setting_quotawindow_help']   = 'La fenêtre s\'ouvre au premier message de l\'élève et dure ce nombre d\'heures. À son terme, les compteurs repartent de zéro ; la fenêtre suivante s\'ouvrira au message suivant. L\'élève voit l\'heure de réinitialisation sous la zone de saisie. 4 h couvrent une séance de travail complète. Défaut : 4.';
 $string['setting_quotatokens']        = 'Budget de tokens par fenêtre';
@@ -45,7 +45,7 @@ $string['attach_heading_desc']            = 'Les élèves peuvent joindre à leu
 $string['setting_attachenabled']          = 'Autoriser les fichiers joints';
 $string['setting_attachenabled_help']     = 'Affiche le bouton trombone dans le chat et accepte les captures collées ou glissées. Défaut : oui.';
 $string['setting_attachimages']           = 'Le modèle du tuteur lit les images (vision)';
-$string['setting_attachimages_help']      = 'À cocher seulement si le modèle des serveurs du tuteur est un modèle vision (Qwen-VL, Gemma 3, Llava…) : un modèle texte refuse la requête et l\'élève reçoit une erreur. Décoché, les images sont refusées à l\'envoi ; les fichiers texte restent acceptés. Défaut : le réglage « vision » de la correction IA.';
+$string['setting_attachimages_help']      = 'À cocher seulement si le modèle du tuteur est un modèle vision (Qwen-VL, Gemma 3, Llava…) : un modèle texte refuse la requête et l\'élève reçoit une erreur. Décoché, les images sont refusées à l\'envoi ; les fichiers texte restent acceptés. Défaut : le réglage « vision » de la correction IA.';
 $string['setting_attachmaxfiles']         = 'Fichiers par message';
 $string['setting_attachmaxfiles_help']    = 'Nombre maximal de fichiers joints à une question (10 au plus). C\'est aussi le nombre d\'images gardées en mémoire par le tuteur. Défaut : 3.';
 $string['setting_attachmaxmb']            = 'Taille maximale d\'un fichier (Mo)';
@@ -54,7 +54,7 @@ $string['setting_attachmaxchars']         = 'Texte transmis par fichier (caract�
 $string['setting_attachmaxchars_help']    = 'Un fichier plus long est tronqué (le modèle en est averti). Les fichiers des questions précédentes ne sont renvoyés au modèle que dans la limite de ce même nombre de caractères au total. À adapter à la taille de contexte du modèle : 12 000 caractères font environ 3 500 tokens. Défaut : 12000.';
 
 $string['moderation_heading']             = 'Modération';
-$string['moderation_heading_desc']        = 'Chaque message d\'élève est analysé à part, après coup, par un appel séparé qui passe par la file de jobs (serveur des corrections) : le tuteur n\'est pas ralenti et le streaming n\'est pas affecté. Un contexte neuf lit le message comme une donnée à classer, ce qui le rend bien plus difficile à manipuler que le tuteur lui-même. Coût : un petit appel LLM (environ 300 tokens) par message.';
+$string['moderation_heading_desc']        = 'Chaque message d\'élève est analysé à part, après coup, par un appel séparé confié au load balancer comme traitement de fond : le tuteur n\'est pas ralenti et le streaming n\'est pas affecté. Un contexte neuf lit le message comme une donnée à classer, ce qui le rend bien plus difficile à manipuler que le tuteur lui-même. Coût : un petit appel LLM (environ 300 tokens) par message.';
 $string['setting_moderation']             = 'Analyser les messages des élèves';
 $string['setting_moderation_help']        = 'Signale à l\'enseignant les tentatives de manipulation du tuteur, les menaces, le chantage, les insultes, les contenus inappropriés et les signes de détresse sérieuse. Les signalements apparaissent sur la page « Tuteur IA » de l\'activité.';
 $string['setting_moderationnotify']       = 'Prévenir les enseignants';
@@ -64,8 +64,8 @@ $string['messageprovider:flagged']        = 'Message d\'élève signalé par le 
 $string['misc_heading']               = 'Interface et conservation';
 $string['setting_studentnotice']      = 'Avertissement affiché aux élèves';
 $string['setting_studentnotice_help'] = 'Message affiché en haut du volet de discussion. Puisque les enseignants peuvent lire les conversations, les élèves doivent en être informés. Laisser vide pour utiliser le texte par défaut.';
-$string['setting_pollinterval']       = 'Intervalle d\'actualisation de la file (ms)';
-$string['setting_pollinterval_help']  = 'Fréquence à laquelle le navigateur demande sa position dans la file d\'attente. Défaut : 1500.';
+$string['setting_pollinterval']       = 'Intervalle d\'actualisation du rang dans la file (ms)';
+$string['setting_pollinterval_help']  = 'Fréquence à laquelle le navigateur demande le rang estimé de sa question dans la file du load balancer, tant que la réponse n\'a pas commencé. Défaut : 1500 (minimum 1000).';
 $string['setting_retention']          = 'Conservation des conversations (jours)';
 $string['setting_retention_help']     = 'Les conversations sans activité depuis ce nombre de jours sont supprimées par la tâche planifiée. 0 = conservation illimitée. Défaut : 180.';
 
@@ -237,11 +237,11 @@ $string['error_empty']     = 'Votre message est vide.';
 $string['error_toolong']   = 'Votre message dépasse {$a} caractères. Raccourcissez-le.';
 $string['error_busy']      = 'Une réponse est déjà en cours. Attendez qu\'elle se termine.';
 $string['error_quota']     = 'Vous avez atteint votre quota d\'utilisation du tuteur. Il se réinitialise à {$a->time} (dans {$a->delay}).';
-$string['error_noserver']  = 'Aucun serveur n\'est configuré pour le tuteur IA. Prévenez votre enseignant.';
+$string['error_noserver']  = 'Le serveur IA du tuteur n\'est pas configuré. Prévenez votre enseignant.';
 $string['error_notfound']  = 'Message introuvable.';
 $string['error_expired']   = 'La demande a expiré avant d\'être traitée. Reposez votre question.';
 $string['error_badaction'] = 'Action inconnue.';
-$string['error_llm']       = 'Le tuteur n\'a pas pu répondre (serveur indisponible). Réessayez dans un instant.';
+$string['error_llm']       = 'Le tuteur n\'a pas pu répondre (serveur IA indisponible). Réessayez dans un instant.';
 $string['brieferror_empty'] = 'Le modèle a renvoyé un brief vide.';
 
 // === Tâche planifiée ===
@@ -381,18 +381,17 @@ $string['ws_lasterror']               = 'Dernier échec ({$a->time}) : {$a->reas
 $string['ws_testsearch_explain']       = '« Tester » lance une vraie recherche (« Moodle LMS ») avec la clé de TEST du moteur (réglages du plugin), décomptée dans le plafond de cette clé. Un succès lève une éventuelle suspension du moteur. Les élèves, eux, utilisent leurs propres clés.';
 $string['ws_testsearch_ok']           = 'Recherche réussie : {$a} résultat(s).';
 $string['ws_testsearch_failed']       = 'Échec de la recherche : {$a}.';
-$string['ws_testtools_heading']       = 'Tester l\'appel d\'outil sur les serveurs du tuteur';
-$string['ws_testtools_explain']       = 'Pose au modèle de chaque serveur une question qui exige une recherche, puis lui renvoie un résultat factice (aucun appel au moteur, rien n\'est décompté). Vérifie que LM Studio reconnaît l\'appel d\'outil en streaming (sinon il apparaîtrait en texte brut chez l\'élève) et que le modèle rédige ensuite sa réponse. Le test contourne la file d\'attente : lancez-le de préférence hors des heures de cours. Il peut durer une à deux minutes.';
-$string['ws_col_server']              = 'Serveur';
-$string['ws_globalmodel']             = 'modèle global';
+$string['ws_testtools_heading']       = 'Tester l\'appel d\'outil avec le modèle du tuteur';
+$string['ws_testtools_explain']       = 'Pose au modèle du tuteur, via le load balancer, une question qui exige une recherche, puis lui renvoie un résultat factice (aucun appel au moteur, rien n\'est décompté). Vérifie que le serveur IA reconnaît l\'appel d\'outil en streaming (sinon il apparaîtrait en texte brut chez l\'élève) et que le modèle rédige ensuite sa réponse. Le test attend son tour dans la file comme une question d\'élève : lancez-le de préférence hors des heures de cours. Il peut durer quelques minutes.';
+$string['ws_col_server']              = 'Modèle du tuteur';
 $string['ws_testtools']               = 'Tester l\'appel d\'outil';
-$string['ws_notutorserver']           = 'Aucun serveur n\'accepte le tuteur (réglages de la bibliothèque partagée).';
+$string['ws_notutorserver']           = 'Le load balancer ou le modèle du tuteur n\'est pas configuré (réglages de la bibliothèque partagée et du tuteur IA).';
 $string['ws_check_ok']                = 'OK';
 $string['ws_check_failed']            = 'Échec';
 $string['ws_check_info']              = 'Info';
-$string['ws_testtools_result']        = 'Résultat du serveur {$a->id} ({$a->seconds} s)';
-$string['ws_testtools_verdict_ok']    = 'Ce serveur gère correctement la recherche Web.';
-$string['ws_testtools_verdict_bad']   = 'Ce serveur ne gère pas correctement l\'appel d\'outil avec ce modèle. N\'activez pas la recherche Web tant qu\'il sert le tuteur : mettez LM Studio à jour, essayez un autre modèle, ou retirez-lui l\'usage « tuteur ».';
+$string['ws_testtools_result']        = 'Résultat du modèle {$a->model} ({$a->seconds} s)';
+$string['ws_testtools_verdict_ok']    = 'Ce modèle gère correctement la recherche Web.';
+$string['ws_testtools_verdict_bad']   = 'Ce modèle ne gère pas correctement l\'appel d\'outil sur les serveurs IA. N\'activez pas la recherche Web tant qu\'il sert le tuteur : mettez le serveur d\'inférence à jour ou choisissez un autre modèle pour le tuteur.';
 $string['ws_answer1']                 = 'Texte du premier tour (doit être vide ou court, sans balise d\'appel) :';
 $string['ws_answer2']                 = 'Réponse finale après le résultat factice :';
 $string['ws_top_activities']          = 'Activités qui consomment le plus de recherches Web (31 jours) :';
@@ -461,3 +460,13 @@ $string['mykeys_test_ok_tavily']       = 'Clé Tavily valide. Crédits utilisés
 $string['mykeys_test_ok_brave']        = 'Clé Brave valide : recherche réussie ({$a} résultat(s)).';
 $string['mykeys_test_failed']          = 'La clé n\'a pas pu être vérifiée : {$a}.';
 $string['mykeys_privacy']              = 'Vos clés sont chiffrées dans Moodle et ne sont jamais réaffichées, ni transmises au navigateur ou à l\'IA. Les recherches du tuteur partent sous VOTRE compte chez le moteur (Tavily, Brave) : seul le texte de la recherche est envoyé, sans votre nom ni votre e-mail. Vous pouvez supprimer une clé à tout moment.';
+
+// Load balancer
+$string['setting_modeltutor']        = 'Modèle du tuteur IA';
+$string['setting_modeltutor_help']   = 'Modèle du catalogue du load balancer qui répond aux élèves. Vide : le modèle des corrections IA. Un modèle vision est nécessaire pour accepter les images jointes.';
+$string['setting_modelmoderation']   = 'Modèle de la modération et du brief';
+$string['setting_modelmoderation_help'] = 'Modèle du catalogue du load balancer utilisé pour l\'analyse de modération des messages et la génération du brief pédagogique. Vide : le modèle des corrections IA.';
+$string['widget_waiting']      = 'En attente du serveur IA…';
+$string['widget_noworker']     = 'Aucun serveur IA n\'est disponible pour le moment : votre question attend qu\'un serveur se libère…';
+$string['error_lbquota']       = 'Le quota d\'utilisation de l\'IA est atteint pour le moment. Réessayez plus tard.';
+$string['error_lbbusy']        = 'Le serveur IA est saturé. Réessayez dans quelques minutes.';

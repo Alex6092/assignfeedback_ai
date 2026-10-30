@@ -28,25 +28,22 @@ class diagnostic {
     const FAKE_URL = 'https://www.python.org/downloads/';
 
     /**
-     * Aller-retour complet avec l'outil web_search sur un serveur, sans
-     * appeler le fournisseur de recherche (résultat factice) : rien n'est
-     * décompté du budget.
+     * Aller-retour complet avec l'outil web_search sur le modèle du tuteur,
+     * via le load balancer, sans appeler le fournisseur de recherche
+     * (résultat factice) : rien n'est décompté du budget.
      *
-     * Le test passe hors de la file du pool : à lancer de préférence quand
-     * les élèves ne travaillent pas.
+     * Le test passe par la file du load balancer comme une vraie question
+     * d'élève : il peut attendre son tour si les serveurs IA sont occupés.
      *
-     * @param array $server descripteur de \local_aifeedback\pool::servers()
+     * @param string $model modèle à tester (catalogue du load balancer)
      * @return array {checks: [{label, ok (bool|null = information), detail}],
      *                answer1, answer2, seconds}
      */
-    public static function test_tool_calling(array $server) {
-        $options = tutor::generation_options();
-        $options['apiurl']  = $server['apiurl'];
-        $options['apikey']  = $server['apikey'];
-        $options['timeout'] = 180;
-        if ($server['model'] !== '') {
-            $options['model'] = $server['model'];
-        }
+    public static function test_tool_calling($model) {
+        global $USER;
+        $options = tutor::generation_options((int)$USER->id);
+        $options['model']   = (string)$model;
+        $options['timeout'] = 900;
 
         $messages = array(
             array('role' => 'system', 'content' => "Tu es un assistant de test. Date du jour : "

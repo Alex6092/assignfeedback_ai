@@ -10,7 +10,7 @@ $string['aichat:viewconversations']  = 'View student conversations with the AI t
 $string['aichat:managequota']        = 'Track students\' AI tutor quotas, reset them and grant bonuses';
 
 // === Settings ===
-$string['serversnote']               = 'The tutor uses the <strong>LLM servers</strong> declared in the <em>AI feedback (shared library)</em> plugin, on the slots whose "tutor" purpose is allowed. Dedicating a server to the tutor prevents assignment gradings from making students wait.';
+$string['serversnote']               = 'The tutor goes through the <strong>AI load balancer</strong> configured in the <em>AI feedback (shared library)</em> plugin: each student question waits for its turn there (the student sees their rank), then the answer is displayed as it is generated. The load balancer serves conversations before background work (grading, moderation).';
 $string['tutor_heading']             = 'Tutor behaviour';
 $string['setting_tutorprompt']       = 'Tutor system prompt';
 $string['setting_tutorprompt_help']  = 'Base instructions sent to the model. The activity context, then the formatting rules and the non-negotiable rules (if enabled below), are appended automatically AFTER this text, unless "System prompt only" is ticked. Leave empty to restore the default prompt.';
@@ -32,7 +32,7 @@ $string['setting_maxmessagechars']      = 'Maximum student message length';
 $string['setting_maxmessagechars_help'] = 'How many characters a student can send at once. Default: 2000.';
 
 $string['quota_heading']              = 'Per-student usage quota';
-$string['quota_heading_desc']         = 'Protects the school server: without a cap, a whole class "chatting" with the AI saturates it and nobody gets an answer. Counters are computed over a window that opens with the student\'s first message, per student and ACROSS ALL activities. Set 0 to disable the corresponding cap. Teachers track their students\' windows, reset them or grant a bonus from the course page "AI tutor quotas".';
+$string['quota_heading_desc']         = 'Protects the school AI servers: without a cap, a whole class "chatting" with the AI saturates them and nobody gets an answer any more. Counters are computed over a window that opens with the student\'s first message, for the student and ALL activities together. 0 disables the matching cap. Teachers follow their students\' windows, reset them or grant a bonus from the "AI tutor quotas" page of the course. Any load balancer quotas apply on top.';
 $string['setting_quotawindow']        = 'Window length (hours)';
 $string['setting_quotawindow_help']   = 'The window opens with the student\'s first message and lasts this many hours. When it ends, the counters start again from zero; the next window opens with the next message. The student sees the reset time below the input box. 4 hours cover a full working session. Default: 4.';
 $string['setting_quotatokens']        = 'Token budget per window';
@@ -45,7 +45,7 @@ $string['attach_heading_desc']            = 'Students can attach screenshots (pa
 $string['setting_attachenabled']          = 'Allow attachments';
 $string['setting_attachenabled_help']     = 'Shows the paperclip button in the chat and accepts pasted or dropped screenshots. Default: yes.';
 $string['setting_attachimages']           = 'The tutor model reads images (vision)';
-$string['setting_attachimages_help']      = 'Tick only if the model of the tutor servers is a vision model (Qwen-VL, Gemma 3, Llava…): a text-only model rejects the request and the student gets an error. Unticked, images are refused when sent; text files are still accepted. Default: the "vision" setting of AI feedback.';
+$string['setting_attachimages_help']      = 'Only tick this if the tutor model is a vision model (Qwen-VL, Gemma 3, Llava...): a text model rejects the request and the student gets an error. Unticked, images are refused on sending; text files remain accepted. Default: the "vision" setting of AI grading.';
 $string['setting_attachmaxfiles']         = 'Files per message';
 $string['setting_attachmaxfiles_help']    = 'Maximum number of files attached to one question (at most 10). It is also the number of images the tutor keeps in memory. Default: 3.';
 $string['setting_attachmaxmb']            = 'Maximum file size (MB)';
@@ -54,7 +54,7 @@ $string['setting_attachmaxchars']         = 'Text sent per file (characters)';
 $string['setting_attachmaxchars_help']    = 'A longer file is truncated (the model is told). Files of previous questions are only sent back to the model within this same number of characters in total. Adjust to the model context size: 12,000 characters are about 3,500 tokens. Default: 12000.';
 
 $string['moderation_heading']             = 'Moderation';
-$string['moderation_heading_desc']        = 'Each student message is analysed separately, afterwards, by a distinct call going through the job queue (grading server): the tutor is not slowed down and streaming is unaffected. A fresh context reads the message as data to classify, which makes it much harder to manipulate than the tutor itself. Cost: one small LLM call (about 300 tokens) per message.';
+$string['moderation_heading_desc']        = 'Each student message is analysed separately, afterwards, by a separate call handed over to the load balancer as background work: the tutor is not slowed down and streaming is not affected. A fresh context reads the message as data to classify, which makes it much harder to manipulate than the tutor itself. Cost: one small LLM call (about 300 tokens) per message.';
 $string['setting_moderation']             = 'Analyse student messages';
 $string['setting_moderation_help']        = 'Flags to the teacher attempts to manipulate the tutor, threats, blackmail, insults, inappropriate content and signs of serious distress. Flags appear on the activity "AI tutor" page.';
 $string['setting_moderationnotify']       = 'Notify teachers';
@@ -64,8 +64,8 @@ $string['messageprovider:flagged']        = 'Student message flagged by the AI t
 $string['misc_heading']               = 'Interface and retention';
 $string['setting_studentnotice']      = 'Notice shown to students';
 $string['setting_studentnotice_help'] = 'Message displayed at the top of the chat panel. Since teachers can read the conversations, students must be told. Leave empty to use the default text.';
-$string['setting_pollinterval']       = 'Queue refresh interval (ms)';
-$string['setting_pollinterval_help']  = 'How often the browser asks for its position in the queue. Default: 1500.';
+$string['setting_pollinterval']       = 'Queue rank refresh interval (ms)';
+$string['setting_pollinterval_help']  = 'How often the browser asks for the estimated rank of its question in the load balancer queue, until the answer starts. Default: 1500 (minimum 1000).';
 $string['setting_retention']          = 'Conversation retention (days)';
 $string['setting_retention_help']     = 'Conversations with no activity for this many days are deleted by the scheduled task. 0 = keep forever. Default: 180.';
 
@@ -237,11 +237,11 @@ $string['error_empty']     = 'Your message is empty.';
 $string['error_toolong']   = 'Your message is longer than {$a} characters. Please shorten it.';
 $string['error_busy']      = 'An answer is already being generated. Please wait for it to finish.';
 $string['error_quota']     = 'You have reached your tutor usage quota. It resets at {$a->time} (in {$a->delay}).';
-$string['error_noserver']  = 'No server is configured for the AI tutor. Please tell your teacher.';
+$string['error_noserver']  = 'The AI server of the tutor is not configured. Please tell your teacher.';
 $string['error_notfound']  = 'Message not found.';
 $string['error_expired']   = 'The request expired before it could be processed. Please ask again.';
 $string['error_badaction'] = 'Unknown action.';
-$string['error_llm']       = 'The tutor could not answer (server unavailable). Please try again in a moment.';
+$string['error_llm']       = 'The tutor could not answer (AI server unavailable). Please try again shortly.';
 $string['brieferror_empty'] = 'The model returned an empty brief.';
 
 // === Scheduled task ===
@@ -381,18 +381,17 @@ $string['ws_lasterror']               = 'Last failure ({$a->time}): {$a->reason}
 $string['ws_testsearch_explain']       = '"Test" runs a real search ("Moodle LMS") with the engine\'s TEST key (plugin settings), counted against that key\'s cap. A success lifts any suspension of the engine. Students use their own keys.';
 $string['ws_testsearch_ok']           = 'Search succeeded: {$a} result(s).';
 $string['ws_testsearch_failed']       = 'Search failed: {$a}.';
-$string['ws_testtools_heading']       = 'Test tool calling on the tutor servers';
-$string['ws_testtools_explain']       = 'Asks the model of each server a question that requires a search, then sends it back a fake result (no call to the engine, nothing counted). Checks that LM Studio recognises the tool call when streaming (otherwise it would show up as raw text to the student) and that the model then writes its answer. The test bypasses the queue: preferably run it outside class hours. It may take one or two minutes.';
-$string['ws_col_server']              = 'Server';
-$string['ws_globalmodel']             = 'global model';
+$string['ws_testtools_heading']       = 'Test tool calling with the tutor model';
+$string['ws_testtools_explain']       = 'Asks the tutor model, through the load balancer, a question that requires a search, then sends it a fake result (no call to the search engine, nothing is counted). Checks that the AI server recognises tool calls when streaming (otherwise they would show up as raw text for the student) and that the model then writes its answer. The test waits for its turn in the queue like a student question: preferably run it outside class hours. It may take a few minutes.';
+$string['ws_col_server']              = 'Tutor model';
 $string['ws_testtools']               = 'Test tool calling';
-$string['ws_notutorserver']           = 'No server accepts the tutor (shared library settings).';
+$string['ws_notutorserver']           = 'The load balancer or the tutor model is not configured (shared library and AI tutor settings).';
 $string['ws_check_ok']                = 'OK';
 $string['ws_check_failed']            = 'Failed';
 $string['ws_check_info']              = 'Info';
-$string['ws_testtools_result']        = 'Result for server {$a->id} ({$a->seconds} s)';
-$string['ws_testtools_verdict_ok']    = 'This server handles web search correctly.';
-$string['ws_testtools_verdict_bad']   = 'This server does not handle tool calling correctly with this model. Do not enable web search while it serves the tutor: update LM Studio, try another model, or remove its "tutor" purpose.';
+$string['ws_testtools_result']        = 'Result of model {$a->model} ({$a->seconds} s)';
+$string['ws_testtools_verdict_ok']    = 'This model handles web search correctly.';
+$string['ws_testtools_verdict_bad']   = 'This model does not handle tool calling correctly on the AI servers. Do not enable web search while it serves the tutor: update the inference server or choose another model for the tutor.';
 $string['ws_answer1']                 = 'First-round text (should be empty or short, without any call tag):';
 $string['ws_answer2']                 = 'Final answer after the fake result:';
 $string['ws_top_activities']          = 'Activities using the most web searches (31 days):';
@@ -461,3 +460,13 @@ $string['mykeys_test_ok_tavily']       = 'Tavily key valid. Credits used this mo
 $string['mykeys_test_ok_brave']        = 'Brave key valid: search succeeded ({$a} result(s)).';
 $string['mykeys_test_failed']          = 'The key could not be verified: {$a}.';
 $string['mykeys_privacy']              = 'Your keys are encrypted in Moodle and never shown again, nor sent to the browser or to the AI. The tutor\'s searches go out under YOUR account with the engine (Tavily, Brave): only the search text is sent, without your name or email. You can remove a key at any time.';
+
+// Load balancer
+$string['setting_modeltutor']        = 'AI tutor model';
+$string['setting_modeltutor_help']   = 'Model of the load balancer catalogue that answers students. Empty: the AI grading model. A vision model is required to accept attached images.';
+$string['setting_modelmoderation']   = 'Moderation and brief model';
+$string['setting_modelmoderation_help'] = 'Model of the load balancer catalogue used to analyse messages for moderation and to generate the teaching brief. Empty: the AI grading model.';
+$string['widget_waiting']      = 'Waiting for the AI server...';
+$string['widget_noworker']     = 'No AI server is available right now: your question is waiting for a server to become free...';
+$string['error_lbquota']       = 'The AI usage quota is reached for now. Please try again later.';
+$string['error_lbbusy']        = 'The AI server is overloaded. Please try again in a few minutes.';

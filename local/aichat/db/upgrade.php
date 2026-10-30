@@ -241,5 +241,23 @@ function xmldb_local_aichat_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026102101, 'local', 'aichat');
     }
 
+    // 2026103000 : la file d'attente du tuteur est celle du load balancer
+    // d'inférence. Le message garde l'identifiant de son job (rang dans la
+    // file, annulation) ; ticket et serveur du pool disparaissent.
+    if ($oldversion < 2026103000) {
+        $table = new xmldb_table('local_aichat_message');
+        $field = new xmldb_field('lbjobid', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, '', 'status');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        foreach (array('slotid', 'serverid') as $name) {
+            $old = new xmldb_field($name);
+            if ($dbman->field_exists($table, $old)) {
+                $dbman->drop_field($table, $old);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026103000, 'local', 'aichat');
+    }
+
     return true;
 }

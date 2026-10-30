@@ -649,6 +649,22 @@ class jobs {
     }
 
     /**
+     * Échecs récents des jobs de ce payload (pour les handlers qui n'ont pas
+     * leur propre compteur de tentatives).
+     *
+     * @param string    $component
+     * @param \stdClass $payload
+     * @param int       $since
+     * @return int
+     */
+    public static function recent_failures($component, \stdClass $payload, $since) {
+        global $DB;
+        return (int)$DB->count_records_select(self::TABLE,
+            'component = ? AND payloadkey = ? AND status = ? AND timemodified >= ?',
+            array((string)$component, self::payload_key($component, $payload), 'failed', (int)$since));
+    }
+
+    /**
      * Dernières erreurs.
      *
      * @return \stdClass[]

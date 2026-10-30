@@ -39,7 +39,7 @@ class generator {
      *               résultats compris ; le serveur garde en cache le début commun
      *               des tours) + tout le texte généré. Null si un tour ne l'a pas
      *               fourni.
-     * @throws \moodle_exception comme api::stream (serveur indisponible)
+     * @throws \moodle_exception comme api::stream (serveur indisponible, refus du load balancer)
      */
     public static function run(array $messages, array $options, callable $ondelta,
             $onsearch = null, toolset $tool = null, $forcefirst = null) {
@@ -94,9 +94,12 @@ class generator {
             } catch (\moodle_exception $e) {
                 // Serveur qui ne connaît pas tool_choice : on réessaie sans
                 // imposer l'appel, plutôt que de priver l'élève de réponse.
-                // Une panne du serveur, elle, reste traitée par le pool.
+                // Une panne, un refus du load balancer (quota, file saturée)
+                // ou une annulation demandée par l'élève ne se rejouent pas.
                 if (!isset($opts['tool_choice']) || $streamed
-                        || $e instanceof \local_aifeedback\server_unavailable_exception) {
+                        || $e instanceof \local_aifeedback\server_unavailable_exception
+                        || ($e instanceof \local_aifeedback\lb\lb_exception
+                            && ($e->transient || in_array($e->lbcode, array('cancelled', 'expired'), true)))) {
                     throw $e;
                 }
                 debugging('local_aichat: appel d\'outil imposé refusé par le serveur — '

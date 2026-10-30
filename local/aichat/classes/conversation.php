@@ -56,6 +56,7 @@ class conversation {
             // Ne pas abandonner une génération en cours sans la libérer.
             $busy = self::busy_message((int)$current->id);
             if ($busy !== null) {
+                self::cancel_lbjob($busy);
                 self::fail_message((int)$busy->id, 'cancelled', null);
             }
             $DB->update_record(self::TABLE, (object)array(
@@ -105,8 +106,7 @@ class conversation {
             'content'        => (string)$content,
             'contenthtml'    => null,
             'status'         => 'done',
-            'slotid'         => 0,
-            'serverid'       => 0,
+            'lbjobid'        => '',
             'tokens'         => 0,
             'websearches'    => 0,
             'pagereads'      => 0,
@@ -146,25 +146,64 @@ class conversation {
         $DB->set_field(self::TABLE, 'msgcount', (int)$conv->msgcount, array('id' => (int)$conv->id));
     }
 
-    /** Associe un ticket de file au message assistant. */
-    public static function attach_slot($messageid, $slotid) {
+    /**
+     * Associe au message assistant le job du load balancer qui le génère
+     * (un par tour de génération) : sert au rang dans la file et à l'annulation.
+     */
+    public static function attach_lbjob($messageid, $jobid) {
         global $DB;
         $DB->update_record(self::TABLE_MSG, (object)array(
             'id'           => (int)$messageid,
-            'slotid'       => (int)$slotid,
+            'lbjobid'      => substr((string)$jobid, 0, 64),
             'timemodified' => time(),
         ));
     }
 
-    /** Passe un message en cours de génération, sur un serveur donné. */
-    public static function start_message($messageid, $serverid) {
+    /**
+     * Passe un message en attente en cours de génération (flux ouvert).
+     * Un seul flux par message : si deux onglets ouvrent le flux en même
+     * temps, seul le premier l'obtient.
+     *
+     * @return bool false si le message n'est plus en attente
+     */
+    public static function start_message($messageid) {
         global $DB;
-        $DB->update_record(self::TABLE_MSG, (object)array(
-            'id'           => (int)$messageid,
-            'status'       => 'streaming',
-            'serverid'     => (int)$serverid,
-            'timemodified' => time(),
-        ));
+        $factory = \core\lock\lock_config::get_lock_factory('local_aichat');
+        $lock    = $factory->get_lock('message_' . (int)$messageid, 5);
+        if (!$lock) {
+            return false;
+        }
+        try {
+            $status = $DB->get_field(self::TABLE_MSG, 'status', array('id' => (int)$messageid));
+            if ($status !== 'pending') {
+                return false;
+            }
+            $DB->update_record(self::TABLE_MSG, (object)array(
+                'id'           => (int)$messageid,
+                'status'       => 'streaming',
+                'timemodified' => time(),
+            ));
+            return true;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Annule la génération d'un message encore en file ou en cours au load
+     * balancer (bouton « Arrêter », nouvelle discussion). Sans effet sur une
+     * génération déjà terminée.
+     */
+    public static function cancel_lbjob(\stdClass $message) {
+        if (empty($message->lbjobid) || !\local_aifeedback\lb\client::configured()) {
+            return;
+        }
+        try {
+            \local_aifeedback\lb\client::cancel_job((string)$message->lbjobid);
+        } catch (\Throwable $e) {
+            // Au pire, la coupure du flux par le navigateur l'annulera.
+            debugging('local_aichat: annulation impossible — ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
     }
 
     /** Enregistre la réponse complète et son rendu HTML. */

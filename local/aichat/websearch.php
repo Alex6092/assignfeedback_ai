@@ -19,12 +19,12 @@ use local_aichat\websearch\budget;
 use local_aichat\websearch\diagnostic;
 use local_aichat\websearch\manager;
 use local_aichat\websearch\userkeys;
-use local_aifeedback\pool;
+use local_aichat\tutor;
+use local_aifeedback\lb\client;
 
 admin_externalpage_setup('local_aichat_websearch');
 
 $action     = optional_param('action', '', PARAM_ALPHA);
-$serverid   = optional_param('serverid', 0, PARAM_INT);
 $providerid = optional_param('provider', '', PARAM_ALPHA);
 $pageurl    = new moodle_url('/local/aichat/websearch.php');
 if (!in_array($providerid, userkeys::PROVIDERS, true)) {
@@ -51,13 +51,10 @@ if ($action === 'testsearch' && $providerid !== '') {
     require_sesskey();
     $testsearch = diagnostic::test_search($providerid);
 }
-if ($action === 'testtools') {
+if ($action === 'testtools' && client::configured()) {
     require_sesskey();
-    $server = pool::server($serverid);
-    if ($server !== null) {
-        core_php_time_limit::raise(400);
-        $testtools = array('server' => $server, 'report' => diagnostic::test_tool_calling($server));
-    }
+    core_php_time_limit::raise(1200);
+    $testtools = array('model' => tutor::model(), 'report' => diagnostic::test_tool_calling(tutor::model()));
 }
 
 echo $OUTPUT->header();
@@ -174,30 +171,22 @@ if ($lasterror !== null) {
     )), array('class' => 'small text-muted'));
 }
 
-// --- Test de l'appel d'outil, serveur par serveur ------------------------------
+// --- Test de l'appel d'outil sur le modèle du tuteur -----------------------
 echo $OUTPUT->heading(get_string('ws_testtools_heading', 'local_aichat'), 3);
 echo html_writer::tag('p', get_string('ws_testtools_explain', 'local_aichat'),
     array('class' => 'small text-muted'));
-$table = new html_table();
-$table->head = array('#', get_string('ws_col_server', 'local_aichat'), '');
-$table->attributes['class'] = 'table table-sm';
-foreach (pool::servers() as $id => $server) {
-    if (empty($server['use_tutor'])) {
-        continue;
-    }
-    $table->data[] = array(
-        (int)$id,
-        html_writer::tag('div', s($server['apiurl']))
-            . html_writer::tag('div', s($server['model'] !== '' ? $server['model']
-                : get_string('ws_globalmodel', 'local_aichat')), array('class' => 'small text-muted')),
-        $OUTPUT->single_button(new moodle_url($pageurl, array('action' => 'testtools', 'serverid' => (int)$id)),
-            get_string('ws_testtools', 'local_aichat'), 'post'),
-    );
-}
-if (empty($table->data)) {
+if (!client::configured() || tutor::model() === '') {
     echo $OUTPUT->notification(get_string('ws_notutorserver', 'local_aichat'),
         \core\output\notification::NOTIFY_WARNING);
 } else {
+    $table = new html_table();
+    $table->head = array(get_string('ws_col_server', 'local_aichat'), '');
+    $table->attributes['class'] = 'table table-sm';
+    $table->data[] = array(
+        html_writer::tag('code', s(tutor::model())),
+        $OUTPUT->single_button(new moodle_url($pageurl, array('action' => 'testtools')),
+            get_string('ws_testtools', 'local_aichat'), 'post'),
+    );
     echo html_writer::table($table);
 }
 
@@ -222,7 +211,7 @@ if ($testtools !== null) {
     $result->attributes['class'] = 'table table-sm';
 
     echo $OUTPUT->heading(get_string('ws_testtools_result', 'local_aichat', (object)array(
-        'id'      => (int)$testtools['server']['id'],
+        'model'   => s($testtools['model']),
         'seconds' => $report['seconds'],
     )), 4);
     echo html_writer::table($result);

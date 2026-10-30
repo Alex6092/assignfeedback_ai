@@ -17,6 +17,12 @@ defined('MOODLE_INTERNAL') || die();
  */
 class brief {
 
+    /** Échecs tolérés (sur 24 h) avant d'abandonner la génération. */
+    const MAX_ATTEMPTS = 3;
+
+    /** Délai avant un nouvel essai (secondes). */
+    const RETRY_DELAY = 600;
+
     /** Schéma de sortie imposé au modèle. */
     private static function schema() {
         return array(
@@ -106,84 +112,118 @@ class brief {
             'timemodified' => time(),
         ));
 
-        $payload = new \stdClass();
-        $payload->cmid = (int)$cmid;
-        \local_aifeedback\task\run_job::enqueue('local_aichat', $payload);
+        \local_aifeedback\jobs::enqueue('local_aichat', (object)array('cmid' => (int)$cmid));
         return true;
     }
 
     /**
-     * Génère le brief (appel LLM) et l'enregistre. Appelée depuis la file de
-     * jobs partagée : c'est une action ponctuelle de l'enseignant, elle peut
-     * donc passer par le serveur de correction sans gêner les élèves.
+     * Demande de génération du brief (file de jobs → load balancer). C'est
+     * une action ponctuelle de l'enseignant : elle passe par la file des
+     * traitements de fond sans gêner les élèves.
      *
      * @param int $cmid
-     * @throws \moodle_exception
+     * @return \local_aifeedback\request|null null = plus rien à générer
      */
-    public static function generate($cmid) {
+    public static function build_request($cmid) {
         global $DB;
 
         $config = activity::get($cmid);
-        if ($config === null) {
+        if ($config === null || $config->briefstatus !== 'pending') {
+            return null; // déjà traité, ou activité reconfigurée entre-temps
+        }
+
+        list($course, $cm) = get_course_and_cm_from_cmid((int)$cmid);
+        unset($course);
+        $fbcfg = self::source_config($cm);
+        if ($fbcfg === null) {
+            $DB->update_record(activity::TABLE, (object)array(
+                'id'           => (int)$config->id,
+                'briefstatus'  => 'none',
+                'timemodified' => time(),
+            ));
+            return null;
+        }
+
+        $context  = \context_module::instance((int)$cm->id);
+        $messages = array(
+            array('role' => 'system', 'content' => self::system_prompt()),
+            array('role' => 'user',   'content' => self::user_prompt($cm, $fbcfg, $context)),
+        );
+        $options = array(
+            'response_format' => array(
+                'type'        => 'json_schema',
+                'json_schema' => array(
+                    'name'   => 'local_aichat_brief',
+                    'strict' => true,
+                    'schema' => self::schema(),
+                ),
+            ),
+            'extra_body'  => array('enable_thinking' => false),
+            'temperature' => 0.3,
+            'max_tokens'  => 1200,
+        );
+        return new \local_aifeedback\request($messages, $options,
+            \local_aifeedback\models::for_component('local_aichat', 'model_moderation'));
+    }
+
+    /**
+     * Enregistre le brief généré.
+     *
+     * @param int   $cmid
+     * @param array $result JSON renvoyé par le modèle
+     * @throws \moodle_exception brief vide
+     */
+    public static function complete($cmid, array $result) {
+        global $DB;
+
+        $config = activity::get($cmid);
+        if ($config === null || $config->briefstatus !== 'pending') {
             return;
         }
-
-        try {
-            list($course, $cm) = get_course_and_cm_from_cmid((int)$cmid);
-            unset($course);
-            $fbcfg = self::source_config($cm);
-            if ($fbcfg === null) {
-                $DB->update_record(activity::TABLE, (object)array(
-                    'id'           => (int)$config->id,
-                    'briefstatus'  => 'none',
-                    'timemodified' => time(),
-                ));
-                return;
-            }
-
-            $context  = \context_module::instance((int)$cm->id);
-            $messages = array(
-                array('role' => 'system', 'content' => self::system_prompt()),
-                array('role' => 'user',   'content' => self::user_prompt($cm, $fbcfg, $context)),
-            );
-            $options = array(
-                'response_format' => array(
-                    'type'        => 'json_schema',
-                    'json_schema' => array(
-                        'name'   => 'local_aichat_brief',
-                        'strict' => true,
-                        'schema' => self::schema(),
-                    ),
-                ),
-                'extra_body'  => array('enable_thinking' => false),
-                'temperature' => 0.3,
-                'max_tokens'  => 1200,
-            );
-
-            $result = \local_aifeedback\api::call($messages, $options);
-            $text   = isset($result['brief']) ? trim((string)$result['brief']) : '';
-            if ($text === '') {
-                throw new \moodle_exception('brieferror_empty', 'local_aichat');
-            }
-
-            $DB->update_record(activity::TABLE, (object)array(
-                'id'           => (int)$config->id,
-                'brief'        => $text,
-                'briefstatus'  => 'ready',
-                'briefhash'    => self::hash($fbcfg),
-                'brieferror'   => null,
-                'timemodified' => time(),
-            ));
-
-        } catch (\Throwable $e) {
-            $DB->update_record(activity::TABLE, (object)array(
-                'id'           => (int)$config->id,
-                'briefstatus'  => 'failed',
-                'brieferror'   => \core_text::substr((string)$e->getMessage(), 0, 900),
-                'timemodified' => time(),
-            ));
-            throw $e; // la file de jobs journalise et retentera
+        $text = isset($result['brief']) ? trim((string)$result['brief']) : '';
+        if ($text === '') {
+            throw new \moodle_exception('brieferror_empty', 'local_aichat');
         }
+        list($course, $cm) = get_course_and_cm_from_cmid((int)$cmid);
+        unset($course);
+        $fbcfg = self::source_config($cm);
+
+        $DB->update_record(activity::TABLE, (object)array(
+            'id'           => (int)$config->id,
+            'brief'        => $text,
+            'briefstatus'  => 'ready',
+            'briefhash'    => ($fbcfg !== null) ? self::hash($fbcfg) : (string)$config->briefhash,
+            'brieferror'   => null,
+            'timemodified' => time(),
+        ));
+    }
+
+    /**
+     * Échec de la génération : nouvel essai différé tant que les échecs
+     * restent rares, sinon « failed » (l'enseignant peut relancer).
+     *
+     * @param int    $cmid
+     * @param string $error
+     * @param bool   $permanent
+     * @return int|null délai avant le nouvel essai, ou null
+     */
+    public static function fail($cmid, $error, $permanent = false) {
+        global $DB;
+
+        $config = activity::get($cmid);
+        if ($config === null || $config->briefstatus !== 'pending') {
+            return null;
+        }
+        $failures = \local_aifeedback\jobs::recent_failures('local_aichat',
+            (object)array('cmid' => (int)$cmid), time() - DAYSECS);
+        $retry = !$permanent && $failures < self::MAX_ATTEMPTS;
+        $DB->update_record(activity::TABLE, (object)array(
+            'id'           => (int)$config->id,
+            'briefstatus'  => $retry ? 'pending' : 'failed',
+            'brieferror'   => \core_text::substr((string)$error, 0, 900),
+            'timemodified' => time(),
+        ));
+        return $retry ? self::RETRY_DELAY : null;
     }
 
     /** Prompt système de fabrication du brief. */
