@@ -82,8 +82,10 @@ class jobs {
 
     /**
      * Relance une génération en REMPLAÇANT celle qui serait en cours (copie
-     * remise à nouveau, relance demandée par l'enseignant) : le job encore au
-     * load balancer est annulé, son résultat éventuel sera ignoré.
+     * remise à nouveau, relance demandée par l'enseignant) : le job encore en
+     * file au load balancer est annulé ; s'il est déjà en cours de génération,
+     * il va à son terme (voir client::cancel_if_queued) et son résultat est
+     * ignoré.
      *
      * @param string    $component
      * @param \stdClass $payload
@@ -93,12 +95,7 @@ class jobs {
         $active = self::active_job($component, $payload);
         if ($active !== null && in_array($active->status, array('submitting', 'submitted'), true)) {
             if ((string)$active->lbjobid !== '') {
-                try {
-                    client::cancel_job((string)$active->lbjobid);
-                } catch (\Throwable $e) {
-                    // Au pire, le load balancer termine un calcul inutile.
-                    debugging('local_aifeedback: annulation impossible — ' . $e->getMessage(), DEBUG_DEVELOPER);
-                }
+                client::cancel_if_queued((string)$active->lbjobid);
             }
             self::finish($active, 'cancelled', null);
         }

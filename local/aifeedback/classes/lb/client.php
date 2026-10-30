@@ -192,6 +192,31 @@ class client {
             new \stdClass(), self::headers());
     }
 
+    /**
+     * Annule un job SEULEMENT s'il attend encore son tour.
+     *
+     * Interrompre une génération déjà commencée rend la tentative
+     * « incertaine » pour le load balancer : la place du serveur IA reste
+     * occupée jusqu'à l'échéance de la tentative, puis le serveur est écarté
+     * jusqu'à confirmation manuelle de l'arrêt. Une génération commencée est
+     * donc laissée aller à son terme (son résultat sera ignoré).
+     *
+     * @param string $id
+     * @return bool true si le job a été annulé
+     */
+    public static function cancel_if_queued($id) {
+        try {
+            $job = self::get_job($id);
+            if (isset($job['status']) && $job['status'] === 'queued') {
+                self::cancel_job($id);
+                return true;
+            }
+        } catch (\Throwable $e) {
+            debugging('local_aifeedback: annulation impossible — ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+        return false;
+    }
+
     // =====================================================================
     //  CATALOGUE, ÉTAT, CONSOMMATION
     // =====================================================================

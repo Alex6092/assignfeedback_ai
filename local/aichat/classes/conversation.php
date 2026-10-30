@@ -190,20 +190,16 @@ class conversation {
     }
 
     /**
-     * Annule la génération d'un message encore en file ou en cours au load
-     * balancer (bouton « Arrêter », nouvelle discussion). Sans effet sur une
-     * génération déjà terminée.
+     * Libère la place d'un message qui attend encore son tour au load
+     * balancer (bouton « Arrêter », nouvelle discussion). Une réponse déjà en
+     * cours de génération n'est pas interrompue au serveur IA : le flux la
+     * lit jusqu'au bout sans plus l'afficher (voir client::cancel_if_queued).
      */
     public static function cancel_lbjob(\stdClass $message) {
         if (empty($message->lbjobid) || !\local_aifeedback\lb\client::configured()) {
             return;
         }
-        try {
-            \local_aifeedback\lb\client::cancel_job((string)$message->lbjobid);
-        } catch (\Throwable $e) {
-            // Au pire, la coupure du flux par le navigateur l'annulera.
-            debugging('local_aichat: annulation impossible — ' . $e->getMessage(), DEBUG_DEVELOPER);
-        }
+        \local_aifeedback\lb\client::cancel_if_queued((string)$message->lbjobid);
     }
 
     /** Enregistre la réponse complète et son rendu HTML. */

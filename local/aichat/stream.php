@@ -138,28 +138,43 @@ try {
 $messages = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
 
 $options = tutor::generation_options((int)$USER->id);
+// Une réponse abandonnée en cours de génération n'est pas coupée au serveur
+// IA (le load balancer garderait sa place bloquée) : elle est lue jusqu'au
+// bout sans être transmise.
+$options['drain_on_abort'] = true;
 
 $buffer    = '';
 $lastsave  = time();
 $aborted   = false;
+$lbjobid   = '';
 
 // Identifiant du job au load balancer (un par tour de génération) : le
 // widget s'en sert, via ajax.php, pour afficher le rang dans la file.
-$options['onjobid'] = function($jobid) use ($messageid) {
+$options['onjobid'] = function($jobid) use ($messageid, &$lbjobid) {
+    $lbjobid = (string)$jobid;
     conversation::attach_lbjob($messageid, $jobid);
     local_aichat_sse('queued', array('messageid' => (int)$messageid));
 };
 // Battement du load balancer pendant l'attente : relayé au navigateur (garde
 // la connexion ouverte à travers les proxys) ; c'est aussi le moment de
-// détecter que l'élève est parti, pour libérer sa place.
-$options['onwait'] = function() use (&$aborted) {
-    echo ": wait\n\n";
-    flush();
-    if (connection_aborted()) {
-        $aborted = true;
-        return false;
+// détecter que l'élève est parti. Si sa question attend encore son tour, la
+// connexion est coupée et le load balancer libère la place ; si la
+// génération a déjà commencé, on la laisse finir.
+$options['onwait'] = function() use (&$aborted, &$lbjobid) {
+    if (!$aborted) {
+        echo ": wait\n\n";
+        flush();
     }
-    return true;
+    if (!connection_aborted()) {
+        return true;
+    }
+    $aborted = true;
+    try {
+        $job = \local_aifeedback\lb\client::get_job($lbjobid);
+        return !(isset($job['status']) && $job['status'] === 'queued');
+    } catch (\Throwable $e) {
+        return true;
+    }
 };
 
 // Recherche ou lecture lancée : le widget l'affiche (sinon quelques secondes
@@ -171,11 +186,13 @@ $onsearch = function($label, $kind = 'web') {
 try {
     $result = generator::run($messages, $options,
         function($delta) use (&$buffer, &$lastsave, &$aborted, $messageid) {
+            // L'élève a fermé l'onglet ou cliqué « Arrêter » : la suite de la
+            // réponse n'est plus transmise (voir drain_on_abort).
+            if ($aborted) {
+                return false;
+            }
             $buffer .= $delta;
             local_aichat_sse('delta', array('t' => $delta));
-
-            // L'élève a fermé l'onglet ou cliqué « Arrêter » : on coupe la
-            // génération ; le load balancer l'annule et sert le suivant.
             if (connection_aborted()) {
                 $aborted = true;
                 return false;
@@ -199,10 +216,13 @@ try {
     $question = ($asked !== null) ? (string)$asked->content : '';
     $filetokens = ($asked !== null) ? \local_aichat\attachment::tokens_for_message((int)$asked->id) : 0;
 
-    if (!empty($result['aborted']) || $aborted) {
-        conversation::store_partial($messageid, $result['content']);
+    // Arrêt demandé pendant que le flux continuait (bouton « Arrêter ») :
+    // traité comme un abandon.
+    $cancelled = ($DB->get_field('local_aichat_message', 'status', array('id' => $messageid)) === 'cancelled');
+    if (!empty($result['aborted']) || $aborted || $cancelled) {
+        conversation::store_partial($messageid, $buffer);
         conversation::fail_message($messageid, 'cancelled', null, $access->context);
-        quota::record($messageid, $question, (string)$result['content'], $filetokens);
+        quota::record($messageid, $question, $buffer, $filetokens);
         exit;
     }
 

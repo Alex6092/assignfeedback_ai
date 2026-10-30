@@ -241,7 +241,14 @@ class api {
      *     $options['onjobid'] (suivi du rang, annulation) ;
      *   - pendant l'attente, le service envoie des commentaires SSE (« : queued »,
      *     « : heartbeat ») : chacun appelle $options['onwait'], qui peut lui aussi
-     *     retourner false pour abandonner.
+     *     retourner false pour abandonner (la connexion est alors coupée : à
+     *     réserver à une demande qui attend encore son tour).
+     *
+     * Avec $options['drain_on_abort'] (load balancer seulement), un arrêt
+     * demandé par $ondelta ne coupe PAS la connexion : la suite de la réponse
+     * est lue sans être transmise. Interrompre une génération commencée rendrait
+     * la tentative « incertaine » au load balancer, qui garderait la place du
+     * serveur IA occupée puis l'écarterait jusqu'à confirmation manuelle.
      *
      * Appel d'outils : si $options['tools'] est fourni (définitions au format
      * OpenAI), le modèle peut répondre par des appels d'outils au lieu (ou en
@@ -251,7 +258,8 @@ class api {
      * @param array    $messages messages OpenAI
      * @param array    $options  mêmes options que call() ('timeout' défaut 600,
      *                           1200 via le load balancer), plus 'tools',
-     *                           'tool_choice', 'onjobid' et 'onwait' (facultatifs)
+     *                           'tool_choice', 'onjobid', 'onwait' et
+     *                           'drain_on_abort' (facultatifs)
      * @param callable $ondelta  function(string $delta): bool|null — false = arrêter
      * @return array ['content' => string, 'finish_reason' => string|null,
      *                'usage' => array|null, 'aborted' => bool,
@@ -263,6 +271,7 @@ class api {
     public static function stream(array $messages, array $options, callable $ondelta) {
         $req = self::build_request($messages, $options);
         $islb = ($req['target'] === self::TARGET_LB);
+        $drain = $islb && !empty($options['drain_on_abort']);
 
         $payload = $req['payload'];
         $payload['stream'] = true;
@@ -310,7 +319,7 @@ class api {
                 }
                 return strlen($line);
             },
-            'CURLOPT_WRITEFUNCTION'   => function($ch, $data) use ($state, $ondelta) {
+            'CURLOPT_WRITEFUNCTION'   => function($ch, $data) use ($state, $ondelta, $drain) {
                 $len = strlen($data);
                 if ($state->httpcode === 0) {
                     $state->httpcode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -325,6 +334,12 @@ class api {
                 if (!self::feed_sse($state, $data, $ondelta)) {
                     if ($state->lberror === null) {
                         $state->aborted = true;
+                        if ($drain && !$state->cut) {
+                            // Arrêt pendant la génération : on lit la suite
+                            // sans la transmettre (voir drain_on_abort).
+                            $state->draining = true;
+                            return $len;
+                        }
                     }
                     return 0; // coupe la connexion (curl renverra un errno)
                 }
@@ -449,6 +464,8 @@ class api {
             'jobid'    => '',   // X-Job-ID (load balancer)
             'lberror'  => null, // événement d'erreur reçu après ouverture du flux
             'onwait'   => $onwait,
+            'cut'      => false, // abandon pendant l'attente : connexion coupée
+            'draining' => false, // arrêt pendant la génération : suite lue sans être transmise
         );
     }
 
@@ -494,9 +511,14 @@ class api {
      * @return bool false = interrompre
      */
     private static function consume_sse_line($line, \stdClass $state, callable $ondelta) {
+        if (!empty($state->draining)) {
+            return true; // réponse abandonnée : lue jusqu'au bout, plus transmise
+        }
         if ($line !== '' && $line[0] === ':') {
-            if (!empty($state->onwait)) {
-                return (call_user_func($state->onwait, trim(substr($line, 1))) !== false);
+            if (!empty($state->onwait)
+                    && call_user_func($state->onwait, trim(substr($line, 1))) === false) {
+                $state->cut = true;
+                return false;
             }
             return true;
         }
