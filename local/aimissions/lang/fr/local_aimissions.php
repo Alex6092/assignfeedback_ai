@@ -22,7 +22,7 @@ $string['privacy:metadata:llm:question'] = 'La question de l\'étudiant transmis
 $string['settings_heading']       = 'Missions client IA';
 $string['settings_intro']         = 'Ce plugin réutilise la connexion LLM globale configurée dans le plugin Correction IA (local_aifeedback). Les réglages ci-dessous n\'ajustent que la génération des missions.';
 $string['setting_model']          = 'Modèle de génération (optionnel)';
-$string['setting_model_desc']     = 'Modèle utilisé pour générer les missions. Laisser vide pour utiliser le modèle global de local_aifeedback. Un modèle économique suffit en général pour la génération.';
+$string['setting_model_desc']     = 'Modèle du catalogue du load balancer utilisé pour générer les missions, les messages et les réponses du client, et les évaluations de communication. Vide : le modèle des corrections IA. Un modèle économique suffit en général.';
 $string['setting_maxsprints']     = 'Nombre maximum de sprints par projet';
 $string['setting_maxsprints_desc'] = 'Plafond du nombre de sprints qu\'un même projet peut accumuler (sécurité).';
 
@@ -166,7 +166,6 @@ $string['comm_col_status']       = 'Statut';
 $string['comm_evaluate']         = 'Évaluer la communication';
 $string['comm_send']             = 'Envoyer vers EFE';
 $string['comm_evaluated']        = '{$a} étudiant(s) évalué(s).';
-$string['comm_partial']          = '{$a} étudiant(s) évalué(s). Les serveurs IA sont occupés : relancez l\'évaluation pour les étudiants restants.';
 $string['comm_sent']             = '{$a} positionnement(s) envoyé(s) vers EFE.';
 $string['comm_sendfailed']       = '{$a} envoi(s) en échec (voir les logs).';
 $string['comm_status_draft']     = 'À envoyer';
@@ -253,3 +252,9 @@ $string['dup_done_copy'] = '{$a} sprint(s) copié(s) : devoirs cachés, à relir
 $string['error_adapt_nosource'] = 'Le sprint à adapter n\'existe plus.';
 $string['setting_scalename'] = 'Barème des devoirs';
 $string['setting_scalename_desc'] = 'Nom du barème utilisé pour noter les devoirs générés (barème du cours, sinon du site). Il doit reprendre les 4 niveaux de la Correction IA (Maîtrise insuffisante, Maîtrise fragile, Maîtrise satisfaisante, Très bonne maîtrise) pour que la note soit posée automatiquement. Vide : note sur 100.';
+
+// Load balancer (générations asynchrones)
+$string['comm_evaluating']       = 'Évaluation lancée pour {$a} étudiant(s) : les résultats s\'affichent au fur et à mesure.';
+$string['comm_status_pending']   = 'Évaluation en cours';
+$string['comm_status_failed']    = 'Évaluation impossible';
+$string['status_commevaljob']    = 'Évaluation de la communication';

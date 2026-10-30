@@ -8,7 +8,6 @@
 
 require_once(__DIR__ . '/../../config.php');
 
-use local_aimissions\communication;
 use local_aimissions\efe_bridge;
 
 $courseid  = required_param('courseid', PARAM_INT);
@@ -44,59 +43,18 @@ if ((int)$project->groupid > 0) {
 
 // --- Traitement -----------------------------------------------------------
 if ($action === 'evaluate' && data_submitted() && confirm_sesskey() && $commcode !== '') {
-    // L'évaluation enchaîne un appel LLM par étudiant : on évite le timeout.
-    \core_php_time_limit::raise(600);
-    $done = 0;
-    $busy = false;
+    // Une évaluation par étudiant ayant écrit au client, confiée au serveur
+    // IA : les résultats arrivent au fil de l'eau (la page se rafraîchit).
+    $queued = 0;
     foreach ($members as $m) {
-        $tickets = $DB->get_records('local_aimissions_ticket',
-            array('projectid' => $projectid, 'userid' => (int)$m->id), 'timecreated ASC');
-        if (empty($tickets)) {
+        if (!$DB->record_exists('local_aimissions_ticket',
+                array('projectid' => $projectid, 'userid' => (int)$m->id))) {
             continue;
         }
-        try {
-            // Une place du pool par étudiant, rendue aussitôt : un élève en
-            // attente du tuteur passe entre deux évaluations.
-            $eval = \local_aifeedback\pool::run(\local_aifeedback\pool::PURPOSE_FEEDBACK,
-                function() use ($project, $tickets) {
-                    return communication::evaluate_student($project, array_values($tickets));
-                }, 30, 'local_aimissions');
-        } catch (\moodle_exception $e) {
-            if ($e->errorcode === 'poolbusy') {
-                $busy = true;
-                break; // serveurs saturés : inutile d'insister pour les suivants
-            }
-            debugging('[local_aimissions] comm eval failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            continue;
-        } catch (\Throwable $e) {
-            debugging('[local_aimissions] comm eval failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            continue;
-        }
-        $now = time();
-        $existing = $DB->get_record('local_aimissions_commeval',
-            array('projectid' => $projectid, 'userid' => (int)$m->id));
-        $rec = $existing ?: new stdClass();
-        $rec->projectid    = $projectid;
-        $rec->userid       = (int)$m->id;
-        $rec->efecode      = $commcode;
-        $rec->colour       = $eval['colour'];
-        $rec->score        = $eval['score'];
-        $rec->comment      = $eval['comment'];
-        $rec->status       = 'draft';
-        $rec->timemodified = $now;
-        if ($existing) {
-            $DB->update_record('local_aimissions_commeval', $rec);
-        } else {
-            $rec->timecreated = $now;
-            $DB->insert_record('local_aimissions_commeval', $rec);
-        }
-        $done++;
+        \local_aimissions\job_handler::schedule_commeval($project, (int)$m->id, (int)$USER->id, $commcode);
+        $queued++;
     }
-    if ($busy) {
-        redirect($baseurl, get_string('comm_partial', 'local_aimissions', $done), null,
-            \core\output\notification::NOTIFY_WARNING);
-    }
-    redirect($baseurl, get_string('comm_evaluated', 'local_aimissions', $done), null,
+    redirect($baseurl, get_string('comm_evaluating', 'local_aimissions', $queued), null,
         \core\output\notification::NOTIFY_SUCCESS);
 }
 
@@ -131,6 +89,11 @@ if ($action === 'send' && data_submitted() && confirm_sesskey()) {
 }
 
 // --- Rendu ----------------------------------------------------------------
+$evaluating = $DB->record_exists('local_aimissions_commeval',
+    array('projectid' => $projectid, 'status' => 'pending'));
+if ($evaluating) {
+    $PAGE->set_periodic_refresh_delay(10);
+}
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('comm_title', 'local_aimissions'));
 
@@ -188,10 +151,16 @@ foreach ($members as $m) {
     $comment = '';
     $status = '';
     if ($eval) {
-        $cm = $colourmap[$eval->colour] ?? array('badge bg-secondary', s($eval->colour));
-        $level = html_writer::span($cm[1], $cm[0]) . ' <span class="text-muted">(' . (int)$eval->score . ')</span>';
-        $comment = s($eval->comment);
-        if ($eval->status === 'sent') {
+        if (!empty($eval->colour)) {
+            $cm = $colourmap[$eval->colour] ?? array('badge bg-secondary', s($eval->colour));
+            $level = html_writer::span($cm[1], $cm[0]) . ' <span class="text-muted">(' . (int)$eval->score . ')</span>';
+            $comment = s($eval->comment);
+        }
+        if ($eval->status === 'pending') {
+            $status = html_writer::span(get_string('comm_status_pending', 'local_aimissions'), 'badge bg-info text-white');
+        } else if ($eval->status === 'failed') {
+            $status = html_writer::span(get_string('comm_status_failed', 'local_aimissions'), 'badge bg-danger');
+        } else if ($eval->status === 'sent') {
             $status = html_writer::span(get_string('comm_status_sent', 'local_aimissions'), 'badge bg-success');
         } else {
             $status = html_writer::span(get_string('comm_status_draft', 'local_aimissions'), 'badge bg-secondary text-white');

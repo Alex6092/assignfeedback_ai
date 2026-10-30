@@ -21,13 +21,13 @@ if ($hassiteconfig) {
         get_string('settings_intro', 'local_aimissions')
     ));
 
-    // Modèle de génération (vide = modèle global local_aifeedback).
-    $settings->add(new admin_setting_configtext(
+    // Modèle de génération (catalogue du load balancer ; vide = modèle des
+    // corrections IA de local_aifeedback).
+    $settings->add(new \local_aifeedback\admin\lb_model_setting(
         'local_aimissions/model',
         get_string('setting_model', 'local_aimissions'),
         get_string('setting_model_desc', 'local_aimissions'),
-        '',
-        PARAM_RAW_TRIMMED
+        get_string('lbmodel_default', 'local_aifeedback')
     ));
 
     // Plafond de sprints par projet.

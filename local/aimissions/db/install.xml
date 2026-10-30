@@ -102,7 +102,7 @@
         <FIELD NAME="courseid"     TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
         <FIELD NAME="userid"       TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false"/>
         <FIELD NAME="projectid"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Projet ciblé (0 si à créer pendant le job)."/>
-        <FIELD NAME="kind"         TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="mission" COMMENT="mission|event|ticket."/>
+        <FIELD NAME="kind"         TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="mission" COMMENT="mission|event|ticket|commeval."/>
         <FIELD NAME="params"       TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Paramètres du job (JSON)."/>
         <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="pending" COMMENT="pending|running|done|failed."/>
         <FIELD NAME="notbefore"    TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Ne pas exécuter avant ce timestamp (réponses client différées)."/>
@@ -132,7 +132,7 @@
         <FIELD NAME="colour"       TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="vert|bleu|jaune|rouge."/>
         <FIELD NAME="score"        TYPE="int"  LENGTH="4"  NOTNULL="true"  SEQUENCE="false" DEFAULT="0" COMMENT="Score 0-100 estimé."/>
         <FIELD NAME="comment"      TYPE="text"             NOTNULL="false" SEQUENCE="false" COMMENT="Commentaire d'évaluation (IA)."/>
-        <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="draft" COMMENT="draft|sent."/>
+        <FIELD NAME="status"       TYPE="char" LENGTH="20" NOTNULL="true"  SEQUENCE="false" DEFAULT="draft" COMMENT="pending|failed|draft|sent."/>
         <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
         <FIELD NAME="timemodified" TYPE="int"  LENGTH="10" NOTNULL="true"  SEQUENCE="false" DEFAULT="0"/>
       </FIELDS>

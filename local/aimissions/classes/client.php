@@ -13,16 +13,16 @@ defined('MOODLE_INTERNAL') || die();
 class client {
 
     /**
-     * Génère la réponse du client à un lot de messages + sa réaction.
+     * Demande de génération de la réponse du client à un lot de messages
+     * (confiée au load balancer par la file de jobs).
      *
      * @param \stdClass      $project la fiche projet (entreprise, persona, dossier, clientstatus)
      * @param \stdClass|null $mission la mission en cours (contexte), ou null
      * @param array          $batch   tickets en attente (anciens → récents), objets {question, userid, timecreated}
      * @param array          $metrics métriques de relance : count, senders, mininterval, sincefirst (secondes)
-     * @return array{reply:string, reaction:string} reaction ∈ {none, warning, ended}
-     * @throws \moodle_exception si l'appel LLM échoue
+     * @return array {messages, options}
      */
-    public static function respond(\stdClass $project, ?\stdClass $mission, array $batch, array $metrics): array {
+    public static function request(\stdClass $project, ?\stdClass $mission, array $batch, array $metrics): array {
         $messages = array(
             array('role' => 'system', 'content' => self::system_prompt($project, $mission)),
             array('role' => 'user',   'content' => self::user_prompt($batch, $metrics)),
@@ -39,13 +39,18 @@ class client {
             'temperature' => 0.5,
             'max_tokens'  => 800,
         );
-        $model = (string)get_config('local_aimissions', 'model');
-        if ($model !== '') {
-            $options['model'] = $model;
-        }
+        return array('messages' => $messages, 'options' => $options);
+    }
 
-        $result = \local_aifeedback\api::call($messages, $options);
-        if (!is_array($result) || empty($result['reply'])) {
+    /**
+     * Réponse du client et sa réaction, à partir du résultat du modèle.
+     *
+     * @param array $result JSON renvoyé par le modèle
+     * @return array{reply:string, reaction:string} reaction ∈ {none, warning, ended}
+     * @throws \moodle_exception si le résultat est inexploitable
+     */
+    public static function parse(array $result): array {
+        if (empty($result['reply'])) {
             throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
         }
         $reaction = (isset($result['reaction'])
