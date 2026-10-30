@@ -1,13 +1,13 @@
 <?php
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026091600;
+$plugin->version   = 2026103000;
 $plugin->requires  = 2023042400; // Moodle 4.2
 $plugin->component = 'local_aiquizgen';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.11.1';
+$plugin->release   = '0.12.0';     // Une étape par type de question via le load balancer, sans doublons
 $plugin->dependencies = array(
-    'local_aifeedback'     => 2026091600, // content_extractor::bytes_to_data_url, file d'attente, api::call
+    'local_aifeedback'     => 2026103000, // file adossée au load balancer (async_handler, jobs)
     'qtype_aishortanswer'  => 2026052901, // génération de questions à réponse courte IA
     'qtype_aiessay'        => 2026052902, // génération de compositions IA
     // Dépendances OPTIONNELLES (détectées au runtime via core_component) :

@@ -6,29 +6,35 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Handler de génération d'un test IA.
  *
- * Pattern : implémente \local_aifeedback\job_handler (comme assignfeedback_ai)
- * et NON pas quiz_grader qui est dédié à la *correction* de questions.
+ * Pattern : implémente \local_aifeedback\async_handler (comme
+ * assignfeedback_ai) et NON pas quiz_grader qui est dédié à la *correction*
+ * de questions.
  *
- * Pipeline (étape 3) :
- *   1. Charge la ligne {local_aiquizgen_jobs} et passe en status='running'
- *   2. Lit le PDF source via local_aifeedback\content_extractor
- *   3. Appelle le LLM avec JSON Schema strict pour générer N QCM
- *   4. Crée une catégorie dans la banque de questions du cours
- *   5. Crée N questions qtype_multichoice
- *   6. Crée un module quiz dans le cours (visible=0, à l'enseignant de publier)
- *   7. Y ajoute les questions
- *   8. Marque le job 'done' + stocke resultcategoryid et resultquizid
+ * Machine à états : une génération = une ÉTAPE par type de question demandé
+ * (QCM, réponse courte, composition, pool aléatoire, CodeRunner), chacune
+ * confiée au load balancer comme job asynchrone, puis une étape finale de
+ * construction du test :
+ *   1. première étape : lecture de la source (PDF ou leçon), texte mis en cache ;
+ *   2. chaque étape de génération reçoit la liste des questions DÉJÀ générées
+ *      par les étapes précédentes, pour ne pas les reposer ;
+ *   3. le résultat validé de l'étape est conservé ({local_aiquizgen_jobs}.generated),
+ *      puis l'étape suivante est soumise ;
+ *   4. étape « build » : module quiz (caché), catégorie dans sa banque,
+ *      questions, accrochage, status 'done'.
  *
- * Sur erreur transitoire (LLM down, parse échoué) : retry jusqu'à MAX_ATTEMPTS,
- * puis bascule en 'failed' avec lasterror. Le job_handler propage le throw
- * pour que le dispatcher arrête le drainage du tick courant.
+ * Un échec ne fait recommencer QUE l'étape en cours (MAX_ATTEMPTS fois) ; une
+ * étape qui échoue définitivement est sautée, et le test est construit avec
+ * les questions obtenues. Le job n'échoue que s'il n'a produit aucune question.
  *
  * @package local_aiquizgen
  */
-class job_handler implements \local_aifeedback\job_handler {
+class job_handler implements \local_aifeedback\async_handler {
 
-    /** Tentatives techniques avant abandon. */
+    /** Tentatives techniques par étape avant de la sauter. */
     const MAX_ATTEMPTS = 3;
+
+    /** Délai avant un nouvel essai d'une étape (secondes). */
+    const RETRY_DELAY = 120;
 
     /** Notre table métier. */
     const TABLE = 'local_aiquizgen_jobs';
@@ -37,180 +43,401 @@ class job_handler implements \local_aifeedback\job_handler {
     //const SOURCE_TEXT_CAP = 20000;
     const SOURCE_TEXT_CAP = 80000;
 
+    /** Étapes de génération, dans l'ordre, et étape finale. */
+    const STEPS = array('mcq', 'shortanswer', 'essay', 'answersselect', 'coderunner');
+    const STEP_BUILD = 'build';
+
+    /** Questions déjà générées rappelées au modèle : longueur par question et plafond global. */
+    const PREVIOUS_ITEM_CHARS  = 200;
+    const PREVIOUS_TOTAL_CHARS = 8000;
+
     // =====================================================================
     //  PLOMBERIE (file d'attente partagée)
     // =====================================================================
 
     /**
-     * Enqueue un job pour traitement par le cron via la file partagée.
+     * Met en file la génération (ou sa reprise, à l'étape en cours).
      */
     public static function enqueue($jobid) {
-        $payload = new \stdClass();
-        $payload->rowid = (int)$jobid;
-        \local_aifeedback\task\run_job::enqueue('local_aiquizgen', $payload);
-    }
-
-    public function execute(\stdClass $payload): void {
         global $DB;
-
-        $jobid = isset($payload->rowid) ? (int)$payload->rowid : 0;
-        if ($jobid <= 0) {
+        $job = $DB->get_record(self::TABLE, array('id' => (int)$jobid));
+        if (!$job) {
             return;
         }
-        $job = $DB->get_record(self::TABLE, array('id' => $jobid));
-        if (!$job) {
-            return; // job supprimé entre-temps
-        }
-        if ($job->status !== 'pending') {
-            return; // déjà traité (ou pris par un autre worker)
-        }
-
-        // Passage en 'running' + incrément du compteur de tentatives.
-        $job->status       = 'running';
-        $job->attempts     = (int)$job->attempts + 1;
-        $job->timemodified = time();
-        $DB->update_record(self::TABLE, $job);
-
-        try {
-            $this->process_one($job);
-        } catch (\Throwable $e) {
-            $this->record_failure($jobid, $e);
-            $current = $DB->get_record(self::TABLE, array('id' => $jobid));
-            if ($current && (int)$current->attempts < self::MAX_ATTEMPTS) {
-                static::enqueue($jobid);
-            }
-            // Propage : le dispatcher coupe le drainage du tick courant.
-            throw $e;
-        }
+        $step = ((string)$job->step !== '') ? (string)$job->step
+            : self::next_step(self::step_counts($job), '');
+        \local_aifeedback\jobs::enqueue('local_aiquizgen', self::payload((int)$jobid, $step));
     }
 
-    public function find_drainable_payloads(): array {
+    /** Payload d'une étape : le job et l'étape visée (un résultat tardif d'une autre étape est ignoré). */
+    private static function payload(int $jobid, string $step): \stdClass {
+        return (object)array('rowid' => $jobid, 'step' => $step);
+    }
+
+    public function build_request(\stdClass $payload): ?\local_aifeedback\request {
         global $DB;
-        $rows = $DB->get_records_sql(
-            'SELECT id FROM {' . self::TABLE . '}
-              WHERE status = ?
-           ORDER BY timecreated ASC',
-            array('pending'),
-            0, 1
-        );
-        if (empty($rows)) {
-            return array();
+
+        if (empty($payload->step) && !empty($payload->rowid)) {
+            // Tâche mise en file avant la machine à états : on la remplace
+            // par celle de l'étape en cours.
+            self::enqueue((int)$payload->rowid);
+            return null;
         }
-        $first = reset($rows);
-        $payload = new \stdClass();
-        $payload->rowid = (int)$first->id;
-        return array($payload);
+        $job  = $this->current_job($payload);
+        if ($job === null) {
+            return null;
+        }
+        $step = (string)$payload->step;
+
+        if ($job->status === 'pending') {
+            // Démarrage (ou reprise après une relance).
+            $job->status       = 'running';
+            $job->step         = $step;
+            $job->timemodified = time();
+            $DB->update_record(self::TABLE, $job);
+        }
+
+        if ($step === self::STEP_BUILD) {
+            $this->build_quiz($job);
+            return null; // rien à générer : le test est construit
+        }
+
+        $params = json_decode((string)$job->params, true) ?: array();
+        $counts = self::step_counts($job);
+        $count  = isset($counts[$step]) ? $counts[$step] : 0;
+        if ($count <= 0) {
+            // Étape devenue sans objet (plugin désinstallé entre-temps).
+            $this->advance($job, $step);
+            return null;
+        }
+
+        try {
+            $source = $this->source_for($job);
+        } catch (\moodle_exception $e) {
+            if (in_array($e->errorcode, array('source_missing', 'source_empty',
+                    'source_lesson_missing', 'source_lesson_empty'), true)) {
+                // Source illisible : inutile de retenter étape par étape.
+                $this->mark_failed($job, $e->getMessage());
+                $this->log($job, 'ÉCHEC : ' . $e->getMessage());
+                return null;
+            }
+            throw $e;
+        }
+        $spec   = $this->step_spec($step, $params, $source, $count,
+            $this->previous_block(json_decode((string)$job->generated, true) ?: array()));
+        $this->log($job, get_string('log_step_submitted', 'local_aiquizgen', (object)array(
+            'step'  => get_string('step_' . $step, 'local_aiquizgen'),
+            'count' => $count,
+        )));
+
+        return new \local_aifeedback\request($spec['messages'], $spec['options'],
+            \local_aifeedback\models::for_component('local_aiquizgen'), (int)$job->userid);
+    }
+
+    public function complete(\stdClass $payload, array $result, ?array $usage): ?\stdClass {
+        global $DB;
+
+        $job = $this->current_job($payload);
+        if ($job === null || (string)$payload->step === self::STEP_BUILD) {
+            return null;
+        }
+        $step   = (string)$payload->step;
+        $params = json_decode((string)$job->params, true) ?: array();
+        $counts = self::step_counts($job);
+        $count  = isset($counts[$step]) ? $counts[$step] : 0;
+
+        $spec   = $this->step_spec($step, $params, array('text' => '', 'images' => array()), $count, '');
+        $valids = $this->filter_questions($result, $count, $spec['validator']);
+
+        $generated = json_decode((string)$job->generated, true) ?: array();
+        $generated[$step] = $valids;
+        $job->generated   = json_encode($generated, JSON_UNESCAPED_UNICODE);
+        $DB->update_record(self::TABLE, (object)array(
+            'id'        => (int)$job->id,
+            'generated' => $job->generated,
+        ));
+        $this->log($job, get_string('log_step_done', 'local_aiquizgen', (object)array(
+            'step'  => get_string('step_' . $step, 'local_aiquizgen'),
+            'count' => count($valids),
+        )));
+
+        return $this->advance($job, $step, false);
+    }
+
+    public function fail(\stdClass $payload, string $error, bool $permanent): ?int {
+        global $DB;
+
+        $job = $this->current_job($payload);
+        if ($job === null) {
+            return null;
+        }
+        $step = (string)$payload->step;
+        $job->stepattempts = (int)$job->stepattempts + 1;
+        $job->attempts     = (int)$job->attempts + 1;
+        $job->lasterror    = $error;
+        $job->timemodified = time();
+        $DB->update_record(self::TABLE, $job);
+        $this->log($job, 'ÉCHEC (' . get_string('step_' . $step, 'local_aiquizgen') . ') : ' . $error);
+
+        if (!$permanent && (int)$job->stepattempts < self::MAX_ATTEMPTS) {
+            return self::RETRY_DELAY;
+        }
+        if ($step === self::STEP_BUILD) {
+            $this->mark_failed($job, $error);
+            return null;
+        }
+        // Étape abandonnée : le test se construira avec les autres types.
+        $this->log($job, get_string('log_step_skipped', 'local_aiquizgen',
+            get_string('step_' . $step, 'local_aiquizgen')));
+        $this->advance($job, $step);
+        return null;
+    }
+
+    public function pending_payloads(int $before): array {
+        global $DB;
+        $rows = $DB->get_records_select(self::TABLE, 'status IN (?, ?) AND timemodified < ?',
+            array('pending', 'running', $before), 'id ASC', 'id, step, params', 0, 20);
+        $out = array();
+        foreach ($rows as $row) {
+            $step = ((string)$row->step !== '') ? (string)$row->step
+                : self::next_step(self::step_counts($row), '');
+            $out[] = self::payload((int)$row->id, $step);
+        }
+        return $out;
     }
 
     // =====================================================================
-    //  PIPELINE PRINCIPALE
+    //  MACHINE À ÉTATS
     // =====================================================================
 
     /**
-     * Orchestre toutes les étapes pour un job donné.
-     *
-     * @throws \Throwable au moindre incident — le caller fera retry/failed.
+     * Job encore en cours ET à l'étape du payload, ou null (job supprimé,
+     * terminé, ou résultat tardif d'une étape déjà dépassée).
      */
-    protected function process_one(\stdClass $job): void {
+    private function current_job(\stdClass $payload) {
         global $DB;
+        $jobid = isset($payload->rowid) ? (int)$payload->rowid : 0;
+        $step  = isset($payload->step) ? (string)$payload->step : '';
+        if ($jobid <= 0 || $step === '') {
+            return null;
+        }
+        $job = $DB->get_record(self::TABLE, array('id' => $jobid));
+        if (!$job || !in_array($job->status, array('pending', 'running'), true)) {
+            return null;
+        }
+        if ($job->status === 'running' && (string)$job->step !== $step) {
+            return null;
+        }
+        return $job;
+    }
 
-        $params           = json_decode((string)$job->params, true) ?: array();
-        $mcqcount         = isset($params['mcqcount'])
-            ? max(0, (int)$params['mcqcount']) : 0;
-        $shortanswercount = isset($params['shortanswercount'])
-            ? max(0, (int)$params['shortanswercount']) : 0;
-        $essaycount       = isset($params['essaycount'])
-            ? max(0, (int)$params['essaycount']) : 0;
-        $answersselectcount = isset($params['answersselectcount'])
-            ? max(0, (int)$params['answersselectcount']) : 0;
-        $coderunnercount    = isset($params['coderunnercount'])
-            ? max(0, (int)$params['coderunnercount']) : 0;
-        $coderunnerlang     = isset($params['coderunnerlanguage'])
-            ? (string)$params['coderunnerlanguage'] : 'python3';
-
+    /**
+     * Nombre de questions demandées par étape, après désactivation des types
+     * dont le plugin n'est pas installé.
+     *
+     * @return int[] étape => nombre
+     */
+    private static function step_counts(\stdClass $job): array {
+        $params = json_decode((string)$job->params, true) ?: array();
+        $keys   = array(
+            'mcq'           => 'mcqcount',
+            'shortanswer'   => 'shortanswercount',
+            'essay'         => 'essaycount',
+            'answersselect' => 'answersselectcount',
+            'coderunner'    => 'coderunnercount',
+        );
+        $counts = array();
+        foreach ($keys as $step => $key) {
+            $counts[$step] = isset($params[$key]) ? max(0, (int)$params[$key]) : 0;
+        }
         // Plugins tiers optionnels : on désactive silencieusement les
         // compteurs si le plugin correspondant n'est pas installé, pour ne
         // pas brûler un appel LLM dans le vide.
-        if ($answersselectcount > 0
-                && !\core_component::get_plugin_directory('qtype', 'answersselect')) {
-            $this->log($job, 'qtype_answersselect non installé : '
-                . $answersselectcount . ' question(s) à pool aléatoire ignorée(s).');
-            $answersselectcount = 0;
+        foreach (array('answersselect', 'coderunner') as $step) {
+            if ($counts[$step] > 0 && !\core_component::get_plugin_directory('qtype', $step)) {
+                $counts[$step] = 0;
+            }
         }
-        if ($coderunnercount > 0
-                && !\core_component::get_plugin_directory('qtype', 'coderunner')) {
-            $this->log($job, 'qtype_coderunner non installé : '
-                . $coderunnercount . ' question(s) CodeRunner ignorée(s).');
-            $coderunnercount = 0;
+        return $counts;
+    }
+
+    /**
+     * Étape qui suit $after (ou première étape si $after = '') : prochain
+     * type demandé, sinon la construction du test.
+     */
+    private static function next_step(array $counts, string $after): string {
+        $started = ($after === '');
+        foreach (self::STEPS as $step) {
+            if (!$started) {
+                $started = ($step === $after);
+                continue;
+            }
+            if (!empty($counts[$step])) {
+                return $step;
+            }
+        }
+        return self::STEP_BUILD;
+    }
+
+    /**
+     * Passe le job à l'étape suivant $step.
+     *
+     * @param bool $enqueue true : met l'étape suivante en file ; false : la
+     *                      renvoie (complete() la fait soumettre aussitôt)
+     * @return \stdClass|null payload de l'étape suivante (si $enqueue = false)
+     */
+    private function advance(\stdClass $job, string $step, bool $enqueue = true): ?\stdClass {
+        global $DB;
+        $next = self::next_step(self::step_counts($job), $step);
+        $DB->update_record(self::TABLE, (object)array(
+            'id'           => (int)$job->id,
+            'step'         => $next,
+            'stepattempts' => 0,
+            'timemodified' => time(),
+        ));
+        $payload = self::payload((int)$job->id, $next);
+        if (!$enqueue) {
+            return $payload;
+        }
+        \local_aifeedback\jobs::enqueue('local_aiquizgen', $payload);
+        return null;
+    }
+
+    /**
+     * Source de la génération. Le texte est extrait une fois (première étape)
+     * puis réutilisé ; les images, si la vision est active, sont ré-extraites
+     * du fichier à chaque étape plutôt que conservées en base.
+     *
+     * @return array {text, images}
+     */
+    private function source_for(\stdClass $job): array {
+        global $DB;
+        if ((string)$job->sourcetext !== '' && $this->vision_image_budget() === 0) {
+            return array('text' => (string)$job->sourcetext, 'images' => array());
+        }
+        $first = ((string)$job->sourcetext === '');
+        if ($first) {
+            $this->log($job, 'Lecture de la source…');
+        }
+        $source = $this->extract_source($job, \context_course::instance((int)$job->courseid));
+        if ($first) {
+            $DB->set_field(self::TABLE, 'sourcetext', $source['text'], array('id' => $job->id));
+            $job->sourcetext = $source['text'];
+            $imgcount = count($source['images']);
+            $this->log($job, 'Texte extrait : ' . strlen($source['text']) . ' caractères'
+                . ($imgcount > 0 ? ', ' . $imgcount . ' image(s)' : '') . '.');
+        }
+        return $source;
+    }
+
+    /**
+     * Demande de génération d'une étape.
+     *
+     * @return array {messages, options, count, validator}
+     */
+    private function step_spec(string $step, array $params, array $source, int $count, string $previous): array {
+        switch ($step) {
+            case 'mcq':
+                return $this->generate_mcqs($source['text'], $count, $source['images'], $previous);
+            case 'shortanswer':
+                return $this->generate_shortanswers($source['text'], $count, $source['images'], $previous);
+            case 'essay':
+                return $this->generate_essays($source['text'], $count, $source['images'], $previous);
+            case 'answersselect':
+                return $this->generate_answersselects($source['text'], $count, $source['images'], $previous);
+            case 'coderunner':
+                $language = isset($params['coderunnerlanguage']) ? (string)$params['coderunnerlanguage'] : 'python3';
+                return $this->generate_coderunners($source['text'], $count, $language, $source['images'], $previous);
+        }
+        throw new \coding_exception('Étape inconnue : ' . $step);
+    }
+
+    /**
+     * Rappel au modèle des questions déjà générées par les étapes
+     * précédentes : il ne doit ni les reposer, ni les reformuler, ni tester
+     * la même notion de la même façon.
+     *
+     * @param array $generated étape => questions validées
+     * @return string bloc à ajouter au message utilisateur ('' si aucune)
+     */
+    private function previous_block(array $generated): string {
+        $lines = array();
+        $total = 0;
+        foreach (self::STEPS as $step) {
+            if (empty($generated[$step]) || !is_array($generated[$step])) {
+                continue;
+            }
+            $label = get_string('step_' . $step, 'local_aiquizgen');
+            foreach ($generated[$step] as $q) {
+                $name = isset($q['name']) ? trim((string)$q['name']) : '';
+                $text = isset($q['questiontext']) ? trim($this->html_to_text((string)$q['questiontext'])) : '';
+                $text = preg_replace('/\s+/u', ' ', $text);
+                if (\core_text::strlen($text) > self::PREVIOUS_ITEM_CHARS) {
+                    $text = \core_text::substr($text, 0, self::PREVIOUS_ITEM_CHARS) . '…';
+                }
+                $line = '- [' . $label . '] ' . ($name !== '' ? $name . ' — ' : '') . $text;
+                $total += \core_text::strlen($line);
+                if ($total > self::PREVIOUS_TOTAL_CHARS) {
+                    $lines[] = '- (…)';
+                    break 2;
+                }
+                $lines[] = $line;
+            }
+        }
+        if (empty($lines)) {
+            return '';
+        }
+        return "\n\nQUESTIONS DÉJÀ GÉNÉRÉES POUR CE TEST (par les étapes précédentes) :\n"
+            . implode("\n", $lines) . "\n\n"
+            . "Ne repose aucune de ces questions, ne les reformule pas et n'évalue pas la même "
+            . "notion de la même façon : couvre d'autres points de la source, ou les mêmes "
+            . "notions sous un angle réellement différent.";
+    }
+
+    /** Job définitivement en échec. */
+    private function mark_failed(\stdClass $job, string $error): void {
+        global $DB;
+        $DB->update_record(self::TABLE, (object)array(
+            'id'           => (int)$job->id,
+            'status'       => 'failed',
+            'lasterror'    => $error,
+            'timemodified' => time(),
+        ));
+    }
+
+    // =====================================================================
+    //  CONSTRUCTION DU TEST (étape finale)
+    // =====================================================================
+
+    /**
+     * Crée le test à partir des questions générées par toutes les étapes.
+     *
+     * @throws \Throwable au moindre incident — fail() retentera l'étape.
+     */
+    protected function build_quiz(\stdClass $job): void {
+        global $DB;
+
+        $params    = json_decode((string)$job->params, true) ?: array();
+        $generated = json_decode((string)$job->generated, true) ?: array();
+        $mcqs      = isset($generated['mcq']) ? (array)$generated['mcq'] : array();
+        $sas       = isset($generated['shortanswer']) ? (array)$generated['shortanswer'] : array();
+        $essays    = isset($generated['essay']) ? (array)$generated['essay'] : array();
+        $ansels    = isset($generated['answersselect']) ? (array)$generated['answersselect'] : array();
+        $coders    = isset($generated['coderunner']) ? (array)$generated['coderunner'] : array();
+        $coderunnerlang = isset($params['coderunnerlanguage'])
+            ? (string)$params['coderunnerlanguage'] : 'python3';
+
+        if (empty($mcqs) && empty($sas) && empty($essays)
+                && empty($ansels) && empty($coders)) {
+            $this->mark_failed($job, get_string('llm_no_questions', 'local_aiquizgen'));
+            $this->log($job, 'ÉCHEC : ' . get_string('llm_no_questions', 'local_aiquizgen'));
+            return;
         }
 
         $quizname = isset($params['quizname'])
             ? trim((string)$params['quizname']) : 'Test IA';
         if ($quizname === '') {
             $quizname = 'Test IA';
-        }
-        if ($mcqcount + $shortanswercount + $essaycount
-                + $answersselectcount + $coderunnercount < 1) {
-            throw new \moodle_exception('error_total_min', 'local_aiquizgen');
-        }
-
-        // Contexte cours : sert UNIQUEMENT à retrouver le PDF source
-        // (stocké dans la file area du cours par generate.php).
-        $coursecontext = \context_course::instance((int)$job->courseid);
-
-        // --- 1. Extraction de la source (PDF ou leçon) ---
-        $this->log($job, 'Lecture de la source…');
-        $source = $this->extract_source($job, $coursecontext);
-        $DB->set_field(self::TABLE, 'sourcetext', $source['text'],
-            array('id' => $job->id));
-        $imgcount = count($source['images']);
-        $this->log($job, 'Texte extrait : ' . strlen($source['text']) . ' caractères'
-            . ($imgcount > 0 ? ', ' . $imgcount . ' image(s)' : '') . '.');
-
-        // --- 2. Génération des questions via LLM (un appel par type) ---
-        $mcqs    = array();
-        $sas     = array();
-        $essays  = array();
-        $ansels  = array();
-        if ($mcqcount > 0) {
-            $this->log($job, 'Appel LLM (génération de ' . $mcqcount . ' QCM)…');
-            $mcqs = $this->generate_mcqs($source['text'], $mcqcount, $source['images']);
-            $this->log($job, 'LLM a renvoyé ' . count($mcqs) . ' QCM valide(s).');
-        }
-        if ($shortanswercount > 0) {
-            $this->log($job, 'Appel LLM (génération de ' . $shortanswercount
-                . ' réponse(s) courte(s))…');
-            $sas = $this->generate_shortanswers($source['text'], $shortanswercount,
-                $source['images']);
-            $this->log($job, 'LLM a renvoyé ' . count($sas) . ' réponse(s) courte(s) valide(s).');
-        }
-        if ($essaycount > 0) {
-            $this->log($job, 'Appel LLM (génération de ' . $essaycount
-                . ' composition(s))…');
-            $essays = $this->generate_essays($source['text'], $essaycount,
-                $source['images']);
-            $this->log($job, 'LLM a renvoyé ' . count($essays) . ' composition(s) valide(s).');
-        }
-        if ($answersselectcount > 0) {
-            $this->log($job, 'Appel LLM (génération de ' . $answersselectcount
-                . ' question(s) à pool aléatoire)…');
-            $ansels = $this->generate_answersselects($source['text'], $answersselectcount,
-                $source['images']);
-            $this->log($job, 'LLM a renvoyé ' . count($ansels)
-                . ' question(s) à pool aléatoire valide(s).');
-        }
-        $coders = array();
-        if ($coderunnercount > 0) {
-            $this->log($job, 'Appel LLM (génération de ' . $coderunnercount
-                . ' exercice(s) CodeRunner en « ' . $coderunnerlang . ' »)…');
-            $coders = $this->generate_coderunners($source['text'], $coderunnercount,
-                $coderunnerlang, $source['images']);
-            $this->log($job, 'LLM a renvoyé ' . count($coders)
-                . ' exercice(s) CodeRunner valide(s).');
-        }
-        if (empty($mcqs) && empty($sas) && empty($essays)
-                && empty($ansels) && empty($coders)) {
-            throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
         }
 
         // --- 3. Création du module quiz EN PREMIER ---
@@ -557,13 +784,14 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Lance un appel LLM avec JSON Schema strict pour générer un tableau
-     * `questions`. Filtre via $validator, tronque à $count si LLM a dépassé,
-     * throw `llm_no_questions` si rien d'exploitable ne survit.
+     * Prépare la demande de génération d'un tableau `questions` avec JSON
+     * Schema strict. L'appel lui-même est confié au load balancer (job
+     * asynchrone) ; filter_questions() applique ensuite $validator au
+     * résultat.
      *
-     * Pattern partagé par les trois types de questions (MCQ / réponse courte
-     * IA / composition IA) — seuls le prompt système, le schéma JSON, le
-     * validateur et le `max_tokens` changent entre eux.
+     * Pattern partagé par tous les types de questions (MCQ / réponse courte
+     * IA / composition IA / pool aléatoire / CodeRunner) — seuls le prompt
+     * système, le schéma JSON, le validateur et le `max_tokens` changent.
      *
      * @param string   $systemprompt prompt rôle system
      * @param string   $userprompt   message user texte (sera enrichi de
@@ -574,27 +802,42 @@ class job_handler implements \local_aifeedback\job_handler {
      * @param int      $count        nombre demandé (tronqué si dépassement)
      * @param callable $validator    fonction(array $q): bool — true si exploitable
      * @param int      $maxtokens    plafond de tokens en réponse
+     * @return array {messages, options, count, validator}
      */
-    private function call_llm_for_questions(string $systemprompt, string $userprompt,
+    private function questions_request(string $systemprompt, string $userprompt,
             array $images, string $schemaname, array $schema, int $count,
             callable $validator, int $maxtokens = 4096): array {
 
-        $messages = $this->build_llm_messages($systemprompt, $userprompt, $images);
-        $options = array(
-            'response_format' => array(
-                'type'        => 'json_schema',
-                'json_schema' => array(
-                    'name'   => $schemaname,
-                    'strict' => true,
-                    'schema' => $schema,
+        return array(
+            'messages'  => $this->build_llm_messages($systemprompt, $userprompt, $images),
+            'options'   => array(
+                'response_format' => array(
+                    'type'        => 'json_schema',
+                    'json_schema' => array(
+                        'name'   => $schemaname,
+                        'strict' => true,
+                        'schema' => $schema,
+                    ),
                 ),
+                'temperature' => 0.4, // un peu de diversité, pas du créatif
+                'max_tokens'  => $maxtokens,
             ),
-            'temperature' => 0.4, // un peu de diversité, pas du créatif
-            'max_tokens'  => $maxtokens,
+            'count'     => $count,
+            'validator' => $validator,
         );
+    }
 
-        $result = \local_aifeedback\api::call($messages, $options);
-
+    /**
+     * Garde les questions exploitables du résultat (validateur du type),
+     * tronque à $count si le LLM a dépassé, throw `llm_no_questions` si rien
+     * d'exploitable ne survit.
+     *
+     * @param array    $result    JSON renvoyé par le modèle
+     * @param int      $count
+     * @param callable $validator
+     * @return array[]
+     */
+    private function filter_questions(array $result, int $count, callable $validator): array {
         if (!isset($result['questions']) || !is_array($result['questions'])) {
             throw new \moodle_exception('llm_no_questions', 'local_aiquizgen');
         }
@@ -630,14 +873,15 @@ class job_handler implements \local_aifeedback\job_handler {
      * Génère N QCM via le LLM (qtype_multichoice).
      */
     private function generate_mcqs(string $sourcetext, int $count,
-            array $images = array()): array {
+            array $images = array(), string $previous = ''): array {
         $user = "SOURCE :\n" . $sourcetext . "\n\n"
               . "Génère exactement " . $count
               . " QCM standard Moodle à partir de ce contenu.";
+        $user .= $previous;
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
-        return $this->call_llm_for_questions(
+        return $this->questions_request(
             $this->mcq_system_prompt(), $user, $images,
             'local_aiquizgen_mcq_response', $this->mcq_schema(), $count,
             array($this, 'is_valid_mcq')
@@ -648,14 +892,15 @@ class job_handler implements \local_aifeedback\job_handler {
      * Génère N questions à réponse courte (qtype_aishortanswer).
      */
     private function generate_shortanswers(string $sourcetext, int $count,
-            array $images = array()): array {
+            array $images = array(), string $previous = ''): array {
         $user = "SOURCE :\n" . $sourcetext . "\n\n"
               . "Génère exactement " . $count
               . " questions à réponse courte à partir de ce contenu.";
+        $user .= $previous;
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
-        return $this->call_llm_for_questions(
+        return $this->questions_request(
             $this->sa_system_prompt(), $user, $images,
             'local_aiquizgen_sa_response', $this->sa_schema(), $count,
             array($this, 'is_valid_sa')
@@ -668,15 +913,16 @@ class job_handler implements \local_aifeedback\job_handler {
      * + une liste de compétences — facilement 600-1000 tokens par item.
      */
     private function generate_essays(string $sourcetext, int $count,
-            array $images = array()): array {
+            array $images = array(), string $previous = ''): array {
         $user = "SOURCE :\n" . $sourcetext . "\n\n"
               . "Génère exactement " . $count
               . " sujet(s) de composition à partir de ce contenu.";
+        $user .= $previous;
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
         // Marge tokens plus large : 6000 (laisse ~1000 t/composition).
-        return $this->call_llm_for_questions(
+        return $this->questions_request(
             $this->essay_system_prompt(), $user, $images,
             'local_aiquizgen_essay_response', $this->essay_schema(), $count,
             array($this, 'is_valid_essay'), 6000
@@ -690,14 +936,15 @@ class job_handler implements \local_aifeedback\job_handler {
      * et Y mauvaises au hasard parmi ces pools.
      */
     private function generate_answersselects(string $sourcetext, int $count,
-            array $images = array()): array {
+            array $images = array(), string $previous = ''): array {
         $user = "SOURCE :\n" . $sourcetext . "\n\n"
               . "Génère exactement " . $count
               . " questions à POOL aléatoire à partir de ce contenu.";
+        $user .= $previous;
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
-        return $this->call_llm_for_questions(
+        return $this->questions_request(
             $this->answersselect_system_prompt(), $user, $images,
             'local_aiquizgen_answersselect_response',
             $this->answersselect_schema(), $count,
@@ -713,7 +960,7 @@ class job_handler implements \local_aifeedback\job_handler {
      * @param string $language coderunnertype cible (python3, c_function, etc.)
      */
     private function generate_coderunners(string $sourcetext, int $count,
-            string $language, array $images = array()): array {
+            string $language, array $images = array(), string $previous = ''): array {
         $specs    = $this->coderunner_language_specs();
         $paradigm = isset($specs[$language]['paradigm'])
             ? $specs[$language]['paradigm'] : 'function';
@@ -722,15 +969,16 @@ class job_handler implements \local_aifeedback\job_handler {
               . "Génère exactement " . $count
               . " exercices de programmation pour le langage cible « " . $language . " » "
               . "à partir de ce contenu.";
+        $user .= $previous;
         if (!empty($images)) {
             $user .= $this->image_consigne();
         }
         // Le validateur dépend du paradigme (testcode vs stdin) : on le lie
-        // via une closure (call_llm_for_questions attend un callable(array)).
+        // via une closure (questions_request attend un callable(array)).
         $validator = function(array $q) use ($paradigm): bool {
             return $this->is_valid_coderunner($q, $paradigm);
         };
-        return $this->call_llm_for_questions(
+        return $this->questions_request(
             $this->coderunner_system_prompt($language), $user, $images,
             'local_aiquizgen_coderunner_response',
             $this->coderunner_schema($paradigm), $count,
@@ -740,7 +988,7 @@ class job_handler implements \local_aifeedback\job_handler {
 
     /**
      * Crée une catégorie dans la banque de questions, DANS LE CONTEXTE FOURNI
-     * (en pratique : le contexte module du quiz généré — voir process_one).
+     * (en pratique : le contexte module du quiz généré — voir build_quiz).
      *
      * Logique (Moodle 4.x/5.x) :
      *   - On récupère (ou crée) la catégorie « top » pseudo-racine du contexte
@@ -2463,41 +2711,5 @@ class job_handler implements \local_aifeedback\job_handler {
         $newlog  = ($current !== '' ? $current . "\n" : '') . $line;
         $DB->set_field(self::TABLE, 'log',          $newlog, array('id' => $job->id));
         $DB->set_field(self::TABLE, 'timemodified', time(),  array('id' => $job->id));
-    }
-
-    /**
-     * Enregistre l'échec. Si on a atteint MAX_ATTEMPTS, bascule en 'failed' ;
-     * sinon repasse en 'pending' pour permettre le retry.
-     *
-     * On capture autant de détails que possible : message du throwable +
-     * (pour les dml_exception) le `debuginfo` qui contient le vrai
-     * message SQL (colonne manquante, contrainte violée, etc.).
-     */
-    private function record_failure(int $jobid, \Throwable $e): void {
-        global $DB;
-
-        $job = $DB->get_record(self::TABLE, array('id' => $jobid));
-        if (!$job) {
-            return;
-        }
-
-        $errmsg = '[' . get_class($e) . '] ' . $e->getMessage();
-
-        // dml_exception expose la requête fautive et le message SQL natif
-        // dans la propriété debuginfo.
-        if ($e instanceof \dml_exception && !empty($e->debuginfo)) {
-            $errmsg .= "\n\nSQL debug : " . $e->debuginfo;
-        }
-        if (!empty($e->errorcode)) {
-            $errmsg .= "\n\nError code : " . $e->errorcode;
-        }
-
-        $job->lasterror    = $errmsg;
-        $job->timemodified = time();
-        $job->status       = ((int)$job->attempts >= self::MAX_ATTEMPTS) ? 'failed' : 'pending';
-        $DB->update_record(self::TABLE, $job);
-
-        // Ajoute aussi une ligne au journal pour qu'on voie où ça a cassé.
-        $this->log($job, 'ÉCHEC : ' . $errmsg);
     }
 }

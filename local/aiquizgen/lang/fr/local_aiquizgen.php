@@ -97,8 +97,8 @@ $string['status_running']        = 'En cours';
 $string['status_done']           = 'Terminé';
 $string['status_failed']         = 'Échec';
 
-$string['status_pending_help']   = 'Le job est en file d\'attente. La génération démarrera à la prochaine exécution du cron.';
-$string['status_running_help']   = 'Le LLM est en train de traiter votre demande. Cette page se rafraîchit automatiquement toutes les 5 secondes.';
+$string['status_pending_help']   = 'Le job est en file d\'attente. La génération démarrera sous peu.';
+$string['status_running_help']   = 'La génération est en cours : chaque type de question est demandé à son tour au serveur IA (avec la liste des questions déjà obtenues, pour éviter les doublons). Cette page se rafraîchit automatiquement toutes les 5 secondes.';
 $string['status_done_help']      = 'Le test a été généré avec succès. Vous pouvez maintenant ouvrir le quiz ou la catégorie créée et ajuster.';
 $string['status_failed_help']    = 'La génération a échoué.';
 $string['status_lasterror']      = 'Dernière erreur :';
@@ -132,3 +132,19 @@ $string['quiz_intro_generated']  = 'Quiz généré automatiquement par IA. À re
 //  Log (affichage sur la page de statut)
 // -----------------------------------------------------------
 $string['status_label_log']      = 'Journal de génération';
+
+// Machine à états (une étape par type de question)
+$string['step_mcq']             = 'QCM';
+$string['step_shortanswer']     = 'Réponse courte';
+$string['step_essay']           = 'Composition';
+$string['step_answersselect']   = 'Pool aléatoire';
+$string['step_coderunner']      = 'CodeRunner';
+$string['step_build']           = 'Construction du test';
+$string['status_currentstep']   = 'Étape en cours : {$a}';
+$string['log_step_submitted']   = 'Étape « {$a->step} » : {$a->count} question(s) demandée(s) au serveur IA…';
+$string['log_step_done']        = 'Étape « {$a->step} » : {$a->count} question(s) valide(s) reçue(s).';
+$string['log_step_skipped']     = 'Étape « {$a} » abandonnée après plusieurs échecs : le test sera construit sans ces questions.';
+
+// Réglages
+$string['setting_model']        = 'Modèle de génération des questions';
+$string['setting_model_help']   = 'Modèle du catalogue du load balancer utilisé pour générer les questions des tests. Vide : le modèle des corrections IA. Un modèle vision est nécessaire pour exploiter les images de la source.';
