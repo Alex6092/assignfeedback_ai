@@ -20,9 +20,9 @@ use core_privacy\local\request\writer;
  * Deux jeux de données personnelles :
  *   - {local_aifeedback_qgrading} : corrections IA des questions de quiz
  *     (feedback, note). Rattachées au CONTEXTE MODULE du quiz concerné.
- *   - {local_aifeedback_slot}     : tickets de file du pool de serveurs LLM
- *     (métadonnées techniques d'attente, sans contenu). Rattachés au
- *     CONTEXTE UTILISATEUR, faute de rattachement métier stable.
+ *   - {local_aifeedback_job}      : suivi des générations confiées au load
+ *     balancer (métadonnées, et réponse du modèle le temps de l'appliquer).
+ *     Rattachés au CONTEXTE UTILISATEUR, faute de rattachement métier stable.
  */
 class provider implements
         \core_privacy\local\metadata\provider,
@@ -38,13 +38,14 @@ class provider implements
             'timecreated'  => 'privacy:metadata:qgrading:timecreated',
         ), 'privacy:metadata:qgrading');
 
-        $collection->add_database_table('local_aifeedback_slot', array(
-            'userid'      => 'privacy:metadata:slot:userid',
-            'purpose'     => 'privacy:metadata:slot:purpose',
-            'component'   => 'privacy:metadata:slot:component',
-            'status'      => 'privacy:metadata:slot:status',
-            'timecreated' => 'privacy:metadata:slot:timecreated',
-        ), 'privacy:metadata:slot');
+        $collection->add_database_table('local_aifeedback_job', array(
+            'userid'      => 'privacy:metadata:job:userid',
+            'component'   => 'privacy:metadata:job:component',
+            'model'       => 'privacy:metadata:job:model',
+            'status'      => 'privacy:metadata:job:status',
+            'result'      => 'privacy:metadata:job:result',
+            'timecreated' => 'privacy:metadata:job:timecreated',
+        ), 'privacy:metadata:job');
 
         $collection->add_external_location_link('llm', array(
             'content' => 'privacy:metadata:llm:content',
@@ -68,12 +69,12 @@ class provider implements
               WHERE g.userid = :userid1",
             array('clmodule' => CONTEXT_MODULE, 'userid1' => $userid));
 
-        // Tickets de file → contexte de l'utilisateur.
+        // Suivi des générations → contexte de l'utilisateur.
         $contextlist->add_from_sql(
             "SELECT ctx.id
                FROM {context} ctx
               WHERE ctx.contextlevel = :cluser AND ctx.instanceid = :userid2
-                AND EXISTS (SELECT 1 FROM {local_aifeedback_slot} s WHERE s.userid = ctx.instanceid)",
+                AND EXISTS (SELECT 1 FROM {local_aifeedback_job} s WHERE s.userid = ctx.instanceid)",
             array('cluser' => CONTEXT_USER, 'userid2' => $userid));
 
         return $contextlist;
@@ -97,7 +98,7 @@ class provider implements
 
         if ($context instanceof context_user) {
             $userlist->add_from_sql('userid',
-                "SELECT s.userid FROM {local_aifeedback_slot} s WHERE s.userid = :userid",
+                "SELECT s.userid FROM {local_aifeedback_job} s WHERE s.userid = :userid",
                 array('userid' => $context->instanceid));
         }
     }
@@ -139,21 +140,22 @@ class provider implements
             }
 
             if ($context instanceof context_user && (int)$context->instanceid === (int)$userid) {
-                $rows = $DB->get_records('local_aifeedback_slot',
+                $rows = $DB->get_records('local_aifeedback_job',
                     array('userid' => $userid), 'timecreated ASC');
                 if ($rows) {
                     $out = array();
                     foreach ($rows as $row) {
                         $out[] = array(
-                            'purpose'     => $row->purpose,
                             'component'   => $row->component,
+                            'model'       => $row->model,
                             'status'      => $row->status,
+                            'result'      => $row->result,
                             'timecreated' => transform::datetime($row->timecreated),
                         );
                     }
                     writer::with_context($context)->export_data(
-                        array_merge($root, array(get_string('privacy:path:pool', 'local_aifeedback'))),
-                        (object)array('slots' => $out));
+                        array_merge($root, array(get_string('privacy:path:jobs', 'local_aifeedback'))),
+                        (object)array('jobs' => $out));
                 }
             }
         }
@@ -172,7 +174,7 @@ class provider implements
         }
 
         if ($context instanceof context_user) {
-            $DB->delete_records('local_aifeedback_slot', array('userid' => $context->instanceid));
+            $DB->delete_records('local_aifeedback_job', array('userid' => $context->instanceid));
         }
     }
 
@@ -188,7 +190,7 @@ class provider implements
                     $DB->delete_records_select('local_aifeedback_qgrading', "id $insql", $params);
                 }
             } else if ($context instanceof context_user && (int)$context->instanceid === (int)$userid) {
-                $DB->delete_records('local_aifeedback_slot', array('userid' => $userid));
+                $DB->delete_records('local_aifeedback_job', array('userid' => $userid));
             }
         }
     }
@@ -215,7 +217,7 @@ class provider implements
 
         if ($context instanceof context_user) {
             list($usql, $params) = $DB->get_in_or_equal($userids);
-            $DB->delete_records_select('local_aifeedback_slot', "userid $usql", $params);
+            $DB->delete_records_select('local_aifeedback_job', "userid $usql", $params);
         }
     }
 

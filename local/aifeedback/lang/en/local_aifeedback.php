@@ -9,82 +9,124 @@ $string['privacy:metadata:qgrading:status']      = 'Grading status (pending, gen
 $string['privacy:metadata:qgrading:aifeedback']  = 'The feedback produced by the AI for this response.';
 $string['privacy:metadata:qgrading:mark']        = 'The mark awarded by the AI.';
 $string['privacy:metadata:qgrading:timecreated'] = 'When the grading was created.';
-$string['privacy:metadata:slot']                 = 'Queue tickets of the LLM server pool (no content, only technical scheduling information).';
-$string['privacy:metadata:slot:userid']          = 'The user who made the request.';
-$string['privacy:metadata:slot:purpose']         = 'The requested purpose (tutor or grading).';
-$string['privacy:metadata:slot:component']       = 'The plugin that made the request.';
-$string['privacy:metadata:slot:status']          = 'Ticket status (queued, reserved, running, finished).';
-$string['privacy:metadata:slot:timecreated']     = 'When the request was made.';
-$string['privacy:metadata:llm']                  = 'Content sent to an external LLM service for analysis.';
+$string['privacy:metadata:job']                  = 'Tracking of the generations handed over to the inference load balancer.';
+$string['privacy:metadata:job:userid']           = 'The user the generation is made for.';
+$string['privacy:metadata:job:component']        = 'The plugin that made the request.';
+$string['privacy:metadata:job:model']            = 'The model used.';
+$string['privacy:metadata:job:status']           = 'Job status (sent, received, done, failed).';
+$string['privacy:metadata:job:result']           = 'The model response, kept only until it is applied.';
+$string['privacy:metadata:job:timecreated']      = 'When the request was made.';
+$string['privacy:metadata:llm']                  = 'Content sent for analysis to the inference load balancer of the school (or to an external API imposed by an activity).';
 $string['privacy:metadata:llm:content']          = 'The content sent to the model (student response, question, conversation message).';
 $string['privacy:path:qgrading']                 = 'AI gradings';
-$string['privacy:path:pool']                     = 'AI queue';
+$string['privacy:path:jobs']                     = 'AI generations';
 
 $string['taskname'] = 'AI generation (shared queue)';
-
-// API
-$string['api_heading']              = 'LLM API';
-$string['apiurl']                   = 'API URL';
-$string['apiurl_help']              = 'OpenAI-compatible Chat Completions endpoint. Default: http://localhost:1234/v1/chat/completions';
-$string['model']                    = 'Model name';
-$string['model_help']               = 'Model identifier used in API calls, e.g. qwen3.5-9b-instruct.';
-$string['apikey']                   = 'API key';
-$string['apikey_help']              = 'Secret key sent as the HTTP header "Authorization: Bearer ...". Leave empty if the server does not require one (LM Studio default). The value is encrypted at rest.';
+// AI server (inference load balancer)
+$string['lb_heading']               = 'AI server (load balancer)';
+$string['lb_heading_desc']          = 'All AI generations (grading, tutor, quiz generation, missions...) are handed over to the inference load balancer, which queues them and spreads them across the AI servers. Only activities configured with their own URL (external API) call it directly. In the load balancer administration, create an application for this Moodle with the callback base URL <code>{$a->base}</code>, then an API key allowed in async, stream and sync modes. Results arrive at <code>{$a->callback}</code>: the load balancer must be able to reach this address.';
+$string['lb_url']                   = 'Load balancer URL';
+$string['lb_url_help']              = 'Base address of the service, without "/v1", e.g. https://ai.my-school.org.';
+$string['lb_apikey']                = 'Application API key';
+$string['lb_apikey_help']           = 'Key created in the load balancer administration for the Moodle application (shown only once). Sent as "Authorization: Bearer ...". The value is encrypted at rest.';
+$string['lb_callbacksecret']        = 'Callback signing secret';
+$string['lb_callbacksecret_help']   = 'Callback secret of the application, given by the load balancer when the application is created (or rotated). It is used to check that received results really come from the load balancer. The value is encrypted at rest.';
+$string['lb_callbackurl']           = 'Callback URL (optional)';
+$string['lb_callbackurl_help']      = 'Address the load balancer sends results to. Leave empty to use {$a}. Only set it if the load balancer reaches Moodle through another address (internal network, for example).';
+$string['model_feedback']           = 'AI grading model';
+$string['model_feedback_help']      = 'Model of the load balancer catalogue used to grade assignments and AI quiz questions. It is also the model used by the other AI plugins (quiz generation, missions, tutor moderation...) that have no model of their own.';
 $string['defaultsystemprompt']      = 'Default system prompt';
-$string['defaultsystemprompt_help'] = 'Used when no assignment-level or question-level prompt is defined.';
+$string['defaultsystemprompt_help'] = 'Used when no prompt is defined at assignment or question level.';
+$string['lb_notconfigured']         = 'The AI load balancer is not configured (URL and API key, in the local_aifeedback settings).';
+$string['lb_nomodel']               = 'No model is configured for this generation ("AI grading model" setting of local_aifeedback).';
+$string['lb_error']                 = 'AI server: {$a}';
+$string['lb_jobfailed']             = 'Generation {$a->status} on the load balancer: {$a->message}';
+$string['lbmodel_choose']           = 'Choose a model...';
+$string['lbmodel_missing']          = '{$a} (not in the load balancer catalogue)';
+$string['lbmodel_unavailable']      = 'Model catalogue unavailable ({$a}): type the exact model identifier.';
+$string['lbmodel_label']            = '{$a->id}{$a->vision} · context {$a->context} · max output {$a->output}';
+$string['lbmodel_vision']           = 'vision';
+$string['lbmodel_default']          = 'AI grading model (default)';
+$string['task_process']             = 'Apply a received AI result';
+$string['task_reconcile']           = 'Reconcile AI jobs with the load balancer';
 
-// LLM server pool
-$string['pool_heading']              = 'LLM servers (load balancing)';
-$string['pool_heading_desc']         = 'You can declare up to 3 LLM servers. The AI tutor and the grading queue are spread across the servers that accept the requested purpose and have a free slot; if a server goes down, work automatically fails over to another one. Tutor requests are admitted FIRST: a student is waiting in front of their screen, a deferred grading is not. Leaving a slot URL empty disables it.';
-$string['pool_feedback']             = 'Spread the grading queue over the pool';
-$string['pool_feedback_help']        = 'If enabled (recommended), each grading takes a slot on one of the servers that accept gradings, several gradings can run in parallel, and a grading fails over to another server if its own is down. If disabled, back to the historical behaviour: a single grading at a time on the whole site, always on server 1. Activities configured with their own URL (external API) never go through the pool.';
-$string['pool_acquire_wait']         = 'Maximum wait for a slot (seconds)';
-$string['pool_acquire_wait_help']    = 'How long a background task waits for a server to become free before being rescheduled. Keep it short: while waiting, the cron process does not run any other site task (emails, backups...). Default: 10.';
-$string['poolbusy']                  = 'All AI servers are busy at the moment. Please try again shortly.';
+// Model usages (status page)
+$string['usage_feedback']           = 'grading';
+$string['usage_tutor']              = 'tutor';
+$string['usage_moderation']         = 'moderation / brief';
+$string['usage_quizgen']            = 'quiz generation';
+$string['usage_missions']           = 'missions';
+$string['usage_assignoverride']     = '{$a} assignment(s)';
+$string['usage_questionoverride']   = '{$a} question(s)';
 
-// Server status page
-$string['servers_link']              = 'View server status.';
-$string['servers_page']              = 'AI server status';
-$string['servers_intro']             = 'Load and health of the pool servers. The page refreshes every 15 seconds.';
-$string['servers_legacy']            = 'Spreading the grading queue is disabled: gradings run one at a time on server 1 (historical mode). Only the tutor uses the pool.';
-$string['servers_col_endpoint']      = 'Server';
-$string['servers_col_usages']        = 'Purposes';
-$string['servers_col_busy']          = 'Load';
-$string['servers_col_state']         = 'State';
-$string['servers_col_lasthour']      = 'Last hour';
-$string['servers_col_lastused']      = 'Last used';
-$string['servers_use_feedback']      = 'grading';
-$string['servers_use_tutor']         = 'tutor';
-$string['servers_inservice']         = 'In service';
-$string['servers_quarantine']        = 'Quarantined until {$a}';
-$string['servers_clear']             = 'Put back in service';
-$string['servers_cleared']           = 'Server {$a} put back in service.';
-$string['servers_failures']          = '{$a} failure(s) detected since installation';
-$string['servers_defaultmodel']      = 'global model';
-$string['servers_lasthour_value']    = '{$a->done} completed, {$a->failed} failed';
-$string['servers_never']             = 'never';
-$string['servers_queues']            = 'Waiting: {$a->tutor} tutor request(s), {$a->feedback} grading(s).';
-$string['servers_nofeedback']        = 'No server accepts gradings: they will never be processed. Tick "Allow grading" on at least one server.';
-$string['servers_concurrency']       = 'Your servers can process {$a->capacity} gradings in parallel, but Moodle only runs {$a->limit} background task processes at once ("task_adhoc_concurrency_limit" setting, Site administration > Server > Tasks): raise it to use the full capacity.';
-$string['servers_modeltip']          = 'Tip: each server uses its own model. Avoid forcing a single model at activity or plugin level (without a URL): it would then have to exist on every server that accepts gradings.';
-$string['server_heading']            = 'Server {$a}';
-$string['server1_desc']              = 'This slot uses the API URL, model and key entered above. It is always enabled.';
-$string['server_apiurl']             = 'API URL';
-$string['server_apiurl_help']        = 'OpenAI-compatible Chat Completions endpoint of this server, e.g. http://192.168.1.42:1234/v1/chat/completions. Leave empty to disable this slot.';
-$string['server_model']              = 'Model name';
-$string['server_model_help']         = 'Model to use on this server. Leave empty to fall back to the global model.';
-$string['server_apikey']             = 'API key';
-$string['server_apikey_help']        = 'Secret key for this server (sent as "Authorization: Bearer ..."). Leave empty if the server does not require one. The value is encrypted at rest.';
-$string['server_maxconcurrency']     = 'Maximum concurrent requests';
-$string['server_maxconcurrency_help'] = 'How many generations this server can handle AT THE SAME TIME. LM Studio usually serves one request at a time: leave 1 unless you enabled parallel processing. Beyond that, requests wait in the queue. Default: 1.';
-$string['server_use_feedback']       = 'Allow assignment and question grading';
-$string['server_use_feedback_help']  = 'If enabled, this server can process deferred gradings (job queue).';
-$string['server_use_tutor']          = 'Allow the AI tutor (student chat)';
-$string['server_use_tutor_help']     = 'If enabled, this server can process AI tutor conversations. Dedicating a server to the tutor prevents gradings from making students wait.';
-$string['stream_usage']              = 'Request token counts when streaming';
+// Job statuses
+$string['jobstatus_submitting']     = 'Sending';
+$string['jobstatus_submitted']      = 'At the load balancer';
+$string['jobstatus_received']       = 'Received';
+$string['jobstatus_processing']     = 'Applying';
+$string['jobstatus_done']           = 'Done';
+$string['jobstatus_failed']         = 'Failed';
+$string['jobstatus_cancelled']      = 'Cancelled';
+
+// AI server status page
+$string['servers_link']             = 'View the AI server status.';
+$string['servers_page']             = 'AI server status';
+$string['servers_intro']            = 'What the inference load balancer reports through its API, and the Moodle jobs in progress. The page refreshes every 15 seconds.';
+$string['servers_notconfigured']    = 'The load balancer is not configured. Enter its URL, the API key and the callback secret in the <a href="{$a}">settings</a>.';
+$string['servers_health']           = 'Connection';
+$string['servers_reachable']        = 'Service reachable';
+$string['servers_unreachable']      = 'Service unreachable';
+$string['servers_release']          = 'version {$a}';
+$string['servers_authok']           = 'API key accepted';
+$string['servers_autherror']        = 'API key rejected';
+$string['servers_auth401']          = 'key missing, unknown or disabled.';
+$string['servers_auth403']          = 'insufficient rights for this key.';
+$string['servers_auth403ip']        = 'the IP address of this Moodle server is not allowed for this key.';
+$string['servers_lbadmin']          = 'Open the load balancer administration (per AI server details, jobs, per-student quotas)';
+$string['servers_capacity']         = 'Capacity and load per model';
+$string['servers_capacity_note']    = 'Figures aggregated per model over the active AI servers. An occupied slot is a running generation, or an interrupted generation whose stop is not confirmed yet.';
+$string['servers_noworker']         = 'no server available';
+$string['servers_workers_value']    = '{$a->available} / {$a->total} available';
+$string['servers_busy_value']       = '{$a->occupied} / {$a->capacity}';
+$string['servers_catalog']          = 'Model catalogue';
+$string['servers_modelmissing']     = 'Model "{$a->model}" is configured in Moodle ({$a->usages}) but missing from the load balancer catalogue: the matching generations will be rejected.';
+$string['servers_usage']            = 'Application usage';
+$string['servers_nousage']          = 'No usage over the last 7 days.';
+$string['servers_tokens_value']     = '{$a->total} ({$a->prompt} input, {$a->completion} output)';
+$string['servers_quotas']           = 'Remaining budgets:';
+$string['servers_noquota']          = 'No active token quota for the application or the key.';
+$string['servers_quota_credit']     = '{$a->scope}: {$a->available} / {$a->limit} credit tokens';
+$string['servers_quota_window']     = '{$a->scope}: {$a->available} / {$a->limit} tokens over {$a->hours} h';
+$string['servers_scope_application'] = 'application';
+$string['servers_scope_key']        = 'key';
+$string['servers_moodle']           = 'Moodle jobs (last 24 hours)';
+$string['servers_nojobs']           = 'No job submitted to the load balancer in the last 24 hours.';
+$string['servers_moodletokens']     = 'Tokens used by these jobs: {$a->prompt} input, {$a->completion} output.';
+$string['servers_active']           = 'Jobs in progress (oldest first)';
+$string['servers_errors']           = 'Latest errors';
+$string['servers_attempt']          = 'submission #{$a}';
+$string['servers_reconcile']        = 'Run reconciliation now';
+$string['servers_reconcile_help']   = 'Asks the load balancer about jobs without news for more than 10 minutes, applies pending results and re-queues orphan work. The scheduled task does it automatically every 5 minutes.';
+$string['servers_reconciled']       = 'Reconciliation done.';
+$string['servers_col_model']        = 'Model';
+$string['servers_col_usages']       = 'Used in Moodle for';
+$string['servers_col_workers']      = 'AI servers';
+$string['servers_col_busy']         = 'Occupied slots';
+$string['servers_col_vision']       = 'Vision';
+$string['servers_col_context']      = 'Context (tokens)';
+$string['servers_col_output']       = 'Max output (tokens)';
+$string['servers_col_tokens24h']    = 'Tokens 24 h';
+$string['servers_col_tokens7d']     = 'Tokens 7 days';
+$string['servers_col_attempts7d']   = 'Generations 7 days';
+$string['servers_col_component']    = 'Plugin';
+$string['servers_col_state']        = 'State';
+$string['servers_col_lbjob']        = 'Load balancer job';
+$string['servers_col_since']        = 'Since';
+$string['servers_col_when']         = 'Date';
+$string['servers_col_error']        = 'Error';
+
 $string['reasoning_budget']          = 'Reasoning budget (tokens)';
 $string['reasoning_budget_help']     = 'For reasoning models (Qwen3, gpt-oss, DeepSeek-R1, Magistral…). Their reasoning counts against the same maximum number of tokens as the answer, which is sized for the answer alone (700 for the tutor, 2048 for grading): the reasoning uses it up and the answer comes back empty. This number is added to the maximum of every call (grading, tutor, question generation, Missions…); when above 0, the timeout of non-streamed calls also goes from 3 to 10 minutes. 0 = no extra (non-reasoning models). Recommended: 4096 to 8192. The reasoning is never shown or stored. With vLLM, the model context must fit the prompt plus this maximum.';
-$string['stream_usage_help']         = 'If enabled, streaming calls ask the server for the exact number of tokens used ("stream_options") so quotas are accurate. Some older servers reject this option with an HTTP 400 error: leave it disabled in that case (tokens are then estimated). No effect on OpenAI, where the option is always sent.';
 
 // Accessibility
 $string['accessibility_heading']    = 'Accessibility';
@@ -120,10 +162,10 @@ $string['max_attempts_to_grade_help']    = 'Maximum number of AI gradings per st
 
 // Retry a grading
 $string['retry_button']         = 'Re-run AI grading';
-$string['retry_queued']         = 'AI grading re-queued — it will be processed shortly (next cron run).';
+$string['retry_queued']         = 'AI grading re-queued — it will be processed shortly.';
 $string['retry_notfound']       = 'Grading row not found.';
 $string['retry_pagetitle']      = 'Re-run an AI grading';
-$string['retry_confirm_body']   = 'Confirm re-running the AI grading for this attempt. It will be re-queued and processed at the next cron run.';
+$string['retry_confirm_body']   = 'Confirm re-running the AI grading for this attempt. It will be re-queued on the AI server and processed shortly.';
 $string['retry_confirm_button'] = 'Confirm re-run';
 $string['retry_lasterror']      = 'Last error:';
 

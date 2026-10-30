@@ -6,15 +6,25 @@ defined('MOODLE_INTERNAL') || die();
 global $CFG;
 require_once($CFG->libdir . '/filelib.php'); // pour la classe curl
 
+use local_aifeedback\lb\client;
+use local_aifeedback\lb\lb_exception;
+
 /**
- * Appel HTTP partagé vers un backend compatible OpenAI Chat Completions
- * (LM Studio, vLLM, Ollama, OpenAI, etc.).
+ * Appel HTTP partagé vers un backend compatible OpenAI Chat Completions.
+ *
+ * Deux cibles possibles :
+ *   - le LOAD BALANCER du lycée (cas général) : il met la demande en file et
+ *     la confie à un serveur IA disponible. Le modèle est obligatoire (il
+ *     désigne une entrée du catalogue du load balancer) ;
+ *   - une API EXTERNE imposée par une activité (surcharge d'URL : OpenAI,
+ *     Mistral…), appelée directement, hors load balancer.
  *
  * - Supporte le mode JSON Schema strict (response_format)
  * - Supporte les messages multimodaux (image_url) si le modèle est vision
- * - Gère l'authentification optionnelle via Bearer token
- * - Accepte des overrides ponctuels (URL/modèle/apikey) sans toucher la config
  * - Supporte le STREAMING (SSE) via stream() pour les usages interactifs
+ * - Les traitements différés passent par \local_aifeedback\jobs (jobs
+ *   asynchrones du load balancer) ; build_request() et parse_completion()
+ *   leur fournissent le corps de la demande et l'analyse de la réponse.
  */
 class api {
 
@@ -25,57 +35,53 @@ class api {
      */
     const THINK_TAGS = array('<think>' => '</think>', '[THINK]' => '[/THINK]');
 
+    /** Cibles possibles d'un appel. */
+    const TARGET_LB     = 'lb';
+    const TARGET_DIRECT = 'direct';
+
     /**
      * Effectue un appel chat/completions (bloquant).
      *
+     * Vers le load balancer, l'appel passe par son mode synchrone : il attend
+     * son tour dans la file (10 minutes au plus) puis la génération. Les
+     * traitements de fond utilisent plutôt les jobs asynchrones (jobs::run).
+     *
      * @param array $messages messages OpenAI (role + content string ou array multimodal)
      * @param array $options  Options de l'appel :
-     *   - 'apiurl'        (string|null) override de l'URL
-     *   - 'model'         (string|null) override du modèle
-     *   - 'apikey'        (string|null) override de la clé (en clair)
+     *   - 'apiurl'        (string|null) URL d'une API externe : appel direct, hors load balancer
+     *   - 'model'         (string) modèle (catalogue du load balancer, ou modèle de l'API externe)
+     *   - 'apikey'        (string|null) clé de l'API externe (en clair)
+     *   - 'userid'        (int) utilisateur pour qui l'appel est fait (quotas du load balancer)
      *   - 'response_format' (array|null) ex: ['type'=>'json_schema','json_schema'=>[...]]
      *   - 'temperature'   (float, défaut 0.2)
      *   - 'max_tokens'    (int, défaut 2048)
      *   - 'extra_body'    (array|null) champs additionnels (ex: enable_thinking=false)
-     *   - 'timeout'       (int, défaut 180 ; 600 avec un budget de réflexion)
+     *   - 'timeout'       (int, défaut 180 ; 600 avec un budget de réflexion ; 900 via le load balancer)
      *
      * @return array Le tableau parsé depuis choices[0].message.content
      *               (en JSON si response_format=json_schema/json_object,
      *                ou ['__text__' => string] si réponse texte brute)
      * @throws \moodle_exception en cas d'erreur HTTP ou de parsing
-     *         (server_unavailable_exception si le serveur est en cause et
-     *         qu'aucun autre serveur du pool n'a pu prendre le relais)
+     *         (lb_exception si le load balancer refuse la demande,
+     *          server_unavailable_exception si le serveur est injoignable)
      */
     public static function call(array $messages, array $options = array()) {
-        while (true) {
-            try {
-                return self::call_once($messages, $options);
-            } catch (server_unavailable_exception $e) {
-                // Le pool bascule le processus sur un autre serveur : on rejoue
-                // l'appel, qui prendra ce nouveau serveur dans prepare().
-                if (!self::can_failover($options) || !pool::failover($e)) {
-                    throw $e;
-                }
-            }
-        }
-    }
+        $req = self::build_request($messages, $options);
 
-    /**
-     * Un seul essai de call(), sur le serveur désigné par prepare().
-     */
-    private static function call_once(array $messages, array $options) {
-        $req = self::prepare($messages, $options);
-
-        // Un modèle qui réfléchit avant de répondre met bien plus longtemps.
+        // Un modèle qui réfléchit avant de répondre met bien plus longtemps ;
+        // via le load balancer, s'y ajoute l'attente dans la file.
         $timeout = (self::reasoning_budget() > 0) ? 600 : 180;
+        if ($req['target'] === self::TARGET_LB) {
+            $timeout += 720;
+        }
 
-        $curl = new \curl();
+        $curl = self::new_curl($req);
         $curl->setopt(array(
             'CURLOPT_TIMEOUT'        => isset($options['timeout']) ? (int)$options['timeout'] : $timeout,
             'CURLOPT_CONNECTTIMEOUT' => 15,
             'CURLOPT_RETURNTRANSFER' => true,
             'CURLOPT_HTTPHEADER'     => $req['headers'],
-        ) + self::heartbeat_options());
+        ));
 
         $raw = $curl->post($req['url'], json_encode($req['payload'], JSON_UNESCAPED_UNICODE));
 
@@ -93,15 +99,12 @@ class api {
 
         // Code HTTP de la réponse (présent dans curl->info après la requête).
         $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
+        $data     = json_decode($raw, true);
 
-        $data = json_decode($raw, true);
-        $message = (is_array($data) && isset($data['choices'][0]['message'])
-                && is_array($data['choices'][0]['message'])) ? $data['choices'][0]['message'] : array();
-        // Réflexion rendue à part (LM Studio, vLLM, Ollama récents) : ce n'est
-        // pas la réponse, mais elle explique une réponse vide.
-        $reasoning = self::reasoning_length($message);
-        if (!isset($message['content']) && $reasoning === 0) {
-            // Réponse inexploitable : on remonte le code HTTP + le corps brut.
+        if ($httpcode >= 400) {
+            if ($req['target'] === self::TARGET_LB) {
+                throw client::error_from_response($httpcode, $data, (string)$raw);
+            }
             // Les API compatibles OpenAI renvoient en cas d'erreur un objet
             // {"error":{"message":"...","type":"...","code":"..."}} : ce message
             // est la clé pour diagnostiquer (modèle inconnu, paramètre non
@@ -120,6 +123,35 @@ class api {
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
         }
 
+        return self::parse_completion(is_array($data) ? $data : array(), $options,
+            '[model=' . $req['model'] . ', url=' . $req['url'] . ']', (string)$raw);
+    }
+
+    /**
+     * Analyse une réponse Chat Completions (non diffusée) : celle d'un appel
+     * synchrone, ou le « result » d'un job asynchrone du load balancer.
+     *
+     * @param array  $data    réponse OpenAI décodée
+     * @param array  $options options de l'appel (seul response_format est lu)
+     * @param string $where   contexte ajouté aux diagnostics (modèle, URL, job)
+     * @param string $raw     corps brut, pour le diagnostic d'une réponse illisible
+     * @return array JSON décodé, ou ['__text__' => string]
+     * @throws \moodle_exception apicallfailed (réponse vide, tronquée, JSON invalide)
+     */
+    public static function parse_completion(array $data, array $options, $where = '', $raw = '') {
+        $message = (isset($data['choices'][0]['message'])
+                && is_array($data['choices'][0]['message'])) ? $data['choices'][0]['message'] : array();
+        // Réflexion rendue à part (LM Studio, vLLM, Ollama récents) : ce n'est
+        // pas la réponse, mais elle explique une réponse vide.
+        $reasoning = self::reasoning_length($message);
+        if (!isset($message['content']) && $reasoning === 0) {
+            $detail = (isset($data['error']))
+                ? self::format_api_error($data['error'])
+                : 'bad response: ' . substr($raw !== '' ? (string)$raw : json_encode($data), 0, 500);
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                trim($detail . ' ' . $where));
+        }
+
         $finish = isset($data['choices'][0]['finish_reason'])
             ? $data['choices'][0]['finish_reason'] : '?';
 
@@ -128,8 +160,7 @@ class api {
         $reasoning += $inline;
         if ($content === '' && $reasoning > 0) {
             throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
-                self::reasoning_only_detail($finish, $reasoning)
-                . ' [model=' . $req['model'] . ', url=' . $req['url'] . ']');
+                trim(self::reasoning_only_detail($finish, $reasoning) . ' ' . $where));
         }
 
         // Retire les balises markdown si le modèle en ajoute.
@@ -138,12 +169,7 @@ class api {
         $content = trim($content);
 
         // Si on attendait du JSON, on parse. Sinon on retourne le texte brut wrappé.
-        $expectjson = !empty($options['response_format'])
-                       && isset($options['response_format']['type'])
-                       && in_array($options['response_format']['type'],
-                                   array('json_object', 'json_schema'));
-
-        if (!$expectjson) {
+        if (!self::expects_json($options)) {
             return array('__text__' => $content);
         }
 
@@ -182,9 +208,22 @@ class api {
                 $detail .= ', extrait=' . substr($content, 0, 200);
             }
             $detail .= ']';
-            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null, $detail);
+            throw new \moodle_exception('apicallfailed', 'local_aifeedback', '', null,
+                trim($detail . ' ' . $where));
         }
         return $result;
+    }
+
+    /**
+     * La réponse attendue est-elle du JSON (response_format json_object / json_schema) ?
+     *
+     * @param array $options
+     * @return bool
+     */
+    public static function expects_json(array $options) {
+        return !empty($options['response_format'])
+            && isset($options['response_format']['type'])
+            && in_array($options['response_format']['type'], array('json_object', 'json_schema'), true);
     }
 
     /**
@@ -194,8 +233,15 @@ class api {
      * de l'eau : c'est ce qui permet au tuteur (local_aichat) d'afficher la
      * réponse pendant sa génération. Le callback peut retourner false pour
      * INTERROMPRE la génération (élève qui ferme l'onglet ou clique « Arrêter ») :
-     * on rend alors 0 depuis le write callback de curl, ce qui coupe la connexion
-     * et libère immédiatement le serveur LLM.
+     * on rend alors 0 depuis le write callback de curl, ce qui coupe la connexion ;
+     * le load balancer annule alors la demande et libère le serveur IA.
+     *
+     * Via le load balancer, la demande attend d'abord son tour dans la file :
+     *   - l'identifiant du job arrive aussitôt (en-tête X-Job-ID) et est passé à
+     *     $options['onjobid'] (suivi du rang, annulation) ;
+     *   - pendant l'attente, le service envoie des commentaires SSE (« : queued »,
+     *     « : heartbeat ») : chacun appelle $options['onwait'], qui peut lui aussi
+     *     retourner false pour abandonner.
      *
      * Appel d'outils : si $options['tools'] est fourni (définitions au format
      * OpenAI), le modèle peut répondre par des appels d'outils au lieu (ou en
@@ -203,45 +249,27 @@ class api {
      * reconstitués dans 'tool_calls' ; ils ne passent jamais par $ondelta.
      *
      * @param array    $messages messages OpenAI
-     * @param array    $options  mêmes options que call() ('timeout' défaut 600),
-     *                           plus 'tools' et 'tool_choice' (facultatifs)
+     * @param array    $options  mêmes options que call() ('timeout' défaut 600,
+     *                           1200 via le load balancer), plus 'tools',
+     *                           'tool_choice', 'onjobid' et 'onwait' (facultatifs)
      * @param callable $ondelta  function(string $delta): bool|null — false = arrêter
      * @return array ['content' => string, 'finish_reason' => string|null,
      *                'usage' => array|null, 'aborted' => bool,
-     *                'tool_calls' => array[] {id, name, arguments (JSON brut)}]
+     *                'tool_calls' => array[] {id, name, arguments (JSON brut)},
+     *                'jobid' => string (load balancer, '' sinon)]
      * @throws \moodle_exception en cas d'erreur réseau ou HTTP
+     *         (lb_exception : quota, file saturée, génération échouée)
      */
     public static function stream(array $messages, array $options, callable $ondelta) {
-        while (true) {
-            // On ne peut basculer que tant que RIEN n'a été transmis à l'élève :
-            // un texte déjà affiché ne peut pas être réécrit par un autre modèle.
-            $received = false;
-            $tracked  = function($delta) use ($ondelta, &$received) {
-                $received = true;
-                return $ondelta($delta);
-            };
-            try {
-                return self::stream_once($messages, $options, $tracked);
-            } catch (server_unavailable_exception $e) {
-                if ($received || !self::can_failover($options) || !pool::failover($e)) {
-                    throw $e;
-                }
-            }
-        }
-    }
-
-    /**
-     * Un seul essai de stream(), sur le serveur désigné par prepare().
-     */
-    private static function stream_once(array $messages, array $options, callable $ondelta) {
-        $req = self::prepare($messages, $options);
+        $req = self::build_request($messages, $options);
+        $islb = ($req['target'] === self::TARGET_LB);
 
         $payload = $req['payload'];
         $payload['stream'] = true;
-        // Décompte exact des tokens en fin de flux. Tous les backends ne
-        // l'acceptent pas (certains répondent HTTP 400) : activable par réglage
-        // pour les serveurs génériques, toujours actif chez OpenAI.
-        if ($req['flavor'] === 'openai' || !empty(get_config('local_aifeedback', 'stream_usage'))) {
+        // Décompte exact des tokens en fin de flux : le load balancer le
+        // demande lui-même au serveur ; OpenAI l'accepte toujours. Les autres
+        // API externes ne l'acceptent pas toutes (HTTP 400) : on s'abstient.
+        if (!$islb && $req['flavor'] === 'openai') {
             $payload['stream_options'] = array('include_usage' => true);
         }
 
@@ -253,30 +281,35 @@ class api {
         }
 
         // État partagé avec le write callback.
-        $state = (object)array(
-            'buffer'   => '',   // fragment de ligne SSE incomplet
-            'content'  => '',   // texte complet accumulé
-            'finish'   => null,
-            'usage'    => null,
-            'aborted'  => false,
-            'errbody'  => '',   // corps de réponse quand le HTTP n'est pas 200
-            'httpcode' => 0,
-            'tools'    => array(), // appels d'outils en cours de reconstitution
-            'think'    => 'detect', // detect | inside | outside (voir filter_think)
-            'thinkend' => '',   // balise fermante attendue dans l'état « inside »
-            'pending'  => '',   // texte retenu le temps de reconnaître une balise
-            'reasoning' => 0,   // caractères de réflexion reçus (jamais montrés)
-        );
+        $state = self::new_stream_state((isset($options['onwait']) && is_callable($options['onwait']))
+            ? $options['onwait'] : null);
+        $onjobid = (isset($options['onjobid']) && is_callable($options['onjobid']))
+            ? $options['onjobid'] : null;
 
-        $curl = new \curl();
+        $curl = self::new_curl($req);
         $curl->setopt(array(
-            'CURLOPT_TIMEOUT'         => isset($options['timeout']) ? (int)$options['timeout'] : 600,
+            'CURLOPT_TIMEOUT'         => isset($options['timeout']) ? (int)$options['timeout'] : ($islb ? 1200 : 600),
             'CURLOPT_CONNECTTIMEOUT'  => 15,
             'CURLOPT_RETURNTRANSFER'  => true,
             'CURLOPT_HTTPHEADER'      => $headers,
             // Détection de blocage : moins de 1 octet/s pendant 90 s → on coupe.
+            // (Pendant l'attente, le load balancer envoie un battement toutes les 15 s.)
             'CURLOPT_LOW_SPEED_LIMIT' => 1,
             'CURLOPT_LOW_SPEED_TIME'  => 90,
+            'CURLOPT_HEADERFUNCTION'  => function($ch, $line) use ($state, $onjobid) {
+                if (stripos($line, 'x-job-id:') === 0) {
+                    $state->jobid = trim(substr($line, 9));
+                    if ($onjobid !== null && $state->jobid !== '') {
+                        try {
+                            $onjobid($state->jobid);
+                        } catch (\Throwable $e) {
+                            // Jamais d'exception depuis un callback curl.
+                            debugging('local_aifeedback: onjobid — ' . $e->getMessage(), DEBUG_DEVELOPER);
+                        }
+                    }
+                }
+                return strlen($line);
+            },
             'CURLOPT_WRITEFUNCTION'   => function($ch, $data) use ($state, $ondelta) {
                 $len = strlen($data);
                 if ($state->httpcode === 0) {
@@ -290,14 +323,26 @@ class api {
                     return $len;
                 }
                 if (!self::feed_sse($state, $data, $ondelta)) {
-                    $state->aborted = true;
+                    if ($state->lberror === null) {
+                        $state->aborted = true;
+                    }
                     return 0; // coupe la connexion (curl renverra un errno)
                 }
                 return $len;
             },
-        ) + self::heartbeat_options());
+        ));
 
         $curl->post($req['url'], json_encode($payload, JSON_UNESCAPED_UNICODE));
+
+        // Erreur annoncée par le load balancer après ouverture du flux
+        // (génération échouée, expirée, annulée) : le HTTP valait déjà 200.
+        if ($state->lberror !== null) {
+            $err = $state->lberror;
+            throw new lb_exception(200,
+                isset($err['code']) ? (string)$err['code'] : 'generation_failed',
+                isset($err['message']) ? (string)$err['message'] : 'Génération interrompue.',
+                false, 0, 'job=' . $state->jobid);
+        }
 
         // Réponse très courte encore retenue (elle ressemblait au début d'une
         // balise de réflexion) : on la rend.
@@ -320,6 +365,7 @@ class api {
                 'usage'         => $state->usage,
                 'aborted'       => true,
                 'tool_calls'    => self::finish_tool_calls($state),
+                'jobid'         => $state->jobid,
             );
         }
 
@@ -333,8 +379,11 @@ class api {
         }
 
         if ($httpcode !== 200) {
+            $data = json_decode($state->errbody, true);
+            if ($islb) {
+                throw client::error_from_response($httpcode, $data, $state->errbody);
+            }
             $detail = 'HTTP ' . $httpcode . ' — ';
-            $data   = json_decode($state->errbody, true);
             if (is_array($data) && isset($data['error'])) {
                 $detail .= self::format_api_error($data['error']);
             } else {
@@ -373,6 +422,33 @@ class api {
             'usage'         => $state->usage,
             'aborted'       => false,
             'tool_calls'    => $toolcalls,
+            'jobid'         => $state->jobid,
+        );
+    }
+
+    /**
+     * État de lecture d'un flux SSE, partagé avec le write callback de curl.
+     *
+     * @param callable|null $onwait appelé à chaque commentaire SSE (attente)
+     * @return \stdClass
+     */
+    public static function new_stream_state($onwait = null) {
+        return (object)array(
+            'buffer'   => '',   // fragment de ligne SSE incomplet
+            'content'  => '',   // texte complet accumulé
+            'finish'   => null,
+            'usage'    => null,
+            'aborted'  => false,
+            'errbody'  => '',   // corps de réponse quand le HTTP n'est pas 200
+            'httpcode' => 0,
+            'tools'    => array(), // appels d'outils en cours de reconstitution
+            'think'    => 'detect', // detect | inside | outside (voir filter_think)
+            'thinkend' => '',   // balise fermante attendue dans l'état « inside »
+            'pending'  => '',   // texte retenu le temps de reconnaître une balise
+            'reasoning' => 0,   // caractères de réflexion reçus (jamais montrés)
+            'jobid'    => '',   // X-Job-ID (load balancer)
+            'lberror'  => null, // événement d'erreur reçu après ouverture du flux
+            'onwait'   => $onwait,
         );
     }
 
@@ -390,7 +466,7 @@ class api {
      * @param callable  $ondelta
      * @return bool false = interrompre la génération
      */
-    private static function feed_sse(\stdClass $state, $data, callable $ondelta) {
+    public static function feed_sse(\stdClass $state, $data, callable $ondelta) {
         $state->buffer .= $data;
         while (($pos = strpos($state->buffer, "\n")) !== false) {
             $line = rtrim(substr($state->buffer, 0, $pos), "\r");
@@ -406,8 +482,11 @@ class api {
      * Traite une ligne du flux SSE. Retourne false si l'appelant demande l'arrêt.
      *
      * Format : des lignes « data: {json} », une ligne vide entre les événements,
-     * et un « data: [DONE] » final. Tout le reste (commentaires « : ping »,
-     * champs event:/id:) est ignoré.
+     * et un « data: [DONE] » final. Les commentaires (« : queued »,
+     * « : heartbeat » du load balancer pendant l'attente) appellent
+     * $state->onwait. Un « data: {"error":…} » (erreur survenue après
+     * l'ouverture du flux) est mémorisé dans $state->lberror et arrête la
+     * lecture. Le reste (champs event:/id:) est ignoré.
      *
      * @param string    $line
      * @param \stdClass $state
@@ -415,8 +494,14 @@ class api {
      * @return bool false = interrompre
      */
     private static function consume_sse_line($line, \stdClass $state, callable $ondelta) {
+        if ($line !== '' && $line[0] === ':') {
+            if (!empty($state->onwait)) {
+                return (call_user_func($state->onwait, trim(substr($line, 1))) !== false);
+            }
+            return true;
+        }
         if (strpos($line, 'data:') !== 0) {
-            return true; // ligne vide, commentaire, ou champ non géré
+            return true; // ligne vide, ou champ non géré
         }
         $json = trim(substr($line, 5));
         if ($json === '' || $json === '[DONE]') {
@@ -425,6 +510,11 @@ class api {
         $chunk = json_decode($json, true);
         if (!is_array($chunk)) {
             return true; // fragment illisible : on l'ignore plutôt que de tout casser
+        }
+        if (isset($chunk['error']) && !isset($chunk['choices'])) {
+            $state->lberror = is_array($chunk['error'])
+                ? $chunk['error'] : array('message' => (string)$chunk['error']);
+            return false;
         }
         // Le chunk final (include_usage) porte l'usage et un tableau choices vide.
         if (isset($chunk['usage']) && is_array($chunk['usage'])) {
@@ -699,17 +789,17 @@ class api {
     }
 
     /**
-     * Classe un échec : imputable au SERVEUR (on peut retenter ailleurs) ou à
-     * la requête (inutile de retenter ailleurs).
+     * Classe un échec réseau ou HTTP : le serveur est-il en cause (inutile
+     * d'insister tout de suite, la demande sera rejouée plus tard) ou la
+     * requête (inutile de la rejouer telle quelle) ?
      *
      *   - UNREACHABLE : DNS (6), connexion refusée (7), délai dépassé AVANT
      *     d'avoir pu se connecter (28 avec connect_time nul) → serveur en panne.
      *   - SERVER_ERROR : serveur joint mais défaillant — HTTP 5xx, réponse vide
      *     (52), réception interrompue (56), transfert incomplet (18).
      *   - null : le reste, notamment un délai dépassé APRÈS connexion (le
-     *     serveur fonctionne mais la génération est trop longue : la rejouer
-     *     ailleurs doublerait l'attente), les HTTP 4xx (requête refusée) et les
-     *     réponses illisibles.
+     *     serveur fonctionne mais la génération est trop longue), les HTTP 4xx
+     *     (requête refusée) et les réponses illisibles.
      *
      * @param int   $errno    code d'erreur curl (0 si aucun)
      * @param array $info     curl_getinfo() de la requête
@@ -735,38 +825,6 @@ class api {
     }
 
     /**
-     * Basculement autorisé pour cet appel ? Seulement quand le serveur vient du
-     * pool (un ticket est tenu) et que l'appelant n'a pas imposé sa propre URL :
-     * une activité configurée sur une API externe ne doit JAMAIS être envoyée à
-     * un modèle local (tous les élèves d'un devoir sont corrigés par le même).
-     */
-    private static function can_failover(array $options) {
-        if (pool::current_slot() <= 0) {
-            return false;
-        }
-        return !isset($options['apiurl']) || $options['apiurl'] === null || $options['apiurl'] === '';
-    }
-
-    /**
-     * Options curl qui entretiennent le battement de cœur du ticket courant
-     * pendant l'appel. libcurl invoque la fonction de progression environ une
-     * fois par seconde, y compris pendant que le serveur calcule sans rien
-     * envoyer (lecture du prompt, images). Sans ticket, aucun surcoût.
-     */
-    private static function heartbeat_options() {
-        if (pool::current_slot() <= 0) {
-            return array();
-        }
-        return array(
-            'CURLOPT_NOPROGRESS'       => false,
-            'CURLOPT_PROGRESSFUNCTION' => function() {
-                pool::heartbeat_current();
-                return 0; // 0 = continuer le transfert
-            },
-        );
-    }
-
-    /**
      * Met en forme l'objet d'erreur standard des API compatibles OpenAI.
      */
     private static function format_api_error($err) {
@@ -780,48 +838,69 @@ class api {
     }
 
     /**
-     * Prépare l'URL, les en-têtes et le payload d'un appel (partie commune à
-     * call() et stream()).
-     *
-     * @return array ['url'=>string, 'model'=>string, 'headers'=>array,
-     *                'payload'=>array, 'flavor'=>string]
+     * Instance curl adaptée à la cible : l'URL du load balancer est fixée par
+     * l'administrateur (réseau interne autorisé) ; une URL d'API externe,
+     * saisie au niveau d'une activité, reste soumise à la liste des hôtes
+     * bloqués de Moodle.
      */
-    private static function prepare(array $messages, array $options) {
-        // Serveur tenu par ce processus (pool::set_current() — file de jobs,
-        // tuteur, appels synchrones), quand l'appelant n'a rien surchargé.
-        $server = pool::current();
-        if ($server !== null) {
-            foreach (array('apiurl', 'model', 'apikey') as $key) {
-                if (!isset($options[$key]) || $options[$key] === null || $options[$key] === '') {
-                    if (isset($server[$key]) && $server[$key] !== '') {
-                        $options[$key] = $server[$key];
-                    }
-                }
+    private static function new_curl(array $req) {
+        return ($req['target'] === self::TARGET_LB) ? client::new_curl() : new \curl();
+    }
+
+    /**
+     * Prépare la cible, les en-têtes et le corps d'un appel (partie commune
+     * à call(), stream() et aux jobs asynchrones).
+     *
+     * Cible : l'API externe si $options['apiurl'] est renseignée (surcharge
+     * d'une activité), le load balancer sinon.
+     *
+     * @return array ['target'=>'lb'|'direct', 'url'=>string, 'model'=>string,
+     *                'headers'=>array, 'payload'=>array, 'flavor'=>string]
+     * @throws \moodle_exception load balancer non configuré, modèle absent
+     */
+    public static function build_request(array $messages, array $options) {
+        $direct = isset($options['apiurl']) && trim((string)$options['apiurl']) !== '';
+
+        if ($direct) {
+            $target = self::TARGET_DIRECT;
+            $url    = trim((string)$options['apiurl']);
+            $model  = isset($options['model']) ? trim((string)$options['model']) : '';
+            if ($model === '') {
+                $model = models::feedback();
             }
-        }
-
-        $url   = self::resolve($options, 'apiurl',
-            (string)get_config('local_aifeedback', 'apiurl'),
-            'http://localhost:1234/v1/chat/completions');
-        $model = self::resolve($options, 'model',
-            (string)get_config('local_aifeedback', 'model'),
-            'qwen/qwen3-8b');
-
-        // Clé API : override en clair > config chiffrée globale > vide.
-        $apikey = '';
-        if (isset($options['apikey']) && $options['apikey'] !== null && $options['apikey'] !== '') {
-            $apikey = (string)$options['apikey'];
+            $apikey = (isset($options['apikey']) && $options['apikey'] !== null) ? (string)$options['apikey'] : '';
         } else {
-            $apikey = secret::decrypt((string)get_config('local_aifeedback', 'apikey'));
+            if (!client::configured()) {
+                throw new \moodle_exception('lb_notconfigured', 'local_aifeedback');
+            }
+            $target = self::TARGET_LB;
+            $url    = client::chat_url();
+            $model  = isset($options['model']) ? trim((string)$options['model']) : '';
+            if ($model === '') {
+                $model = models::feedback();
+            }
+            if ($model === '') {
+                throw new \moodle_exception('lb_nomodel', 'local_aifeedback');
+            }
+            $apikey = client::apikey();
         }
 
         // max_tokens est calibré pour la RÉPONSE ; un modèle à raisonnement
         // décompte sa réflexion du même budget, d'où le supplément réglable.
-        $maxtokens = isset($options['max_tokens']) ? (int)$options['max_tokens'] : 2048;
+        $maxtokens = (isset($options['max_tokens']) ? (int)$options['max_tokens'] : 2048)
+            + self::reasoning_budget();
+        if ($target === self::TARGET_LB) {
+            // Le load balancer refuse une sortie supérieure à celle déclarée
+            // pour le modèle : on plafonne quand le catalogue la connaît.
+            $info = client::model($model);
+            if ($info !== null && (int)$info['max_output_tokens'] > 0) {
+                $maxtokens = min($maxtokens, (int)$info['max_output_tokens']);
+            }
+        }
         $payload = array(
             'model'       => $model,
             'temperature' => isset($options['temperature']) ? (float)$options['temperature'] : 0.2,
-            'max_tokens'  => $maxtokens + self::reasoning_budget(),
+            'max_tokens'  => $maxtokens,
             'messages'    => $messages,
         );
         if (!empty($options['response_format'])) {
@@ -851,12 +930,13 @@ class api {
         //
         //  $options['apiflavor'] : 'auto' (défaut), 'openai' ou 'generic'.
         //  En 'auto', on devine d'après l'URL (présence de « openai.com »).
-        //  LM Studio et les autres backends restent en 'generic' → payload
-        //  inchangé, aucune régression.
+        //  Le load balancer relaie les champs tels quels à des serveurs
+        //  « generic » (LM Studio, vLLM, llama.cpp).
         // -------------------------------------------------------------
         $flavor = isset($options['apiflavor']) ? (string)$options['apiflavor'] : 'auto';
         if ($flavor === 'auto') {
-            $flavor = (stripos($url, 'openai.com') !== false) ? 'openai' : 'generic';
+            $flavor = ($target === self::TARGET_DIRECT && stripos($url, 'openai.com') !== false)
+                ? 'openai' : 'generic';
         }
         if ($flavor !== 'openai' && !empty($options['extra_body']) && is_array($options['extra_body'])) {
             // extra_body est une notion du SDK Python, qui en fusionne les
@@ -916,26 +996,18 @@ class api {
         if ($apikey !== '') {
             $headers[] = 'Authorization: Bearer ' . $apikey;
         }
+        if ($target === self::TARGET_LB) {
+            // Identifiant opaque de l'utilisateur : quotas et statistiques.
+            $headers[] = 'X-End-User-ID: ' . client::end_user_id(isset($options['userid']) ? (int)$options['userid'] : 0);
+        }
 
         return array(
+            'target'  => $target,
             'url'     => $url,
             'model'   => $model,
             'headers' => $headers,
             'payload' => $payload,
             'flavor'  => $flavor,
         );
-    }
-
-    /**
-     * Résout une valeur : override > global > défaut.
-     */
-    private static function resolve(array $options, $key, $globalvalue, $default) {
-        if (isset($options[$key]) && $options[$key] !== null && $options[$key] !== '') {
-            return (string)$options[$key];
-        }
-        if ($globalvalue !== '') {
-            return $globalvalue;
-        }
-        return $default;
     }
 }

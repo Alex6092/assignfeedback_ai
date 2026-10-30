@@ -30,9 +30,9 @@ class site_reader {
      * aucune adresse de serveur).
      */
     const SETTINGS = array(
-        'local_aifeedback'      => array('model', 'vision_enabled', 'defaultsystemprompt', 'max_attempts_to_grade'),
+        'local_aifeedback'      => array('model_feedback', 'vision_enabled', 'defaultsystemprompt', 'max_attempts_to_grade'),
         'assignfeedback_ai'     => array('default', 'showscore'),
-        'local_aichat'          => array('includeintrodefault', 'websearch_enabled', 'quota_messages',
+        'local_aichat'          => array('model_tutor', 'includeintrodefault', 'websearch_enabled', 'quota_messages',
             'quota_tokens', 'quota_window_hours', 'moderation_enabled'),
         'local_efenotes'        => array('seuil_jaune_default', 'seuil_bleu_default', 'seuil_vert_default', 'showinstructions'),
         'local_classhours'      => array('graceminutes', 'efeauto_default', 'useglobal_default', 'extratimedefault'),

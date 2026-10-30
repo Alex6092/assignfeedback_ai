@@ -57,11 +57,12 @@ if (data_submitted() && confirm_sesskey()) {
     $row->timemodified  = time();
     $DB->update_record('local_aifeedback_qgrading', $row);
 
-    // Ré-enqueue via le handler du composant propriétaire.
+    // Remise en file via le handler du composant propriétaire (une correction
+    // encore en cours au load balancer est remplacée).
     $handlerclass = '\\' . $row->component . '\\job_handler';
     if (class_exists($handlerclass)
             && is_subclass_of($handlerclass, '\\local_aifeedback\\quiz_grader')) {
-        $handlerclass::enqueue((int)$row->id);
+        \local_aifeedback\jobs::restart((string)$row->component, (object)array('rowid' => (int)$row->id));
     }
 
     redirect(new moodle_url('/mod/quiz/review.php', array('attempt' => (int)$qza->id)),

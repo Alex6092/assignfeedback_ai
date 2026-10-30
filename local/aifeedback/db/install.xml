@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/aifeedback/db" VERSION="20260918" COMMENT="Shared AI feedback infrastructure">
+<XMLDB PATH="local/aifeedback/db" VERSION="20261030" COMMENT="Shared AI feedback infrastructure">
   <TABLES>
 
     <TABLE NAME="local_aifeedback_qgrading" COMMENT="One row per quiz question_attempt graded (or being graded) by the LLM, shared by all AI question types">
@@ -28,45 +28,38 @@
       </INDEXES>
     </TABLE>
 
-    <TABLE NAME="local_aifeedback_slot" COMMENT="Tickets of the shared LLM server pool: one row per regulated LLM request (queue place)">
+    <TABLE NAME="local_aifeedback_job" COMMENT="Generations submitted to the inference load balancer (asynchronous jobs with callback)">
       <FIELDS>
-        <FIELD NAME="id"            TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="purpose"       TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="tutor" COMMENT="tutor|feedback. Tutor requests are interactive and admitted first."/>
-        <FIELD NAME="serverid"      TYPE="int"  LENGTH="2"   NOTNULL="true" DEFAULT="0" COMMENT="Configured server slot 1..3, 0 while still queued"/>
-        <FIELD NAME="status"        TYPE="char" LENGTH="16"  NOTNULL="true" DEFAULT="queued" COMMENT="queued|reserved|running|done|failed|cancelled"/>
-        <FIELD NAME="userid"        TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="0 for system/cron requests"/>
-        <FIELD NAME="component"     TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT=""/>
-        <FIELD NAME="reference"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="Caller-defined id, e.g. local_aichat message id"/>
-        <FIELD NAME="excluded"      TYPE="char" LENGTH="32"  NOTNULL="true" DEFAULT="" COMMENT="Comma-separated server ids already tried by this job (failover)"/>
-        <FIELD NAME="timecreated"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="timereserved"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="timestarted"   TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="timeheartbeat" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="timefinished"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="id"               TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="component"        TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="" COMMENT="Frankenstyle of the handler, e.g. assignfeedback_ai"/>
+        <FIELD NAME="payload"          TYPE="text"              NOTNULL="false" COMMENT="Handler payload (JSON)"/>
+        <FIELD NAME="payloadkey"       TYPE="char" LENGTH="40"  NOTNULL="true" DEFAULT="" COMMENT="sha1(component|payload), deduplication"/>
+        <FIELD NAME="userid"           TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0" COMMENT="User the generation is made for (0 = system)"/>
+        <FIELD NAME="model"            TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT=""/>
+        <FIELD NAME="lbjobid"          TYPE="char" LENGTH="64"  NOTNULL="true" DEFAULT="" COMMENT="Job id on the load balancer"/>
+        <FIELD NAME="lbstatus"         TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="" COMMENT="Final status on the load balancer: succeeded|failed|cancelled|expired"/>
+        <FIELD NAME="eventid"          TYPE="char" LENGTH="64"  NOTNULL="true" DEFAULT="" COMMENT="Callback event id (X-Event-ID)"/>
+        <FIELD NAME="status"           TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="submitting" COMMENT="submitting|submitted|received|processing|done|failed|cancelled"/>
+        <FIELD NAME="attempt"          TYPE="int"  LENGTH="4"   NOTNULL="true" DEFAULT="1" COMMENT="Submission number of this row (idempotency key)"/>
+        <FIELD NAME="expectjson"       TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="result"           TYPE="text"              NOTNULL="false" COMMENT="Raw model response, kept only until applied"/>
+        <FIELD NAME="error"            TYPE="text"              NOTNULL="false"/>
+        <FIELD NAME="prompttokens"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="completiontokens" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecreated"      TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timesubmitted"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecompleted"    TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"     TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="status_purpose" UNIQUE="false" FIELDS="status, purpose"/>
-        <INDEX NAME="status_server"  UNIQUE="false" FIELDS="status, serverid"/>
-        <INDEX NAME="userid"         UNIQUE="false" FIELDS="userid"/>
-        <INDEX NAME="timefinished"   UNIQUE="false" FIELDS="timefinished"/>
+        <INDEX NAME="lbjobid"            UNIQUE="false" FIELDS="lbjobid"/>
+        <INDEX NAME="comp_key_status"    UNIQUE="false" FIELDS="component, payloadkey, status"/>
+        <INDEX NAME="status_submitted"   UNIQUE="false" FIELDS="status, timesubmitted"/>
+        <INDEX NAME="userid"             UNIQUE="false" FIELDS="userid"/>
       </INDEXES>
-    </TABLE>
-
-    <TABLE NAME="local_aifeedback_server" COMMENT="Health and usage state of each configured LLM server slot">
-      <FIELDS>
-        <FIELD NAME="id"           TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="serverid"     TYPE="int" LENGTH="2"  NOTNULL="true" DEFAULT="0" COMMENT="Configured server slot 1..3"/>
-        <FIELD NAME="failinguntil" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Quarantine deadline after a network failure"/>
-        <FIELD NAME="failures"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
-        <FIELD NAME="lastused"     TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
-      </FIELDS>
-      <KEYS>
-        <KEY NAME="primary"  TYPE="primary" FIELDS="id"/>
-        <KEY NAME="serverid" TYPE="unique"  FIELDS="serverid"/>
-      </KEYS>
     </TABLE>
 
   </TABLES>
