@@ -19,12 +19,15 @@ $string['systemprompt']        = 'System prompt';
 $string['systemprompt_help']   = 'Instructions sent to the LLM as the system role. Leave empty to use the default prompt (which already enforces short feedback).';
 $string['expectedanswer']      = 'Expected answer';
 $string['expectedanswer_help'] = 'Reference answer the AI will compare the student response against.';
-$string['apiurl']              = 'API URL';
-$string['model']               = 'Model name';
-$string['apikey']              = 'API key';
-$string['apiurl_override']     = 'Override the site API URL';
-$string['model_override']      = 'Override the site model name';
-$string['apikey_override']     = 'Override the site API key';
+$string['apiurl']              = 'External API URL';
+$string['model']               = 'Model';
+$string['apikey']              = 'External API key';
+$string['apiurl_override']     = 'Grade with an external API (bypass the load balancer)';
+$string['model_override']      = 'Force a model';
+$string['apikey_override']     = 'Set the external API key';
+$string['apiurl_help'] = 'By default, responses are graded through the school AI load balancer. If the box is ticked and the URL filled in, this question is graded directly by this OpenAI Chat Completions compatible API (e.g. https://api.openai.com/v1/chat/completions), bypassing the load balancer. Then also fill in the model and the key of this API.';
+$string['model_help'] = 'Without an external API: identifier of another model of the load balancer catalogue (it must be declared there). With an external API: model of that API (e.g. gpt-4o-mini). Without override: the site AI grading model.';
+$string['apikey_help'] = 'Secret key of the external API. Ignored without an external API: the load balancer uses the site key. The value is encrypted at rest.';
 
 // Input
 $string['pleaseenteranswer']   = 'Please enter an answer.';

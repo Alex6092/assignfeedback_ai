@@ -72,13 +72,12 @@ class assign_feedback_ai extends assign_feedback_plugin {
 
         $cfg = $this->load_config($assignid);
 
-        // Valeurs par défaut globales — désormais dans local_aifeedback.
-        $def_url    = (string)get_config('local_aifeedback', 'apiurl');
-        $def_model  = (string)get_config('local_aifeedback', 'model');
+        // Valeurs par défaut globales — dans local_aifeedback. Pas d'URL par
+        // défaut : sans surcharge, la correction passe par le load balancer.
+        $def_url    = '';
+        $def_model  = \local_aifeedback\models::feedback();
         $def_prompt = (string)get_config('local_aifeedback', 'defaultsystemprompt');
 
-        if ($def_url   === '') { $def_url   = 'http://localhost:1234/v1/chat/completions'; }
-        if ($def_model === '') { $def_model = 'qwen3.5-9b-instruct'; }
         if ($def_prompt === '') { $def_prompt = self::default_system_prompt(); }
 
         // Champs de contenu en PARAM_RAW : PARAM_TEXT passe par strip_tags(), qui
@@ -140,6 +139,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->setType('assignfeedback_ai_apiurl', PARAM_URL);
         $mform->setDefault('assignfeedback_ai_apiurl',
             ($cfg && !empty($cfg->apiurl)) ? $cfg->apiurl : $def_url);
+        $mform->addHelpButton('assignfeedback_ai_apiurl', 'apiurl', 'assignfeedback_ai');
         $mform->disabledIf('assignfeedback_ai_apiurl',
             'assignfeedback_ai_apiurl_override', 'notchecked');
 
@@ -154,6 +154,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->setType('assignfeedback_ai_model', PARAM_TEXT);
         $mform->setDefault('assignfeedback_ai_model',
             ($cfg && !empty($cfg->model)) ? $cfg->model : $def_model);
+        $mform->addHelpButton('assignfeedback_ai_model', 'model', 'assignfeedback_ai');
         $mform->disabledIf('assignfeedback_ai_model',
             'assignfeedback_ai_model_override', 'notchecked');
 
@@ -168,6 +169,7 @@ class assign_feedback_ai extends assign_feedback_plugin {
         $mform->setType('assignfeedback_ai_apikey', PARAM_RAW);
         $mform->setDefault('assignfeedback_ai_apikey',
             ($cfg && !empty($cfg->apikey)) ? self::decrypt_secret($cfg->apikey) : '');
+        $mform->addHelpButton('assignfeedback_ai_apikey', 'apikey', 'assignfeedback_ai');
         $mform->disabledIf('assignfeedback_ai_apikey',
             'assignfeedback_ai_apikey_override', 'notchecked');
 
@@ -535,14 +537,15 @@ class assign_feedback_ai extends assign_feedback_plugin {
     // =========================================================
 
     /**
-     * Traite une ligne assignfeedback_ai_grade : appelle le LLM et persiste le résultat.
-     * Lève une exception en cas d'échec (la tâche ad-hoc l'attrapera et incrémentera attempts).
+     * Prépare la demande de correction d'une ligne assignfeedback_ai_grade :
+     * extraction de la copie (texte, PDF, images) et prompts. La génération
+     * est ensuite confiée au load balancer (ou à l'API externe du devoir).
      *
      * @param int $rowid id de la ligne dans TABLE_GRADE
-     * @return array Le feedback normalisé
+     * @return \local_aifeedback\request
      * @throws moodle_exception
      */
-    public function process_feedback_row($rowid) {
+    public function build_feedback_request($rowid) {
         global $DB;
 
         $fb = $DB->get_record(self::TABLE_GRADE, array('id' => $rowid), '*', MUST_EXIST);
@@ -555,12 +558,22 @@ class assign_feedback_ai extends assign_feedback_plugin {
 
         $extracted = $this->extract_submission((int)$fb->userid, $cfg);
         $messages  = $this->build_messages($extracted, $cfg);
-        $result    = $this->call_api($messages, $cfg);
+        return $this->build_request($messages, $cfg, (int)$fb->userid);
+    }
 
-        if ($result === false) {
-            throw new moodle_exception('generationerror', 'assignfeedback_ai');
-        }
+    /**
+     * Applique le résultat de la correction : feedback enregistré et publié,
+     * note reportée si le devoir le prévoit.
+     *
+     * @param int   $rowid  id de la ligne dans TABLE_GRADE
+     * @param array $result JSON renvoyé par le modèle
+     * @return array Le feedback normalisé
+     */
+    public function complete_feedback_row($rowid, array $result) {
+        global $DB;
 
+        $fb  = $DB->get_record(self::TABLE_GRADE, array('id' => $rowid), '*', MUST_EXIST);
+        $cfg = $this->load_config((int)$this->assignment->get_instance()->id);
         return $this->store_result($fb, $this->normalize($result), $cfg);
     }
 
@@ -754,7 +767,9 @@ class assign_feedback_ai extends assign_feedback_plugin {
             $rowid              = (int)$DB->insert_record(self::TABLE_GRADE, $row);
         }
 
-        \assignfeedback_ai\job_handler::enqueue($rowid);
+        // Copie remise à nouveau : une correction encore en cours portait sur
+        // l'ancienne version, elle est remplacée.
+        \assignfeedback_ai\job_handler::enqueue($rowid, true);
 
         return $rowid;
     }
@@ -1095,11 +1110,18 @@ class assign_feedback_ai extends assign_feedback_plugin {
     }
 
     // =========================================================
-    //  METHODES PRIVEES — APPEL API
+    //  METHODES PRIVEES — DEMANDE DE GÉNÉRATION
     // =========================================================
 
-    private function call_api($messages, $cfg) {
-        // Construction des overrides pour la lib partagée.
+    /**
+     * Demande de génération : sortie JSON stricte, et surcharges du devoir.
+     *
+     * @param array    $messages
+     * @param stdClass $cfg    ligne {assignfeedback_ai} du devoir
+     * @param int      $userid élève corrigé (quotas du load balancer)
+     * @return \local_aifeedback\request
+     */
+    private function build_request($messages, $cfg, $userid) {
         $options = array(
             'response_format' => array(
                 'type'        => 'json_schema',
@@ -1113,31 +1135,21 @@ class assign_feedback_ai extends assign_feedback_plugin {
             'temperature' => 0.2,
             'max_tokens'  => 2048,
         );
-        if (!empty($cfg->apiurl_override) && !empty($cfg->apiurl)) {
-            $options['apiurl'] = $cfg->apiurl;
-        }
-        if (!empty($cfg->model_override) && !empty($cfg->model)) {
-            $options['model'] = $cfg->model;
-        }
-        if (!empty($cfg->apikey_override) && !empty($cfg->apikey)) {
-            $options['apikey'] = self::decrypt_secret($cfg->apikey);
-        }
 
-        try {
-            return \local_aifeedback\api::call($messages, $options);
-        } catch (\Throwable $e) {
-            // On NE masque PLUS l'erreur : on compose un message détaillé
-            // (message + debuginfo, qui contient le code HTTP et le message
-            // d'erreur exact renvoyé par l'API) puis on relance. Ce détail
-            // remontera jusqu'à error_message (visible sur la carte et dans
-            // l'écran de gestion), et dans les logs en mode débogage.
-            $detail = $e->getMessage();
-            if ($e instanceof \moodle_exception && !empty($e->debuginfo)) {
-                $detail .= ' — ' . $e->debuginfo;
-            }
-            debugging('assignfeedback_ai: API call failed: ' . $detail, DEBUG_DEVELOPER);
-            throw new \moodle_exception('apicalldetail', 'assignfeedback_ai', '', $detail);
+        // Modèle imposé par le devoir : un autre modèle du load balancer, ou
+        // le modèle de l'API externe choisie ci-dessous.
+        $model = (!empty($cfg->model_override) && !empty($cfg->model)) ? trim((string)$cfg->model) : '';
+        $request = new \local_aifeedback\request($messages, $options,
+            ($model !== '') ? $model : \local_aifeedback\models::feedback(), $userid);
+
+        // API externe (cloud) imposée par le devoir : appel direct, hors load
+        // balancer. Sa clé n'a de sens qu'avec elle.
+        if (!empty($cfg->apiurl_override) && !empty($cfg->apiurl)) {
+            $request->set_direct($cfg->apiurl,
+                (!empty($cfg->apikey_override) && !empty($cfg->apikey)) ? self::decrypt_secret($cfg->apikey) : '',
+                $model);
         }
+        return $request;
     }
 
     // =========================================================
