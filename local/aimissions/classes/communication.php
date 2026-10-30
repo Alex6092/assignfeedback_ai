@@ -11,14 +11,15 @@ defined('MOODLE_INTERNAL') || die();
 class communication {
 
     /**
-     * Évalue la communication d'un étudiant.
+     * Demande d'évaluation de la communication d'un étudiant (confiée au load
+     * balancer par la file de jobs).
      *
      * @param \stdClass $project la fiche projet (entreprise, contexte)
      * @param array     $tickets tickets de l'étudiant (objets {question, answer})
-     * @return array{colour:string, score:int, comment:string}
-     * @throws \moodle_exception si l'appel LLM échoue
+     * @return array {messages, options, flags: {haswarning, hasended}}
+     * @throws \moodle_exception comm_notickets si aucun message n'est exploitable
      */
-    public static function evaluate_student(\stdClass $project, array $tickets): array {
+    public static function request(\stdClass $project, array $tickets): array {
         $convo = '';
         $haswarning = false;
         $hasended   = false;
@@ -71,15 +72,28 @@ class communication {
             'temperature' => 0.3,
             'max_tokens'  => 700,
         );
-        $model = (string)get_config('local_aimissions', 'model');
-        if ($model !== '') {
-            $options['model'] = $model;
-        }
+        return array(
+            'messages' => $messages,
+            'options'  => $options,
+            'flags'    => array('haswarning' => $haswarning, 'hasended' => $hasended),
+        );
+    }
 
-        $result = \local_aifeedback\api::call($messages, $options);
-        if (!is_array($result) || empty($result['colour'])) {
+    /**
+     * Évaluation à partir du résultat du modèle, plafonnée selon les incidents
+     * de la relation client.
+     *
+     * @param array $result JSON renvoyé par le modèle
+     * @param array $flags  {haswarning, hasended} de request()
+     * @return array{colour:string, score:int, comment:string}
+     * @throws \moodle_exception si le résultat est inexploitable
+     */
+    public static function parse(array $result, array $flags): array {
+        if (empty($result['colour'])) {
             throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
         }
+        $haswarning = !empty($flags['haswarning']);
+        $hasended   = !empty($flags['hasended']);
         $colour = in_array($result['colour'], array('vert', 'bleu', 'jaune', 'rouge'), true)
             ? $result['colour'] : 'jaune';
         $score   = max(0, min(100, (int)($result['score'] ?? 0)));

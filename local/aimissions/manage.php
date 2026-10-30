@@ -117,26 +117,11 @@ if ($action === 'forcereply' && $projectid > 0 && confirm_sesskey()) {
             "projectid = ? AND kind = 'ticket' AND status = 'pending'",
             array($projectid), '*', IGNORE_MULTIPLE);
         if ($job) {
-            \core_php_time_limit::raise(180);
-            try {
-                // Appel synchrone régulé par le pool de serveurs (place prise,
-                // basculement en cas de panne, place rendue), comme la file.
-                // execute() relance l'exception en cas d'échec ; on l'absorbe
-                // ici (le job est déjà marqué/réenfilé par record_failure) pour
-                // ne pas crasher la page enseignant.
-                \local_aifeedback\pool::run(\local_aifeedback\pool::PURPOSE_FEEDBACK,
-                    function() use ($job) {
-                        (new \local_aimissions\job_handler())->execute((object)array('rowid' => (int)$job->id));
-                    }, 30, 'local_aimissions');
-            } catch (\moodle_exception $e) {
-                if ($e->errorcode === 'poolbusy') {
-                    redirect($baseurl, get_string('poolbusy', 'local_aifeedback'), null,
-                        \core\output\notification::NOTIFY_WARNING);
-                }
-                debugging('[local_aimissions] forcereply failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            } catch (\Throwable $e) {
-                debugging('[local_aimissions] forcereply failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            }
+            // La réponse est due maintenant : le job part tout de suite au
+            // load balancer (la tâche différée qui l'attendait n'aura plus
+            // rien à faire).
+            $DB->set_field('local_aimissions_job', 'notbefore', time(), array('id' => (int)$job->id));
+            \local_aimissions\job_handler::enqueue((int)$job->id);
         }
     }
     redirect($baseurl, get_string('forcereply_done', 'local_aimissions'), null,

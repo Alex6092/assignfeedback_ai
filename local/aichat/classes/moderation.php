@@ -58,24 +58,23 @@ class moderation {
             'flagstatus'   => 'pending',
             'flagattempts' => 0,
         ));
-        $payload = new \stdClass();
-        $payload->messageid = (int)$messageid;
-        \local_aifeedback\task\run_job::enqueue('local_aichat', $payload);
+        \local_aifeedback\jobs::enqueue('local_aichat', (object)array('messageid' => (int)$messageid));
     }
 
     /**
-     * Analyse un message (appelée par la file de jobs).
+     * Message encore à analyser, ou null (déjà analysé, supprimé). Si la
+     * modération a été désactivée entre-temps, le message sort de la file.
      *
      * @param int $messageid
-     * @throws \Throwable après avoir enregistré l'échec, pour la journalisation
+     * @return array|null [message, conversation]
      */
-    public static function analyse($messageid) {
+    private static function pending($messageid) {
         global $DB;
 
         $message = $DB->get_record(conversation::TABLE_MSG, array('id' => (int)$messageid));
         if (!$message || $message->role !== 'user'
                 || !in_array($message->flagstatus, array('pending', 'retry'), true)) {
-            return;
+            return null;
         }
         $conv = $DB->get_record(conversation::TABLE, array('id' => (int)$message->conversationid));
         if (!$conv || !self::is_enabled()) {
@@ -83,68 +82,106 @@ class moderation {
             // on sort le message de la file au lieu de l'analyser quand même.
             $DB->set_field(conversation::TABLE_MSG, 'flagstatus', 'none',
                 array('id' => (int)$message->id));
+            return null;
+        }
+        return array($message, $conv);
+    }
+
+    /**
+     * Demande d'analyse d'un message (file de jobs → load balancer).
+     *
+     * @param int $messageid
+     * @return \local_aifeedback\request|null null = rien à analyser
+     */
+    public static function build_request($messageid) {
+        $pending = self::pending($messageid);
+        if ($pending === null) {
+            return null;
+        }
+        list($message, $conv) = $pending;
+
+        $options = array(
+            'response_format' => array(
+                'type'        => 'json_schema',
+                'json_schema' => array(
+                    'name'   => 'local_aichat_moderation',
+                    'strict' => true,
+                    'schema' => self::schema(),
+                ),
+            ),
+            'extra_body'  => array('enable_thinking' => false),
+            'temperature' => 0.0,
+            'max_tokens'  => 300,
+        );
+        $messages = array(
+            array('role' => 'system', 'content' => self::system_prompt()),
+            array('role' => 'user',   'content' => self::user_prompt($conv, $message)),
+        );
+        return new \local_aifeedback\request($messages, $options,
+            \local_aifeedback\models::for_component('local_aichat', 'model_moderation'),
+            (int)$message->userid);
+    }
+
+    /**
+     * Enregistre le verdict de l'analyse et prévient l'enseignant si besoin.
+     *
+     * @param int   $messageid
+     * @param array $result JSON renvoyé par le modèle
+     */
+    public static function complete($messageid, array $result) {
+        global $DB;
+
+        $pending = self::pending($messageid);
+        if ($pending === null) {
             return;
         }
+        list($message, $conv) = $pending;
 
-        try {
-            $options = array(
-                'response_format' => array(
-                    'type'        => 'json_schema',
-                    'json_schema' => array(
-                        'name'   => 'local_aichat_moderation',
-                        'strict' => true,
-                        'schema' => self::schema(),
-                    ),
-                ),
-                'extra_body'  => array('enable_thinking' => false),
-                'temperature' => 0.0,
-                'max_tokens'  => 300,
-            );
-            $messages = array(
-                array('role' => 'system', 'content' => self::system_prompt()),
-                array('role' => 'user',   'content' => self::user_prompt($conv, $message)),
-            );
-            $result = \local_aifeedback\api::call($messages, $options);
-
-            $category = isset($result['categorie']) ? (string)$result['categorie'] : 'aucune';
-            if (!in_array($category, self::CATEGORIES, true)) {
-                $category = 'aucune'; // backend non strict : on ne signale pas sur un libellé inconnu
-            }
-            $flagged = ($category !== 'aucune');
-            $reason  = $flagged && isset($result['motif'])
-                ? \core_text::substr(trim((string)$result['motif']), 0, 500) : '';
-
-            $DB->update_record(conversation::TABLE_MSG, (object)array(
-                'id'           => (int)$message->id,
-                'flagstatus'   => $flagged ? 'flagged' : 'clean',
-                'flagcategory' => $flagged ? $category : '',
-                'flagreason'   => ($reason === '') ? null : $reason,
-                'flagtime'     => time(),
-            ));
-
-            if ($flagged) {
-                self::notify($conv, $message, $category, $reason);
-            }
-
-        } catch (\Throwable $e) {
-            // Nouvel essai différé : le serveur peut n'être que momentanément
-            // indisponible. Un statut « retry » n'est pas repris par le drainage
-            // de la file, ce qui évite de boucler sur un serveur tombé.
-            $attempts = (int)$message->flagattempts + 1;
-            $retry    = ($attempts < self::MAX_ATTEMPTS);
-            $DB->update_record(conversation::TABLE_MSG, (object)array(
-                'id'           => (int)$message->id,
-                'flagstatus'   => $retry ? 'retry' : 'failed',
-                'flagattempts' => $attempts,
-                'flagtime'     => time(),
-            ));
-            if ($retry) {
-                $payload = new \stdClass();
-                $payload->messageid = (int)$message->id;
-                \local_aifeedback\task\run_job::enqueue('local_aichat', $payload, self::RETRY_DELAY);
-            }
-            throw $e;
+        $category = isset($result['categorie']) ? (string)$result['categorie'] : 'aucune';
+        if (!in_array($category, self::CATEGORIES, true)) {
+            $category = 'aucune'; // backend non strict : on ne signale pas sur un libellé inconnu
         }
+        $flagged = ($category !== 'aucune');
+        $reason  = $flagged && isset($result['motif'])
+            ? \core_text::substr(trim((string)$result['motif']), 0, 500) : '';
+
+        $DB->update_record(conversation::TABLE_MSG, (object)array(
+            'id'           => (int)$message->id,
+            'flagstatus'   => $flagged ? 'flagged' : 'clean',
+            'flagcategory' => $flagged ? $category : '',
+            'flagreason'   => ($reason === '') ? null : $reason,
+            'flagtime'     => time(),
+        ));
+
+        if ($flagged) {
+            self::notify($conv, $message, $category, $reason);
+        }
+    }
+
+    /**
+     * Échec de l'analyse : nouvel essai différé (le serveur peut n'être que
+     * momentanément indisponible), jusqu'à MAX_ATTEMPTS.
+     *
+     * @param int  $messageid
+     * @param bool $permanent la même demande échouera encore
+     * @return int|null délai avant le nouvel essai, ou null
+     */
+    public static function fail($messageid, $permanent = false) {
+        global $DB;
+
+        $message = $DB->get_record(conversation::TABLE_MSG, array('id' => (int)$messageid));
+        if (!$message || !in_array($message->flagstatus, array('pending', 'retry'), true)) {
+            return null;
+        }
+        $attempts = (int)$message->flagattempts + 1;
+        $retry    = !$permanent && ($attempts < self::MAX_ATTEMPTS);
+        $DB->update_record(conversation::TABLE_MSG, (object)array(
+            'id'           => (int)$message->id,
+            'flagstatus'   => $retry ? 'retry' : 'failed',
+            'flagattempts' => $attempts,
+            'flagtime'     => time(),
+        ));
+        return $retry ? self::RETRY_DELAY : null;
     }
 
     /**

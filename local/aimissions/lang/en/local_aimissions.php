@@ -22,7 +22,7 @@ $string['privacy:metadata:llm:question'] = 'The student question forwarded to th
 $string['settings_heading']       = 'AI client missions';
 $string['settings_intro']         = 'This plugin reuses the global LLM connection configured in the AI Feedback plugin (local_aifeedback). The settings below only tune mission generation.';
 $string['setting_model']          = 'Generation model (optional)';
-$string['setting_model_desc']     = 'Model used for mission generation. Leave empty to use the global model from local_aifeedback. A cheaper model is usually enough for generation.';
+$string['setting_model_desc']     = 'Model of the load balancer catalogue used to generate missions, client messages and replies, and communication evaluations. Empty: the AI grading model. An inexpensive model is usually enough.';
 $string['setting_maxsprints']     = 'Maximum sprints per project';
 $string['setting_maxsprints_desc'] = 'Upper bound on the number of sprints a single project can accumulate (safety cap).';
 
@@ -166,7 +166,6 @@ $string['comm_col_status']       = 'Status';
 $string['comm_evaluate']         = 'Assess communication';
 $string['comm_send']             = 'Send to EFE';
 $string['comm_evaluated']        = '{$a} student(s) assessed.';
-$string['comm_partial']          = '{$a} student(s) assessed. The AI servers are busy: run the assessment again for the remaining students.';
 $string['comm_sent']             = '{$a} competency position(s) sent to EFE.';
 $string['comm_sendfailed']       = '{$a} send(s) failed (see logs).';
 $string['comm_status_draft']     = 'To send';
@@ -253,3 +252,9 @@ $string['dup_done_copy'] = '{$a} sprint(s) copied: hidden assignments, to review
 $string['error_adapt_nosource'] = 'The sprint to adapt no longer exists.';
 $string['setting_scalename'] = 'Assignment scale';
 $string['setting_scalename_desc'] = 'Name of the scale used to grade generated assignments (course scale, else site scale). It must contain the 4 AI grading levels (Maîtrise insuffisante, Maîtrise fragile, Maîtrise satisfaisante, Très bonne maîtrise) for the grade to be set automatically. Empty: graded out of 100.';
+
+// Load balancer (asynchronous generations)
+$string['comm_evaluating']       = 'Evaluation started for {$a} student(s): results appear as they arrive.';
+$string['comm_status_pending']   = 'Evaluation in progress';
+$string['comm_status_failed']    = 'Evaluation failed';
+$string['status_commevaljob']    = 'Communication evaluation';

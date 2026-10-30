@@ -60,8 +60,7 @@
         <FIELD NAME="content"        TYPE="text"             NOTNULL="false"/>
         <FIELD NAME="contenthtml"    TYPE="text"             NOTNULL="false" COMMENT="Rendered and sanitised markdown, assistant turns only"/>
         <FIELD NAME="status"         TYPE="char" LENGTH="16" NOTNULL="true" DEFAULT="done" COMMENT="done|pending|streaming|failed|cancelled"/>
-        <FIELD NAME="slotid"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Pool ticket id"/>
-        <FIELD NAME="serverid"       TYPE="int"  LENGTH="2"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="lbjobid"        TYPE="char" LENGTH="64" NOTNULL="true" DEFAULT="" COMMENT="Job id on the inference load balancer (X-Job-ID) of the last generation round"/>
         <FIELD NAME="tokens"         TYPE="int"  LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="Assistant turns: tokens counted against the student quota, i.e. the student question + the answer shown (estimated from the text)"/>
         <FIELD NAME="websearches"    TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0" COMMENT="Web searches sent to the provider for this answer (per-student quota)"/>
         <FIELD NAME="pagereads"      TYPE="int"  LENGTH="4"  NOTNULL="true" DEFAULT="0" COMMENT="Pages or documents read for this answer (per-student quota)"/>

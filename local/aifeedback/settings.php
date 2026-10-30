@@ -6,34 +6,58 @@ if ($hassiteconfig) {
     $settings = new admin_settingpage('local_aifeedback',
         new lang_string('pluginname', 'local_aifeedback'));
 
-    // === API ===
+    // === Serveur IA (load balancer d'inférence) ===
+    // Toutes les générations (corrections, tuteur, quiz, missions…) passent
+    // par le load balancer, qui les met en file et les répartit entre les
+    // serveurs IA. Seules les activités configurées sur une API externe
+    // (surcharge d'URL) l'appellent directement.
     $settings->add(new admin_setting_heading(
-        'local_aifeedback/api_heading',
-        new lang_string('api_heading', 'local_aifeedback'),
-        ''
+        'local_aifeedback/lb_heading',
+        new lang_string('lb_heading', 'local_aifeedback'),
+        get_string('lb_heading_desc', 'local_aifeedback', (object)array(
+            'callback' => \local_aifeedback\lb\client::default_callback_url(),
+            'base'     => dirname(\local_aifeedback\lb\client::default_callback_url()) . '/',
+        )) . ' ' . html_writer::link(new moodle_url('/local/aifeedback/servers.php'),
+            get_string('servers_link', 'local_aifeedback'))
     ));
 
     $settings->add(new admin_setting_configtext(
-        'local_aifeedback/apiurl',
-        new lang_string('apiurl', 'local_aifeedback'),
-        new lang_string('apiurl_help', 'local_aifeedback'),
-        'http://localhost:1234/v1/chat/completions',
+        'local_aifeedback/lb_url',
+        new lang_string('lb_url', 'local_aifeedback'),
+        new lang_string('lb_url_help', 'local_aifeedback'),
+        '',
         PARAM_URL
     ));
 
-    $settings->add(new admin_setting_configtext(
-        'local_aifeedback/model',
-        new lang_string('model', 'local_aifeedback'),
-        new lang_string('model_help', 'local_aifeedback'),
-        'qwen3.5-9b-instruct',
-        PARAM_TEXT
+    $settings->add(new \local_aifeedback\admin\encrypted_password(
+        'local_aifeedback/lb_apikey',
+        new lang_string('lb_apikey', 'local_aifeedback'),
+        new lang_string('lb_apikey_help', 'local_aifeedback'),
+        ''
     ));
 
     $settings->add(new \local_aifeedback\admin\encrypted_password(
-        'local_aifeedback/apikey',
-        new lang_string('apikey', 'local_aifeedback'),
-        new lang_string('apikey_help', 'local_aifeedback'),
+        'local_aifeedback/lb_callbacksecret',
+        new lang_string('lb_callbacksecret', 'local_aifeedback'),
+        new lang_string('lb_callbacksecret_help', 'local_aifeedback'),
         ''
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_aifeedback/lb_callbackurl',
+        new lang_string('lb_callbackurl', 'local_aifeedback'),
+        get_string('lb_callbackurl_help', 'local_aifeedback',
+            \local_aifeedback\lb\client::default_callback_url()),
+        '',
+        PARAM_URL
+    ));
+
+    // Modèle des corrections IA : devoirs et questions de quiz, et repli de
+    // tous les plugins IA qui n'ont pas leur propre modèle.
+    $settings->add(new \local_aifeedback\admin\lb_model_setting(
+        'local_aifeedback/model_feedback',
+        new lang_string('model_feedback', 'local_aifeedback'),
+        new lang_string('model_feedback_help', 'local_aifeedback')
     ));
 
     $settings->add(new admin_setting_configtextarea(
@@ -42,97 +66,6 @@ if ($hassiteconfig) {
         new lang_string('defaultsystemprompt_help', 'local_aifeedback'),
         '',
         PARAM_TEXT
-    ));
-
-    // === Pool de serveurs LLM ===
-    // Les appels régulés (tuteur interactif et file de corrections) sont
-    // répartis entre ces serveurs selon leur simultanéité maximale et les
-    // usages qu'ils acceptent. L'emplacement 1 est le serveur configuré
-    // ci-dessus ; les emplacements 2 et 3 sont facultatifs.
-    $settings->add(new admin_setting_heading(
-        'local_aifeedback/pool_heading',
-        new lang_string('pool_heading', 'local_aifeedback'),
-        get_string('pool_heading_desc', 'local_aifeedback') . ' '
-            . html_writer::link(new moodle_url('/local/aifeedback/servers.php'),
-                get_string('servers_link', 'local_aifeedback'))
-    ));
-
-    // Interrupteur de sécurité : désactivé, la file revient au mode historique
-    // (un seul appel à la fois, sur le serveur 1).
-    $settings->add(new admin_setting_configcheckbox(
-        'local_aifeedback/pool_feedback',
-        new lang_string('pool_feedback', 'local_aifeedback'),
-        new lang_string('pool_feedback_help', 'local_aifeedback'),
-        1
-    ));
-
-    $settings->add(new admin_setting_configtext(
-        'local_aifeedback/pool_acquire_wait',
-        new lang_string('pool_acquire_wait', 'local_aifeedback'),
-        new lang_string('pool_acquire_wait_help', 'local_aifeedback'),
-        10,
-        PARAM_INT
-    ));
-
-    for ($slot = 1; $slot <= \local_aifeedback\pool::MAX_SERVERS; $slot++) {
-        $p = 'server' . $slot . '_';
-
-        $settings->add(new admin_setting_heading(
-            'local_aifeedback/' . $p . 'heading',
-            get_string('server_heading', 'local_aifeedback', $slot),
-            ($slot === 1) ? new lang_string('server1_desc', 'local_aifeedback') : ''
-        ));
-
-        // L'emplacement 1 réutilise apiurl / model / apikey déjà saisis plus haut.
-        if ($slot > 1) {
-            $settings->add(new admin_setting_configtext(
-                'local_aifeedback/' . $p . 'apiurl',
-                new lang_string('server_apiurl', 'local_aifeedback'),
-                new lang_string('server_apiurl_help', 'local_aifeedback'),
-                '',
-                PARAM_URL
-            ));
-            $settings->add(new admin_setting_configtext(
-                'local_aifeedback/' . $p . 'model',
-                new lang_string('server_model', 'local_aifeedback'),
-                new lang_string('server_model_help', 'local_aifeedback'),
-                '',
-                PARAM_TEXT
-            ));
-            $settings->add(new \local_aifeedback\admin\encrypted_password(
-                'local_aifeedback/' . $p . 'apikey',
-                new lang_string('server_apikey', 'local_aifeedback'),
-                new lang_string('server_apikey_help', 'local_aifeedback'),
-                ''
-            ));
-        }
-
-        $settings->add(new admin_setting_configtext(
-            'local_aifeedback/' . $p . 'maxconcurrency',
-            new lang_string('server_maxconcurrency', 'local_aifeedback'),
-            new lang_string('server_maxconcurrency_help', 'local_aifeedback'),
-            1,
-            PARAM_INT
-        ));
-        $settings->add(new admin_setting_configcheckbox(
-            'local_aifeedback/' . $p . 'use_feedback',
-            new lang_string('server_use_feedback', 'local_aifeedback'),
-            new lang_string('server_use_feedback_help', 'local_aifeedback'),
-            ($slot === 1) ? 1 : 0
-        ));
-        $settings->add(new admin_setting_configcheckbox(
-            'local_aifeedback/' . $p . 'use_tutor',
-            new lang_string('server_use_tutor', 'local_aifeedback'),
-            new lang_string('server_use_tutor_help', 'local_aifeedback'),
-            ($slot === 1) ? 1 : 0
-        ));
-    }
-
-    $settings->add(new admin_setting_configcheckbox(
-        'local_aifeedback/stream_usage',
-        new lang_string('stream_usage', 'local_aifeedback'),
-        new lang_string('stream_usage_help', 'local_aifeedback'),
-        0
     ));
 
     // Supplément de tokens pour les modèles à raisonnement : leur réflexion
@@ -246,7 +179,8 @@ if ($hassiteconfig) {
 
     $ADMIN->add('localplugins', $settings);
 
-    // Page d'état des serveurs (charge, quarantaine, remise en service).
+    // Page d'état du serveur IA (load balancer : santé, capacité par modèle,
+    // consommation ; jobs Moodle en cours).
     $ADMIN->add('localplugins', new admin_externalpage(
         'local_aifeedback_servers',
         new lang_string('servers_page', 'local_aifeedback'),

@@ -133,7 +133,7 @@ class hook_callbacks {
             'widget_title', 'widget_open', 'widget_close', 'widget_new', 'widget_resize',
             'widget_placeholder', 'widget_send', 'widget_stop', 'widget_retry',
             'widget_welcome', 'widget_connecting', 'widget_generating',
-            'widget_queued_next', 'widget_queued_n', 'widget_interrupted',
+            'widget_queued_next', 'widget_queued_n', 'widget_waiting', 'widget_noworker', 'widget_interrupted',
             'widget_quota', 'widget_quota_reset', 'widget_networkerror', 'widget_sendhint', 'widget_searching', 'widget_reading',
             'widget_needkeys', 'widget_needkeys_link',
             'widget_attach', 'widget_attach_remove', 'attach_toomany', 'attach_toobig',

@@ -99,6 +99,9 @@ foreach ($jobs as $j) {
     if ($j->kind === 'event') {
         $result = html_writer::span(get_string('status_eventjob', 'local_aimissions'),
             'badge bg-info text-white');
+    } else if ($j->kind === 'commeval') {
+        $result = html_writer::span(get_string('status_commevaljob', 'local_aimissions'),
+            'badge bg-info text-white');
     } else if ((int)$j->resultmissionid > 0) {
         $mission = $DB->get_record('local_aimissions_mission', array('id' => (int)$j->resultmissionid));
         if ($mission && (int)$mission->assigncmid > 0) {

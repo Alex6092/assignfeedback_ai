@@ -55,6 +55,7 @@ class qtype_aishortanswer_edit_form extends question_edit_form {
         $mform->addElement('text', 'apiurl', get_string('apiurl', 'qtype_aishortanswer'),
             array('size' => 60));
         $mform->setType('apiurl', PARAM_URL);
+        $mform->addHelpButton('apiurl', 'apiurl', 'qtype_aishortanswer');
         $mform->disabledIf('apiurl', 'apiurl_override', 'notchecked');
 
         $mform->addElement('advcheckbox', 'model_override',
@@ -63,6 +64,7 @@ class qtype_aishortanswer_edit_form extends question_edit_form {
         $mform->addElement('text', 'model', get_string('model', 'qtype_aishortanswer'),
             array('size' => 40));
         $mform->setType('model', PARAM_TEXT);
+        $mform->addHelpButton('model', 'model', 'qtype_aishortanswer');
         $mform->disabledIf('model', 'model_override', 'notchecked');
 
         $mform->addElement('advcheckbox', 'apikey_override',
@@ -71,6 +73,7 @@ class qtype_aishortanswer_edit_form extends question_edit_form {
         $mform->addElement('passwordunmask', 'apikey',
             get_string('apikey', 'qtype_aishortanswer'), array('size' => 60));
         $mform->setType('apikey', PARAM_RAW);
+        $mform->addHelpButton('apikey', 'apikey', 'qtype_aishortanswer');
         $mform->disabledIf('apikey', 'apikey_override', 'notchecked');
     }
 

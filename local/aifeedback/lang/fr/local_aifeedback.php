@@ -9,82 +9,124 @@ $string['privacy:metadata:qgrading:status']      = 'État de la correction (en a
 $string['privacy:metadata:qgrading:aifeedback']  = 'Le feedback produit par l\'IA pour cette réponse.';
 $string['privacy:metadata:qgrading:mark']        = 'La note attribuée par l\'IA.';
 $string['privacy:metadata:qgrading:timecreated'] = 'Date de création de la correction.';
-$string['privacy:metadata:slot']                 = 'Tickets de file d\'attente du pool de serveurs LLM (aucun contenu, uniquement des informations techniques d\'ordonnancement).';
-$string['privacy:metadata:slot:userid']          = 'L\'utilisateur à l\'origine de la demande.';
-$string['privacy:metadata:slot:purpose']         = 'L\'usage demandé (tuteur ou correction).';
-$string['privacy:metadata:slot:component']       = 'Le plugin à l\'origine de la demande.';
-$string['privacy:metadata:slot:status']          = 'État du ticket (en attente, réservé, en cours, terminé).';
-$string['privacy:metadata:slot:timecreated']     = 'Date de la demande.';
-$string['privacy:metadata:llm']                  = 'Les contenus transmis pour analyse à un service LLM externe.';
+$string['privacy:metadata:job']                  = 'Suivi des générations confiées au load balancer d\'inférence.';
+$string['privacy:metadata:job:userid']           = 'L\'utilisateur pour qui la génération est faite.';
+$string['privacy:metadata:job:component']        = 'Le plugin à l\'origine de la demande.';
+$string['privacy:metadata:job:model']            = 'Le modèle utilisé.';
+$string['privacy:metadata:job:status']           = 'État du job (envoyé, reçu, terminé, échec).';
+$string['privacy:metadata:job:result']           = 'La réponse du modèle, conservée seulement le temps de l\'appliquer.';
+$string['privacy:metadata:job:timecreated']      = 'Date de la demande.';
+$string['privacy:metadata:llm']                  = 'Les contenus transmis pour analyse au load balancer d\'inférence du lycée (ou à une API externe imposée par une activité).';
 $string['privacy:metadata:llm:content']          = 'Le contenu envoyé au modèle (réponse d\'élève, question, message de conversation).';
 $string['privacy:path:qgrading']                 = 'Corrections IA';
-$string['privacy:path:pool']                     = 'File d\'attente IA';
+$string['privacy:path:jobs']                     = 'Générations IA';
 
 $string['taskname'] = 'Génération IA (file partagée)';
-
-// API
-$string['api_heading']              = 'API LLM';
-$string['apiurl']                   = 'URL de l\'API';
-$string['apiurl_help']              = 'Point d\'accès compatible OpenAI Chat Completions. Défaut : http://localhost:1234/v1/chat/completions';
-$string['model']                    = 'Nom du modèle';
-$string['model_help']               = 'Identifiant du modèle utilisé dans les appels API, ex. qwen3.5-9b-instruct.';
-$string['apikey']                   = 'Clé API';
-$string['apikey_help']              = 'Clé secrète envoyée dans l\'en-tête HTTP "Authorization: Bearer ...". Laisser vide si le serveur n\'en demande pas (cas par défaut de LM Studio). La valeur est chiffrée en base.';
+// Serveur IA (load balancer d'inférence)
+$string['lb_heading']               = 'Serveur IA (load balancer)';
+$string['lb_heading_desc']          = 'Toutes les générations IA (corrections, tuteur, génération de quiz, missions…) sont confiées au load balancer d\'inférence, qui les met en file et les répartit entre les serveurs IA. Seules les activités configurées avec leur propre URL (API externe) l\'appellent directement. Dans l\'administration du load balancer, créez une application pour ce Moodle avec l\'URL de base de callback <code>{$a->base}</code>, puis une clé d\'API autorisée en modes async, stream et sync. Les résultats arrivent sur <code>{$a->callback}</code> : le load balancer doit pouvoir joindre cette adresse.';
+$string['lb_url']                   = 'URL du load balancer';
+$string['lb_url_help']              = 'Adresse de base du service, sans « /v1 », ex. https://ia.mon-lycee.fr.';
+$string['lb_apikey']                = 'Clé d\'API de l\'application';
+$string['lb_apikey_help']           = 'Clé créée dans l\'administration du load balancer pour l\'application Moodle (affichée une seule fois). Envoyée dans l\'en-tête « Authorization: Bearer … ». La valeur est chiffrée en base.';
+$string['lb_callbacksecret']        = 'Secret de signature des callbacks';
+$string['lb_callbacksecret_help']   = 'Secret de callback de l\'application, fourni par le load balancer à la création de l\'application (ou après « rotation »). Il sert à vérifier que les résultats reçus viennent bien du load balancer. La valeur est chiffrée en base.';
+$string['lb_callbackurl']           = 'URL de callback (facultatif)';
+$string['lb_callbackurl_help']      = 'Adresse à laquelle le load balancer envoie les résultats. Laisser vide pour utiliser {$a}. À renseigner seulement si le load balancer joint Moodle par une autre adresse (réseau interne, par exemple).';
+$string['model_feedback']           = 'Modèle des corrections IA';
+$string['model_feedback_help']      = 'Modèle du catalogue du load balancer utilisé pour corriger les devoirs et les questions IA des quiz. C\'est aussi le modèle utilisé par les autres plugins IA (génération de quiz, missions, modération du tuteur…) qui n\'ont pas de modèle propre.';
 $string['defaultsystemprompt']      = 'Prompt système par défaut';
 $string['defaultsystemprompt_help'] = 'Utilisé quand aucun prompt n\'est défini au niveau du devoir ou de la question.';
+$string['lb_notconfigured']         = 'Le load balancer IA n\'est pas configuré (URL et clé d\'API, dans les réglages de local_aifeedback).';
+$string['lb_nomodel']               = 'Aucun modèle n\'est configuré pour cette génération (réglage « Modèle des corrections IA » de local_aifeedback).';
+$string['lb_error']                 = 'Serveur IA : {$a}';
+$string['lb_jobfailed']             = 'Génération {$a->status} sur le load balancer : {$a->message}';
+$string['lbmodel_choose']           = 'Choisir un modèle…';
+$string['lbmodel_missing']          = '{$a} (absent du catalogue du load balancer)';
+$string['lbmodel_unavailable']      = 'Catalogue des modèles indisponible ({$a}) : saisissez l\'identifiant exact du modèle.';
+$string['lbmodel_label']            = '{$a->id}{$a->vision} · contexte {$a->context} · sortie max {$a->output}';
+$string['lbmodel_vision']           = 'vision';
+$string['lbmodel_default']          = 'Modèle des corrections IA (par défaut)';
+$string['task_process']             = 'Application d\'un résultat IA reçu';
+$string['task_reconcile']           = 'Réconciliation des jobs IA avec le load balancer';
 
-// Pool de serveurs LLM
-$string['pool_heading']              = 'Serveurs LLM (répartition de charge)';
-$string['pool_heading_desc']         = 'Vous pouvez déclarer jusqu\'à 3 serveurs LLM. Le tuteur IA et la file de corrections sont répartis entre les serveurs qui acceptent l\'usage demandé et qui ont une place libre ; si un serveur tombe en panne, le travail bascule automatiquement sur un autre. Les demandes du tuteur sont servies EN PREMIER : un élève attend devant son écran, pas une correction différée. Laisser l\'URL d\'un emplacement vide le désactive.';
-$string['pool_feedback']             = 'Répartir la file de corrections sur le pool';
-$string['pool_feedback_help']        = 'Si activé (recommandé), chaque correction prend une place sur un des serveurs qui acceptent les corrections, plusieurs corrections peuvent tourner en parallèle, et une correction bascule sur un autre serveur si le sien est en panne. Si désactivé, retour au fonctionnement historique : une seule correction à la fois sur tout le site, toujours sur le serveur 1. Les activités configurées avec leur propre URL (API externe) ne passent jamais par le pool.';
-$string['pool_acquire_wait']         = 'Attente maximale d\'une place (secondes)';
-$string['pool_acquire_wait_help']    = 'Durée pendant laquelle une tâche de fond attend qu\'un serveur se libère avant d\'être re-planifiée. À garder courte : pendant cette attente, le processus cron ne traite aucune autre tâche du site (courriels, sauvegardes…). Défaut : 10.';
-$string['poolbusy']                  = 'Tous les serveurs IA sont occupés pour le moment. Réessayez dans un instant.';
+// Usages des modèles (page d'état)
+$string['usage_feedback']           = 'corrections';
+$string['usage_tutor']              = 'tuteur';
+$string['usage_moderation']         = 'modération / brief';
+$string['usage_quizgen']            = 'génération de quiz';
+$string['usage_missions']           = 'missions';
+$string['usage_assignoverride']     = '{$a} devoir(s)';
+$string['usage_questionoverride']   = '{$a} question(s)';
 
-// Page d'état des serveurs
-$string['servers_link']              = 'Voir l\'état des serveurs.';
-$string['servers_page']              = 'État des serveurs IA';
-$string['servers_intro']             = 'Occupation et santé des serveurs du pool. La page s\'actualise toutes les 15 secondes.';
-$string['servers_legacy']            = 'La répartition de la file de corrections est désactivée : les corrections passent une par une sur le serveur 1 (mode historique). Seul le tuteur utilise le pool.';
-$string['servers_col_endpoint']      = 'Serveur';
-$string['servers_col_usages']        = 'Usages';
-$string['servers_col_busy']          = 'Occupation';
-$string['servers_col_state']         = 'État';
-$string['servers_col_lasthour']      = 'Dernière heure';
-$string['servers_col_lastused']      = 'Dernière utilisation';
-$string['servers_use_feedback']      = 'corrections';
-$string['servers_use_tutor']         = 'tuteur';
-$string['servers_inservice']         = 'En service';
-$string['servers_quarantine']        = 'En quarantaine jusqu\'à {$a}';
-$string['servers_clear']             = 'Remettre en service';
-$string['servers_cleared']           = 'Serveur {$a} remis en service.';
-$string['servers_failures']          = '{$a} panne(s) détectée(s) depuis l\'installation';
-$string['servers_defaultmodel']      = 'modèle global';
-$string['servers_lasthour_value']    = '{$a->done} terminé(s), {$a->failed} échoué(s)';
-$string['servers_never']             = 'jamais';
-$string['servers_queues']            = 'En attente : {$a->tutor} demande(s) du tuteur, {$a->feedback} correction(s).';
-$string['servers_nofeedback']        = 'Aucun serveur n\'accepte les corrections : elles ne seront jamais traitées. Cochez « Autoriser la correction » sur au moins un serveur.';
-$string['servers_concurrency']       = 'Vos serveurs peuvent traiter {$a->capacity} corrections en parallèle, mais Moodle ne lance que {$a->limit} processus de tâches de fond à la fois (réglage « task_adhoc_concurrency_limit », Administration > Serveur > Tâches) : augmentez-le pour utiliser toute la capacité.';
-$string['servers_modeltip']          = 'Conseil : chaque serveur utilise son propre modèle. Évitez d\'imposer un modèle unique au niveau d\'une activité ou d\'un plugin (sans URL) : il devrait alors exister sur tous les serveurs qui acceptent les corrections.';
-$string['server_heading']            = 'Serveur {$a}';
-$string['server1_desc']              = 'Cet emplacement utilise l\'URL, le modèle et la clé API saisis plus haut. Il est toujours actif.';
-$string['server_apiurl']             = 'URL de l\'API';
-$string['server_apiurl_help']        = 'Point d\'accès compatible OpenAI Chat Completions de ce serveur, ex. http://192.168.1.42:1234/v1/chat/completions. Laisser vide pour désactiver cet emplacement.';
-$string['server_model']              = 'Nom du modèle';
-$string['server_model_help']         = 'Modèle à utiliser sur ce serveur. Laisser vide pour reprendre le modèle global.';
-$string['server_apikey']             = 'Clé API';
-$string['server_apikey_help']        = 'Clé secrète de ce serveur (en-tête « Authorization: Bearer … »). Laisser vide si le serveur n\'en demande pas. La valeur est chiffrée en base.';
-$string['server_maxconcurrency']     = 'Requêtes simultanées maximum';
-$string['server_maxconcurrency_help'] = 'Nombre de générations que ce serveur peut traiter EN MÊME TEMPS. LM Studio ne sert en général qu\'une requête à la fois : laissez 1 sauf si vous avez activé le traitement parallèle. Au-delà, les demandes attendent leur tour dans la file. Défaut : 1.';
-$string['server_use_feedback']       = 'Autoriser la correction des devoirs et des questions';
-$string['server_use_feedback_help']  = 'Si activé, ce serveur peut traiter les corrections différées (file de jobs).';
-$string['server_use_tutor']          = 'Autoriser le tuteur IA (chat des élèves)';
-$string['server_use_tutor_help']     = 'Si activé, ce serveur peut traiter les conversations du tuteur IA. Dédier un serveur au tuteur évite que les corrections ne fassent attendre les élèves.';
-$string['stream_usage']              = 'Demander le décompte des tokens en streaming';
+// Statuts des jobs
+$string['jobstatus_submitting']     = 'Envoi en cours';
+$string['jobstatus_submitted']      = 'Au load balancer';
+$string['jobstatus_received']       = 'Reçu';
+$string['jobstatus_processing']     = 'Application';
+$string['jobstatus_done']           = 'Terminé';
+$string['jobstatus_failed']         = 'Échec';
+$string['jobstatus_cancelled']      = 'Annulé';
+
+// Page d'état du serveur IA
+$string['servers_link']             = 'Voir l\'état du serveur IA.';
+$string['servers_page']             = 'État du serveur IA';
+$string['servers_intro']            = 'Ce que le load balancer d\'inférence indique par son API, et les jobs Moodle en cours. La page s\'actualise toutes les 15 secondes.';
+$string['servers_notconfigured']    = 'Le load balancer n\'est pas configuré. Renseignez son URL, la clé d\'API et le secret de callback dans les <a href="{$a}">réglages</a>.';
+$string['servers_health']           = 'Connexion';
+$string['servers_reachable']        = 'Service joignable';
+$string['servers_unreachable']      = 'Service injoignable';
+$string['servers_release']          = 'version {$a}';
+$string['servers_authok']           = 'Clé d\'API acceptée';
+$string['servers_autherror']        = 'Clé d\'API refusée';
+$string['servers_auth401']          = 'clé absente, inconnue ou désactivée.';
+$string['servers_auth403']          = 'droit insuffisant pour cette clé.';
+$string['servers_auth403ip']        = 'l\'adresse IP de ce serveur Moodle n\'est pas autorisée pour cette clé.';
+$string['servers_lbadmin']          = 'Ouvrir l\'administration du load balancer (détail par serveur IA, jobs, quotas par élève)';
+$string['servers_capacity']         = 'Capacité et occupation par modèle';
+$string['servers_capacity_note']    = 'Chiffres agrégés par modèle sur les serveurs IA actifs. Une place occupée est une génération en cours, ou une génération interrompue dont l\'arrêt n\'est pas encore confirmé.';
+$string['servers_noworker']         = 'aucun serveur disponible';
+$string['servers_workers_value']    = '{$a->available} / {$a->total} disponible(s)';
+$string['servers_busy_value']       = '{$a->occupied} / {$a->capacity}';
+$string['servers_catalog']          = 'Catalogue des modèles';
+$string['servers_modelmissing']     = 'Le modèle « {$a->model} » est configuré dans Moodle ({$a->usages}) mais absent du catalogue du load balancer : les générations correspondantes seront refusées.';
+$string['servers_usage']            = 'Consommation de l\'application';
+$string['servers_nousage']          = 'Aucune consommation sur les 7 derniers jours.';
+$string['servers_tokens_value']     = '{$a->total} ({$a->prompt} en entrée, {$a->completion} en sortie)';
+$string['servers_quotas']           = 'Budgets restants :';
+$string['servers_noquota']          = 'Aucun quota de tokens actif pour l\'application ni pour la clé.';
+$string['servers_quota_credit']     = '{$a->scope} : {$a->available} / {$a->limit} tokens de crédit';
+$string['servers_quota_window']     = '{$a->scope} : {$a->available} / {$a->limit} tokens sur {$a->hours} h';
+$string['servers_scope_application'] = 'application';
+$string['servers_scope_key']        = 'clé';
+$string['servers_moodle']           = 'Jobs Moodle (24 dernières heures)';
+$string['servers_nojobs']           = 'Aucun job soumis au load balancer depuis 24 heures.';
+$string['servers_moodletokens']     = 'Tokens consommés par ces jobs : {$a->prompt} en entrée, {$a->completion} en sortie.';
+$string['servers_active']           = 'Jobs en cours (les plus anciens)';
+$string['servers_errors']           = 'Dernières erreurs';
+$string['servers_attempt']          = 'envoi n° {$a}';
+$string['servers_reconcile']        = 'Relancer la réconciliation';
+$string['servers_reconcile_help']   = 'Interroge le load balancer pour les jobs sans nouvelles depuis plus de 10 minutes, applique les résultats en attente et remet en file les travaux orphelins. La tâche planifiée le fait automatiquement toutes les 5 minutes.';
+$string['servers_reconciled']       = 'Réconciliation effectuée.';
+$string['servers_col_model']        = 'Modèle';
+$string['servers_col_usages']       = 'Usages dans Moodle';
+$string['servers_col_workers']      = 'Serveurs IA';
+$string['servers_col_busy']         = 'Places occupées';
+$string['servers_col_vision']       = 'Vision';
+$string['servers_col_context']      = 'Contexte (tokens)';
+$string['servers_col_output']       = 'Sortie max (tokens)';
+$string['servers_col_tokens24h']    = 'Tokens 24 h';
+$string['servers_col_tokens7d']     = 'Tokens 7 jours';
+$string['servers_col_attempts7d']   = 'Générations 7 jours';
+$string['servers_col_component']    = 'Plugin';
+$string['servers_col_state']        = 'État';
+$string['servers_col_lbjob']        = 'Job load balancer';
+$string['servers_col_since']        = 'Depuis';
+$string['servers_col_when']         = 'Date';
+$string['servers_col_error']        = 'Erreur';
+
 $string['reasoning_budget']          = 'Budget de réflexion (tokens)';
 $string['reasoning_budget_help']     = 'Pour les modèles à raisonnement (Qwen3, gpt-oss, DeepSeek-R1, Magistral…). Leur réflexion est décomptée du même nombre maximal de tokens que la réponse, calibré pour la réponse seule (700 pour le tuteur, 2048 pour la correction) : la réflexion l\'épuise et la réponse revient vide. Ce nombre est ajouté au maximum de chaque appel (correction, tuteur, génération de questions, Missions…) ; avec une valeur supérieure à 0, le délai des appels non diffusés passe aussi de 3 à 10 minutes. 0 = aucun supplément (modèles sans raisonnement). Conseillé : 4096 à 8192. La réflexion n\'est jamais montrée ni enregistrée. Avec vLLM, le contexte du modèle doit pouvoir contenir le prompt plus ce maximum.';
-$string['stream_usage_help']         = 'Si activé, les appels en streaming demandent au serveur le nombre exact de tokens consommés (« stream_options ») pour un quota plus juste. Certains serveurs anciens refusent cette option et renvoient une erreur HTTP 400 : dans ce cas, laissez désactivé (les tokens sont alors estimés). Sans effet sur OpenAI, où l\'option est toujours envoyée.';
 
 // Accessibilité
 $string['accessibility_heading']    = 'Accessibilité';
@@ -120,10 +162,10 @@ $string['max_attempts_to_grade_help']    = 'Nombre maximum de corrections IA par
 
 // Relance d'une correction
 $string['retry_button']         = 'Relancer la correction IA';
-$string['retry_queued']         = 'Correction IA relancée — elle sera traitée sous peu (à la prochaine exécution du cron).';
+$string['retry_queued']         = 'Correction IA relancée — elle sera traitée sous peu.';
 $string['retry_notfound']       = 'Ligne de correction introuvable.';
 $string['retry_pagetitle']      = 'Relancer une correction IA';
-$string['retry_confirm_body']   = 'Confirmer la relance de la correction IA pour cette copie. Elle sera remise en file d\'attente et traitée à la prochaine exécution du cron.';
+$string['retry_confirm_body']   = 'Confirmer la relance de la correction IA pour cette copie. Elle sera remise en file d\'attente sur le serveur IA et traitée sous peu.';
 $string['retry_confirm_button'] = 'Confirmer la relance';
 $string['retry_lasterror']      = 'Dernière erreur :';
 

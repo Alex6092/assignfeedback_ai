@@ -187,6 +187,10 @@ switch ($job->status) {
     case 'running':
         echo $OUTPUT->notification(
             get_string('status_running_help', 'local_aiquizgen'), 'info');
+        if ((string)$job->step !== '') {
+            echo \html_writer::tag('p', get_string('status_currentstep', 'local_aiquizgen',
+                get_string('step_' . $job->step, 'local_aiquizgen')), array('class' => 'small text-muted'));
+        }
         break;
 
     case 'done':

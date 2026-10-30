@@ -174,9 +174,7 @@ class tool implements \local_aichat\toolset {
 
         $doc = $this->cache_get($url);
         if ($doc === null) {
-            \local_aifeedback\pool::heartbeat_current();
             $doc = $this->load($url);
-            \local_aifeedback\pool::heartbeat_current();
             if (!is_array($doc)) {
                 return $this->refuse($url, $doc);
             }

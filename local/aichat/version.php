@@ -6,21 +6,22 @@ defined('MOODLE_INTERNAL') || die();
  * devoirs (et, à terme, des tentatives de test).
  *
  * Réutilise :
- *   - local_aifeedback : appels LLM (api::call / api::stream), pool de serveurs,
- *     file de jobs (run_job) pour la génération du brief pédagogique.
+ *   - local_aifeedback : appels LLM (api::stream via le load balancer
+ *     d'inférence), file de jobs asynchrones pour la modération et le brief
+ *     pédagogique.
  *   - assignfeedback_ai (runtime, OPTIONNEL) : compétences du devoir et corrigé
  *     servant de base au brief — le corrigé lui-même n'est JAMAIS transmis au
  *     tuteur.
  */
-$plugin->version   = 2026102201;       // YYYYMMDDXX
+$plugin->version   = 2026103000;       // YYYYMMDDXX
 $plugin->requires  = 2024042200;       // Moodle 4.4 (hook before_footer_html_generation)
 $plugin->component = 'local_aichat';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.7.2';          // Option « Prompt système seul »
+$plugin->release   = '0.8.0';          // File d'attente et streaming via le load balancer
 $plugin->dependencies = array(
-    // Dépendance DURE : couche LLM partagée + pool de serveurs + streaming
-    // (>= 1.11.0 pour l'appel d'outils dans api::stream).
-    'local_aifeedback' => 2026091900,
+    // Dépendance DURE : couche LLM partagée + load balancer + streaming
+    // (>= 2.0.0 : X-Job-ID, rang dans la file, jobs asynchrones).
+    'local_aifeedback' => 2026103000,
     // Dépendance OPTIONNELLE (détectée au runtime, PAS listée ici) :
     //   - assignfeedback_ai : compétences + corrigé source du brief pédagogique.
 );

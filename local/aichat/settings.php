@@ -19,6 +19,15 @@ if ($hassiteconfig) {
         ''
     ));
 
+    // Modèle du tuteur (catalogue du load balancer). Vide : modèle des
+    // corrections IA.
+    $settings->add(new \local_aifeedback\admin\lb_model_setting(
+        'local_aichat/model_tutor',
+        new lang_string('setting_modeltutor', 'local_aichat'),
+        new lang_string('setting_modeltutor_help', 'local_aichat'),
+        get_string('lbmodel_default', 'local_aifeedback')
+    ));
+
     $settings->add(new admin_setting_configtextarea(
         'local_aichat/tutorprompt',
         new lang_string('setting_tutorprompt', 'local_aichat'),
@@ -199,6 +208,14 @@ if ($hassiteconfig) {
         new lang_string('setting_moderationnotify', 'local_aichat'),
         new lang_string('setting_moderationnotify_help', 'local_aichat'),
         1
+    ));
+
+    // Modèle de la modération et du brief pédagogique (traitements de fond).
+    $settings->add(new \local_aifeedback\admin\lb_model_setting(
+        'local_aichat/model_moderation',
+        new lang_string('setting_modelmoderation', 'local_aichat'),
+        new lang_string('setting_modelmoderation_help', 'local_aichat'),
+        get_string('lbmodel_default', 'local_aifeedback')
     ));
 
     // === Recherche Web ===

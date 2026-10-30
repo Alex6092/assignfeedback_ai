@@ -4,21 +4,18 @@ namespace local_aifeedback;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Échec imputable au SERVEUR LLM (et non à la requête) : il justifie de
- * retenter sur un autre serveur du pool.
+ * Échec imputable au SERVEUR joint (load balancer ou API externe), et non à
+ * la requête : la même demande pourra réussir plus tard.
  *
  * Même code d'erreur et même message que l'échec d'appel ordinaire
  * ('apicallfailed') : les handlers qui attrapent \Throwable, et les messages
  * d'erreur qu'ils enregistrent, restent strictement identiques.
  *
- * Deux natures, traitées différemment par pool::failover() :
+ * Deux natures :
  *   - UNREACHABLE : impossible de joindre le serveur (DNS, connexion refusée,
- *     délai de connexion). Le serveur est en panne : quarantaine, puis
- *     basculement sur chacun des autres serveurs si besoin.
+ *     délai de connexion) ;
  *   - SERVER_ERROR : le serveur a été joint mais a échoué (HTTP 5xx, réponse
- *     vide, connexion coupée en cours). Ce peut être la requête elle-même
- *     (une copie « empoisonnée » qui fait planter le modèle) : pas de
- *     quarantaine, un seul nouvel essai sur un autre serveur.
+ *     vide, connexion coupée en cours).
  */
 class server_unavailable_exception extends \moodle_exception {
 

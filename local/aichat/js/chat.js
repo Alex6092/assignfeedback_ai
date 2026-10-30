@@ -5,9 +5,11 @@
  * fichier tel quel, ce qui évite une chaîne de build dans un dépôt qui n'en a
  * pas. Cycle d'une question :
  *
- *   send  → ajax.php (crée les messages + prend un ticket de file)
- *   poll  → ajax.php (position dans la file, puis « ready »)
- *   flux  → stream.php (SSE : les fragments s'affichent à mesure)
+ *   send  → ajax.php (crée les messages)
+ *   flux  → stream.php, ouvert aussitôt : la demande attend son tour dans la
+ *           file du load balancer, puis les fragments s'affichent à mesure
+ *   poll  → ajax.php, en parallèle tant que rien n'est affiché : rang estimé
+ *           dans la file (« N personnes devant vous »)
  *
  * Le texte en cours de génération est inséré avec textContent (jamais de HTML
  * brut venant du modèle) ; la version finale est du HTML assaini par le serveur.
@@ -38,6 +40,7 @@
     var currentMessageId = 0;
     var pollTimer = null;
     var controller = null;     // AbortController du flux en cours
+    var streamOpen = false;    // flux ouvert par cet onglet pour le message courant
     var streamNode = null;     // noeud texte de la réponse en cours
 
     // --- Construction de l'interface ----------------------------------------
@@ -434,6 +437,7 @@
 
     function fail(message) {
         stopPolling();
+        streamOpen = false;
         state = 'idle';
         setBusy(false);
         setStatus(message || S.widget_networkerror, 'error');
@@ -449,7 +453,20 @@
 
     function schedulePoll() {
         stopPolling();
-        pollTimer = window.setTimeout(pollOnce, CFG.pollinterval || 1500);
+        pollTimer = window.setTimeout(pollOnce, Math.max(CFG.pollinterval || 1500, 1000));
+    }
+
+    // Attente au load balancer : rang estimé, ou raison de l'attente.
+    function showQueue(data) {
+        if (data.reason === 'workers_unavailable') {
+            setStatus(S.widget_noworker || '', 'queue');
+        } else if (data.position === null || data.position === undefined) {
+            setStatus(S.widget_waiting || '', 'queue');
+        } else if (data.position > 0) {
+            setStatus((S.widget_queued_n || '').replace('{$a}', data.position), 'queue');
+        } else {
+            setStatus(S.widget_queued_next || '', 'queue');
+        }
     }
 
     function pollOnce() {
@@ -464,23 +481,30 @@
             if (data.quota) {
                 setQuota(data.quota);
             }
+            if (state === 'streaming') {
+                return; // le texte arrive : le rang n'a plus d'intérêt
+            }
             if (data.status === 'queued') {
-                var n = data.position || 0;
-                setStatus(n > 0
-                    ? (S.widget_queued_n || '').replace('{$a}', n)
-                    : (S.widget_queued_next || ''), 'queue');
+                showQueue(data);
                 schedulePoll();
                 return;
             }
             if (data.status === 'ready') {
-                openStream();
+                // Flux pas encore ouvert côté serveur : on l'ouvre (une seule
+                // fois), puis on continue de suivre le rang.
+                if (!streamOpen) {
+                    openStream();
+                }
+                schedulePoll();
                 return;
             }
             if (data.status === 'running') {
-                // Un autre onglet génère déjà cette réponse : on attend qu'elle
-                // soit enregistrée plutôt que de lancer un second flux.
                 setStatus(S.widget_generating || '', 'queue');
-                schedulePoll();
+                if (!streamOpen) {
+                    // Un autre onglet génère déjà cette réponse : on attend
+                    // qu'elle soit enregistrée plutôt que de lancer un second flux.
+                    schedulePoll();
+                }
                 return;
             }
             if (data.status === 'done') {
@@ -496,15 +520,19 @@
             }
             fail(data.error || S.widget_networkerror);
         }).catch(function () {
+            if (streamOpen) {
+                schedulePoll(); // rang momentanément indisponible : le flux continue
+                return;
+            }
             fail(S.widget_networkerror);
         });
     }
 
     // --- Flux de génération -------------------------------------------------
     function openStream() {
-        stopPolling();
-        state = 'streaming';
-        setStatus(S.widget_generating || '', 'queue');
+        streamOpen = true;
+        state = 'queued';
+        setStatus(S.widget_waiting || '', 'queue');
 
         var body = addBubble('assistant', 'local-aichat-streaming');
         streamNode = body;
@@ -527,6 +555,7 @@
             }
             return readStream(response.body.getReader());
         }).catch(function (error) {
+            streamOpen = false;
             if (error && error.name === 'AbortError') {
                 return; // arrêt demandé par l'élève : déjà traité
             }
@@ -541,7 +570,8 @@
         function pump() {
             return reader.read().then(function (result) {
                 if (result.done) {
-                    if (state === 'streaming') {
+                    streamOpen = false;
+                    if (state === 'streaming' || state === 'queued') {
                         // Flux coupé sans « done » : on demande l'état au serveur.
                         schedulePoll();
                     }
@@ -579,13 +609,22 @@
             return;
         }
 
+        if (name === 'queued') {
+            // Demande enregistrée au load balancer : le rang est suivi par poll.
+            if (state === 'queued' && !pollTimer) {
+                schedulePoll();
+            }
+            return;
+        }
         if (name === 'delta' && streamNode) {
+            startGenerating();
             streamNode.textContent += data.t;
             scrollDown();
             setStatus('');
             return;
         }
         if (name === 'search') {
+            startGenerating();
             // Recherche Web ou lecture d'une page en cours : effacée par le
             // fragment de texte suivant. (Remplacement par fonction : une requête
             // contenant « $& » ne doit pas être interprétée comme un motif.)
@@ -611,6 +650,14 @@
         }
     }
 
+    // Premier signe de génération (texte ou recherche) : fin de l'attente.
+    function startGenerating() {
+        if (state !== 'streaming') {
+            state = 'streaming';
+            stopPolling();
+        }
+    }
+
     function finishFromServer(html) {
         stopPolling();
         if (streamNode) {
@@ -625,6 +672,7 @@
         state = 'idle';
         currentMessageId = 0;
         controller = null;
+        streamOpen = false;
         setBusy(false);
         setStatus('');
         scrollDown();
@@ -683,20 +731,23 @@
                 sent.forEach(revoke);
             }
             currentMessageId = data.messageid;
-            state = 'queued';
             if (data.quota) {
                 setQuota(data.quota);
             }
-            pollOnce();
+            // Le flux s'ouvre tout de suite : la demande prend sa place dans
+            // la file du load balancer et le rang s'affiche en attendant.
+            openStream();
         }).catch(function () {
             fail(S.widget_networkerror);
         });
     }
 
     function stop() {
-        if (state === 'streaming' && controller) {
-            controller.abort();       // le serveur détecte l'abandon et coupe le LLM
-        } else if (currentMessageId) {
+        if (controller) {
+            controller.abort();       // le serveur détecte l'abandon et coupe la génération
+        }
+        if (currentMessageId) {
+            // Libère aussi la place au load balancer, même pendant l'attente.
             post('cancel', {messageid: currentMessageId}).catch(function () {});
         }
         stopPolling();
@@ -713,6 +764,7 @@
         state = 'idle';
         currentMessageId = 0;
         controller = null;
+        streamOpen = false;
         setBusy(false);
         setStatus('');
     }

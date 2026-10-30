@@ -4,23 +4,30 @@ namespace local_aimissions;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Moteur de génération des missions client (Agent 1 — « Product Owner »).
+ * Moteur de génération des missions client (Agent 1 — « Product Owner »),
+ * des messages spontanés du client, de ses réponses différées (Agent 2) et
+ * des évaluations de communication.
  *
- * Implémente le contrat \local_aifeedback\job_handler : le dispatcher partagé
- * (run_job) tient le lock LLM global et appelle execute()/find_drainable_payloads().
+ * Implémente \local_aifeedback\async_handler : chaque job ne demande qu'UNE
+ * génération, confiée au load balancer comme job asynchrone ; son résultat
+ * est appliqué par complete() quand il revient.
  *
- * Pour chaque job (un groupe, un sprint) :
+ * Pour une mission (un groupe, un sprint) :
  *   1. charge/crée le projet (l'entreprise fictive persistante du groupe) ;
- *   2. lit le dossier projet et demande au LLM la mission suivante (cohérente,
- *      progressive, ton du persona) — schéma JSON strict ;
- *   3. crée le DEVOIR caché, restreint au groupe (assign_factory) : correction IA
- *      pré-configurée, compétences EFE, Tuteur IA si demandé ;
+ *   2. demande au LLM la mission suivante (cohérente, progressive, ton du
+ *      persona) — schéma JSON strict ;
+ *   3. au retour : crée le DEVOIR caché, restreint au groupe (assign_factory) :
+ *      correction IA pré-configurée, compétences EFE, Tuteur IA si demandé ;
  *   4. met à jour le dossier du projet et le numéro de sprint.
  *
  * Un job peut aussi ADAPTER la mission d'un autre groupe (params.adaptfrom) :
  * même besoin et même grille, réécrits pour l'entreprise du groupe.
+ *
+ * Le contexte d'une génération (sprint, mission en cours, lot de tickets…)
+ * est figé dans params à la préparation : le résultat s'applique à ce qui a
+ * été demandé, même si d'autres messages sont arrivés entre-temps.
  */
-class job_handler implements \local_aifeedback\job_handler {
+class job_handler implements \local_aifeedback\async_handler {
 
     /** @var string */
     const TABLE_JOB     = 'local_aimissions_job';
@@ -32,87 +39,156 @@ class job_handler implements \local_aifeedback\job_handler {
     const TABLE_EVENT   = 'local_aimissions_event';
     /** @var string */
     const TABLE_TICKET  = 'local_aimissions_ticket';
+    /** @var string */
+    const TABLE_COMMEVAL = 'local_aimissions_commeval';
     /** @var int Tentatives avant de basculer un job en failed. */
     const MAX_ATTEMPTS  = 3;
+    /** @var int Délai avant un nouvel essai (secondes). */
+    const RETRY_DELAY   = 120;
 
     /**
-     * Enfile un job dans la file partagée, éventuellement DIFFÉRÉ de $delaysec
-     * secondes (réponses client différées).
+     * Met un job en file, éventuellement DIFFÉRÉ de $delaysec secondes
+     * (réponses client différées).
      */
     public static function enqueue($jobid, $delaysec = 0) {
-        $payload = new \stdClass();
-        $payload->rowid = (int)$jobid;
-        \local_aifeedback\task\run_job::enqueue('local_aimissions', $payload, (int)$delaysec);
+        \local_aifeedback\jobs::enqueue('local_aimissions', (object)array('rowid' => (int)$jobid), (int)$delaysec);
+    }
+
+    public function build_request(\stdClass $payload): ?\local_aifeedback\request {
+        global $DB;
+
+        $job = $this->open_job($payload);
+        if ($job === null) {
+            return null;
+        }
+        // Réponse client pas encore due (job remis en file trop tôt) : on
+        // la replanifie à son heure.
+        if ((int)$job->notbefore > time() && $job->status === 'pending') {
+            \local_aifeedback\task\run_job::queue('local_aimissions', $payload, (int)$job->notbefore - time());
+            return null;
+        }
+
+        $params = json_decode((string)$job->params, true) ?: array();
+        switch ($job->kind) {
+            case 'event':
+                $spec = $this->event_request($job, $params);
+                break;
+            case 'ticket':
+                $spec = $this->ticket_request($job, $params);
+                break;
+            case 'commeval':
+                $spec = $this->commeval_request($job, $params);
+                break;
+            default:
+                $spec = $this->mission_request($job, $params);
+        }
+        if ($spec === null) {
+            $this->finish($job); // plus rien à générer
+            return null;
+        }
+
+        // Contexte figé + passage en running (visible sur la page de statut).
+        $DB->update_record(self::TABLE_JOB, (object)array(
+            'id'           => (int)$job->id,
+            'params'       => json_encode($params, JSON_UNESCAPED_UNICODE),
+            'status'       => 'running',
+            'timemodified' => time(),
+        ));
+        return new \local_aifeedback\request($spec['messages'], $spec['options'],
+            \local_aifeedback\models::for_component('local_aimissions'), (int)$job->userid);
+    }
+
+    public function complete(\stdClass $payload, array $result, ?array $usage): ?\stdClass {
+        global $DB;
+
+        $job = $this->open_job($payload);
+        if ($job === null) {
+            return null;
+        }
+        $params = json_decode((string)$job->params, true) ?: array();
+        switch ($job->kind) {
+            case 'event':
+                $this->event_complete($job, $params, $result);
+                break;
+            case 'ticket':
+                $this->ticket_complete($job, $params, $result);
+                break;
+            case 'commeval':
+                $this->commeval_complete($job, $params, $result);
+                break;
+            default:
+                $this->mission_complete($job, $params, $result);
+        }
+        $this->finish($job);
+        return null;
+    }
+
+    public function fail(\stdClass $payload, string $error, bool $permanent): ?int {
+        global $DB;
+
+        $job = $this->open_job($payload);
+        if ($job === null) {
+            return null;
+        }
+        $job->attempts     = (int)$job->attempts + 1;
+        $job->lasterror    = $error;
+        $job->timemodified = time();
+        $job->status       = ($permanent || (int)$job->attempts >= self::MAX_ATTEMPTS) ? 'failed' : 'pending';
+        if ($job->kind === 'ticket') {
+            // Nouvel essai : le lot sera relu, messages arrivés depuis compris.
+            $params = json_decode((string)$job->params, true) ?: array();
+            unset($params['_batch'], $params['_metrics']);
+            $job->params = json_encode($params, JSON_UNESCAPED_UNICODE);
+        }
+        $DB->update_record(self::TABLE_JOB, $job);
+        $this->log($job, 'ÉCHEC : ' . $error);
+
+        if ($job->status === 'failed' && $job->kind === 'commeval') {
+            $params = json_decode((string)$job->params, true) ?: array();
+            $DB->set_field_select(self::TABLE_COMMEVAL, 'status', 'failed', 'projectid = ? AND userid = ?',
+                array((int)($params['projectid'] ?? 0), (int)($params['userid'] ?? 0)));
+        }
+        return ($job->status === 'pending') ? self::RETRY_DELAY : null;
     }
 
     /**
-     * Traite un job. Le lock LLM est déjà tenu par le dispatcher.
+     * Jobs en attente sans génération en cours (mise en file perdue). Les
+     * réponses client différées ne sont reprises qu'une fois dues.
      */
-    public function execute(\stdClass $payload): void {
+    public function pending_payloads(int $before): array {
         global $DB;
+        $ids = $DB->get_fieldset_select(self::TABLE_JOB, 'id',
+            'status IN (?, ?) AND notbefore <= ? AND timemodified < ?',
+            array('pending', 'running', time(), $before));
+        $out = array();
+        foreach (array_slice($ids, 0, 50) as $id) {
+            $out[] = (object)array('rowid' => (int)$id);
+        }
+        return $out;
+    }
 
+    /**
+     * Job encore à traiter (en attente, ou en cours de génération), ou null.
+     */
+    private function open_job(\stdClass $payload) {
+        global $DB;
         $rowid = isset($payload->rowid) ? (int)$payload->rowid : 0;
         if ($rowid <= 0) {
-            return;
+            return null;
         }
         $job = $DB->get_record(self::TABLE_JOB, array('id' => $rowid));
-        if (!$job) {
-            return; // supprimé entre-temps
-        }
-        if ($job->status !== 'pending') {
-            return; // déjà traité
-        }
-
-        // Passe en running (visible sur la page de statut).
-        $job->status       = 'running';
-        $job->timemodified = time();
-        $DB->update_record(self::TABLE_JOB, $job);
-
-        try {
-            if ($job->kind === 'event') {
-                $this->process_event($job);
-            } else if ($job->kind === 'ticket') {
-                $this->process_ticket($job);
-            } else {
-                $this->process_one($job);
-            }
-
-            $job = $DB->get_record(self::TABLE_JOB, array('id' => $rowid));
-            if ($job) {
-                $job->status       = 'done';
-                $job->lasterror    = null;
-                $job->timemodified = time();
-                $DB->update_record(self::TABLE_JOB, $job);
-            }
-        } catch (\Throwable $e) {
-            $this->record_failure($rowid, $e);
-            $current = $DB->get_record(self::TABLE_JOB, array('id' => $rowid));
-            if ($current && (int)$current->attempts < self::MAX_ATTEMPTS) {
-                self::enqueue($rowid);
-            }
-            // Propage pour que le dispatcher arrête le drainage (LLM peut-être down).
-            throw $e;
-        }
+        return ($job && in_array($job->status, array('pending', 'running'), true)) ? $job : null;
     }
 
-    /**
-     * Renvoie le prochain job en attente (drainage sous le même lock).
-     */
-    public function find_drainable_payloads(): array {
+    /** Job terminé avec succès. */
+    private function finish(\stdClass $job): void {
         global $DB;
-        // notbefore : on ne draine PAS les jobs encore différés (réponses client).
-        $rows = $DB->get_records_sql(
-            'SELECT id FROM {' . self::TABLE_JOB . '}
-              WHERE status = ? AND notbefore <= ?
-           ORDER BY timecreated ASC',
-            array('pending', time()), 0, 1);
-        if (empty($rows)) {
-            return array();
-        }
-        $first = reset($rows);
-        $payload = new \stdClass();
-        $payload->rowid = (int)$first->id;
-        return array($payload);
+        $DB->update_record(self::TABLE_JOB, (object)array(
+            'id'           => (int)$job->id,
+            'status'       => 'done',
+            'lasterror'    => null,
+            'timemodified' => time(),
+        ));
     }
 
     // =====================================================================
@@ -120,41 +196,51 @@ class job_handler implements \local_aifeedback\job_handler {
     // =====================================================================
 
     /**
-     * Génère une mission pour le projet/groupe du job.
+     * Demande de la mission du sprint suivant pour le projet/groupe du job.
+     * Le sprint visé est figé dans $params['_sprint'].
      */
-    private function process_one(\stdClass $job): void {
+    private function mission_request(\stdClass $job, array &$params): ?array {
         global $DB;
 
-        $params = json_decode((string)$job->params, true) ?: array();
-
         // Adaptation d'un sprint d'un autre groupe (duplication « Adapter par l'IA »).
-        $source = null;
-        if (!empty($params['adaptfrom'])) {
-            $source = $DB->get_record(self::TABLE_MISSION, array('id' => (int)$params['adaptfrom']));
-            if (!$source) {
-                throw new \moodle_exception('error_adapt_nosource', 'local_aimissions');
-            }
-        }
+        $source = $this->adapt_source($params);
 
         // --- 1. Projet (entreprise fictive du groupe) -------------------
         $project = $this->load_or_create_project($job, $params);
-        $this->log($job, 'Projet : « ' . $project->companyname . ' » (groupe '
-            . (int)$project->groupid . ', sprint à venir n°' . ((int)$project->currentsprint + 1) . ')');
-
-        $sprint = (int)$project->currentsprint + 1;
+        if (!isset($params['_sprint'])) {
+            $this->log($job, 'Projet : « ' . $project->companyname . ' » (groupe '
+                . (int)$project->groupid . ', sprint à venir n°' . ((int)$project->currentsprint + 1) . ')');
+            $params['_sprint'] = (int)$project->currentsprint + 1;
+        }
+        $sprint = (int)$params['_sprint'];
         $maxsprints = (int)(get_config('local_aimissions', 'maxsprints') ?: 20);
         if ($sprint > $maxsprints) {
             throw new \moodle_exception('error_maxsprints', 'local_aimissions');
         }
 
-        // --- 2. Appel LLM : la mission suivante -------------------------
+        // --- 2. Demande au LLM : la mission suivante ----------------------
         if ($source) {
-            $this->log($job, 'Appel LLM (Agent 1) pour adapter la mission « ' . $source->title
+            $this->log($job, 'Demande au serveur IA (Agent 1) : adapter la mission « ' . $source->title
                 . ' » à cette entreprise…');
         } else {
-            $this->log($job, 'Appel LLM (Agent 1) pour générer la mission…');
+            $this->log($job, 'Demande au serveur IA (Agent 1) : générer la mission…');
         }
-        $spec = $this->generate_mission($project, $sprint, $params, $source);
+        return $this->mission_messages($project, $sprint, $params, $source);
+    }
+
+    /**
+     * Applique la mission reçue : devoir caché, mission, dossier du projet.
+     */
+    private function mission_complete(\stdClass $job, array $params, array $spec): void {
+        global $DB;
+
+        if (!$this->is_valid_spec($spec)) {
+            throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
+        }
+        $source  = $this->adapt_source($params);
+        $project = $this->load_or_create_project($job, $params);
+        $sprint  = (int)($params['_sprint'] ?? ((int)$project->currentsprint + 1));
+
         $spec['title']         = $this->truncate((string)$spec['title'], 250);
         $spec['clientrequest'] = $this->ensure_html((string)$spec['clientrequest']);
         $this->log($job, 'Mission reçue : « ' . $spec['title'] . ' »');
@@ -182,6 +268,21 @@ class job_handler implements \local_aifeedback\job_handler {
         $DB->set_field(self::TABLE_JOB, 'resultmissionid', $missionid, array('id' => $job->id));
         $this->log($job, 'Mission #' . $missionid . ' enregistrée (cmid ' . $cmid
             . ', devoir caché — à relire puis publier).');
+    }
+
+    /**
+     * Mission source d'une adaptation (params.adaptfrom), ou null.
+     */
+    private function adapt_source(array $params) {
+        global $DB;
+        if (empty($params['adaptfrom'])) {
+            return null;
+        }
+        $source = $DB->get_record(self::TABLE_MISSION, array('id' => (int)$params['adaptfrom']));
+        if (!$source) {
+            throw new \moodle_exception('error_adapt_nosource', 'local_aimissions');
+        }
+        return $source;
     }
 
     /**
@@ -232,34 +333,51 @@ class job_handler implements \local_aifeedback\job_handler {
     // =====================================================================
 
     /**
-     * Génère une communication client (événement) pour un projet existant.
-     * Stockée en attente de publication (revue enseignant), comme une mission.
+     * Demande d'une communication client (événement) pour un projet existant.
+     * La mission en cours est figée dans $params['_missionid'].
      */
-    private function process_event(\stdClass $job): void {
+    private function event_request(\stdClass $job, array &$params): ?array {
         global $DB;
 
-        $params    = json_decode((string)$job->params, true) ?: array();
-        $projectid = (int)($params['projectid'] ?? $job->projectid);
-        $project   = $DB->get_record(self::TABLE_PROJECT, array('id' => $projectid));
-        if (!$project) {
-            throw new \moodle_exception('error_event_noproject', 'local_aimissions');
+        $project = $this->event_project($job, $params);
+        $type    = (string)($params['eventtype'] ?? 'besoin');
+        $hint    = (string)($params['hint'] ?? '');
+
+        if (!isset($params['_missionid'])) {
+            $this->log($job, 'Génération d\'un événement « ' . $type . ' » pour « '
+                . $project->companyname . ' »…');
+            $missions = $DB->get_records(self::TABLE_MISSION,
+                array('projectid' => (int)$project->id, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
+            $params['_missionid'] = $missions ? (int)reset($missions)->id : 0;
         }
-        $type = (string)($params['eventtype'] ?? 'besoin');
-        $hint = (string)($params['hint'] ?? '');
+        $mission = $params['_missionid']
+            ? $DB->get_record(self::TABLE_MISSION, array('id' => (int)$params['_missionid'])) : null;
 
-        $this->log($job, 'Génération d\'un événement « ' . $type . ' » pour « '
-            . $project->companyname . ' »…');
+        return array(
+            'messages' => array(
+                array('role' => 'system', 'content' => $this->event_system_prompt($project, $mission ?: null)),
+                array('role' => 'user',   'content' => $this->event_user_prompt($type, $hint)),
+            ),
+            'options'  => array('temperature' => 0.6, 'max_tokens' => 700),
+        );
+    }
 
-        $missions = $DB->get_records(self::TABLE_MISSION,
-            array('projectid' => $projectid, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
-        $mission = $missions ? reset($missions) : null;
+    /**
+     * Enregistre l'événement reçu, en attente de publication (revue enseignant).
+     */
+    private function event_complete(\stdClass $job, array $params, array $result): void {
+        global $DB;
 
-        $body = $this->generate_event_body($project, $mission, $type, $hint);
+        $project = $this->event_project($job, $params);
+        $body    = trim((string)($result['__text__'] ?? ''));
+        if ($body === '') {
+            throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
+        }
 
         $ev = new \stdClass();
-        $ev->projectid   = $projectid;
-        $ev->missionid   = $mission ? (int)$mission->id : 0;
-        $ev->type        = $type;
+        $ev->projectid   = (int)$project->id;
+        $ev->missionid   = (int)($params['_missionid'] ?? 0);
+        $ev->type        = (string)($params['eventtype'] ?? 'besoin');
         $ev->body        = $body;
         $ev->applied     = 0; // en attente de publication
         $ev->timecreated = time();
@@ -268,26 +386,15 @@ class job_handler implements \local_aifeedback\job_handler {
         $this->log($job, 'Événement #' . $evid . ' généré (en attente de publication).');
     }
 
-    /**
-     * Appel LLM produisant le corps du message client (texte brut).
-     */
-    private function generate_event_body(\stdClass $project, ?\stdClass $mission,
-                                         string $type, string $hint): string {
-        $messages = array(
-            array('role' => 'system', 'content' => $this->event_system_prompt($project, $mission)),
-            array('role' => 'user',   'content' => $this->event_user_prompt($type, $hint)),
-        );
-        $options = array('temperature' => 0.6, 'max_tokens' => 700);
-        $model = (string)get_config('local_aimissions', 'model');
-        if ($model !== '') {
-            $options['model'] = $model;
+    /** Projet d'un job d'événement ou de réponse client. */
+    private function event_project(\stdClass $job, array $params): \stdClass {
+        global $DB;
+        $projectid = (int)($params['projectid'] ?? $job->projectid);
+        $project   = $DB->get_record(self::TABLE_PROJECT, array('id' => $projectid));
+        if (!$project) {
+            throw new \moodle_exception('error_event_noproject', 'local_aimissions');
         }
-        $result = \local_aifeedback\api::call($messages, $options);
-        $text = is_array($result) ? trim((string)($result['__text__'] ?? '')) : '';
-        if ($text === '') {
-            throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
-        }
-        return $text;
+        return $project;
     }
 
     private function event_system_prompt(\stdClass $project, ?\stdClass $mission): string {
@@ -382,38 +489,71 @@ class job_handler implements \local_aifeedback\job_handler {
     }
 
     /**
-     * Génère la réponse différée du client à TOUS les messages en attente d'un
-     * projet (le lot), pose la réponse + la réaction, met à jour l'état client.
+     * Demande de la réponse différée du client à TOUS les messages en attente
+     * d'un projet (le lot). Le lot et ses métriques sont figés dans params.
      */
-    private function process_ticket(\stdClass $job): void {
+    private function ticket_request(\stdClass $job, array &$params): ?array {
         global $DB;
 
-        $params    = json_decode((string)$job->params, true) ?: array();
-        $projectid = (int)($params['projectid'] ?? $job->projectid);
-        $project   = $DB->get_record(self::TABLE_PROJECT, array('id' => $projectid));
-        if (!$project) {
-            throw new \moodle_exception('error_event_noproject', 'local_aimissions');
-        }
+        $project = $this->event_project($job, $params);
         if ((string)$project->clientstatus === 'ended') {
             $this->log($job, 'Client en rupture : pas de réponse.');
-            return;
+            return null;
         }
 
-        $batch = array_values($DB->get_records(self::TABLE_TICKET,
-            array('projectid' => $projectid, 'status' => 'pending'), 'timecreated ASC'));
+        if (!isset($params['_batch'])) {
+            // Messages déjà confiés à une réponse en cours de génération : ils
+            // ne font pas partie de ce lot.
+            $taken = array();
+            $others = $DB->get_records_select(self::TABLE_JOB, 'projectid = ? AND kind = ? AND status = ? AND id <> ?',
+                array((int)$project->id, 'ticket', 'running', (int)$job->id), '', 'id, params');
+            foreach ($others as $other) {
+                $op = json_decode((string)$other->params, true) ?: array();
+                foreach ((array)($op['_batch'] ?? array()) as $id) {
+                    $taken[(int)$id] = true;
+                }
+            }
+            $batch = array_values(array_filter($DB->get_records(self::TABLE_TICKET,
+                array('projectid' => (int)$project->id, 'status' => 'pending'), 'timecreated ASC'),
+                function($t) use ($taken) {
+                    return !isset($taken[(int)$t->id]);
+                }));
+            if (empty($batch)) {
+                $this->log($job, 'Aucun message en attente.');
+                return null;
+            }
+            $missions = $DB->get_records(self::TABLE_MISSION,
+                array('projectid' => (int)$project->id, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
+            $params['_batch']     = array_map(function($t) {
+                return (int)$t->id;
+            }, $batch);
+            $params['_metrics']   = $this->batch_metrics($batch);
+            $params['_missionid'] = $missions ? (int)reset($missions)->id : 0;
+            $this->log($job, 'Réponse du client à ' . count($batch) . ' message(s)…');
+        }
+
+        $batch = $this->ticket_batch($params);
         if (empty($batch)) {
-            $this->log($job, 'Aucun message en attente.');
+            return null;
+        }
+        $mission = !empty($params['_missionid'])
+            ? $DB->get_record(self::TABLE_MISSION, array('id' => (int)$params['_missionid'])) : null;
+        return client::request($project, $mission ?: null, $batch, (array)$params['_metrics']);
+    }
+
+    /**
+     * Pose la réponse du client sur le lot demandé, puis met à jour l'état de
+     * la relation client.
+     */
+    private function ticket_complete(\stdClass $job, array $params, array $result): void {
+        global $DB;
+
+        $project = $this->event_project($job, $params);
+        $res     = client::parse($result);
+        $batch   = $this->ticket_batch($params);
+        if (empty($batch)) {
             return;
         }
-
-        $missions = $DB->get_records(self::TABLE_MISSION,
-            array('projectid' => $projectid, 'status' => 'published'), 'sprint DESC', '*', 0, 1);
-        $mission = $missions ? reset($missions) : null;
-
-        $metrics = $this->batch_metrics($batch);
-        $this->log($job, 'Réponse du client à ' . count($batch) . ' message(s)…');
-
-        $res = client::respond($project, $mission, $batch, $metrics);
         $reaction    = $res['reaction'];
         $reactionval = ($reaction === 'none') ? null : $reaction;
         $now = time();
@@ -432,6 +572,7 @@ class job_handler implements \local_aifeedback\job_handler {
         }
 
         // État de la relation client.
+        $projectid = (int)$project->id;
         if ($reaction === 'warning') {
             $DB->set_field(self::TABLE_PROJECT, 'clientstatus', 'warned', array('id' => $projectid));
             $DB->set_field(self::TABLE_PROJECT, 'clientwarnings',
@@ -442,11 +583,128 @@ class job_handler implements \local_aifeedback\job_handler {
         $DB->set_field(self::TABLE_PROJECT, 'timemodified', $now, array('id' => $projectid));
 
         // Les précisions données comptent dans la correction du livrable.
-        if ($mission) {
-            correction_sync::sync_for_mission((int)$mission->id);
+        if (!empty($params['_missionid'])) {
+            correction_sync::sync_for_mission((int)$params['_missionid']);
         }
 
         $this->log($job, 'Réponse posée (réaction : ' . $reaction . ').');
+
+        // Messages arrivés pendant la génération : ils auront leur réponse.
+        if ($DB->record_exists(self::TABLE_TICKET, array('projectid' => $projectid, 'status' => 'pending'))) {
+            self::schedule_reply($DB->get_record(self::TABLE_PROJECT, array('id' => $projectid)));
+        }
+    }
+
+    /**
+     * Tickets du lot figé encore sans réponse, dans l'ordre.
+     *
+     * @return \stdClass[]
+     */
+    private function ticket_batch(array $params): array {
+        global $DB;
+        $ids = isset($params['_batch']) ? array_map('intval', (array)$params['_batch']) : array();
+        if (empty($ids)) {
+            return array();
+        }
+        list($insql, $inparams) = $DB->get_in_or_equal($ids);
+        return array_values($DB->get_records_select(self::TABLE_TICKET,
+            "id $insql AND status = ?", array_merge($inparams, array('pending')), 'timecreated ASC'));
+    }
+
+    // =====================================================================
+    //  ÉVALUATION DE LA COMMUNICATION CLIENT (un job par étudiant)
+    // =====================================================================
+
+    /**
+     * Met en file l'évaluation de la communication d'un étudiant.
+     *
+     * @param \stdClass $project
+     * @param int       $userid  étudiant évalué
+     * @param int       $teacherid enseignant qui lance l'évaluation
+     * @param string    $efecode compétence EFE visée
+     */
+    public static function schedule_commeval(\stdClass $project, int $userid, int $teacherid, string $efecode): void {
+        global $DB;
+        $now = time();
+
+        $existing = $DB->get_record(self::TABLE_COMMEVAL,
+            array('projectid' => (int)$project->id, 'userid' => $userid));
+        $rec = $existing ?: new \stdClass();
+        $rec->projectid    = (int)$project->id;
+        $rec->userid       = $userid;
+        $rec->efecode      = $efecode;
+        $rec->status       = 'pending';
+        $rec->timemodified = $now;
+        if ($existing) {
+            $DB->update_record(self::TABLE_COMMEVAL, $rec);
+        } else {
+            $rec->score       = 0;
+            $rec->timecreated = $now;
+            $DB->insert_record(self::TABLE_COMMEVAL, $rec);
+        }
+
+        $job = new \stdClass();
+        $job->courseid        = (int)$project->courseid;
+        $job->userid          = $teacherid;
+        $job->projectid       = (int)$project->id;
+        $job->kind            = 'commeval';
+        $job->params          = json_encode(array('projectid' => (int)$project->id, 'userid' => $userid),
+            JSON_UNESCAPED_UNICODE);
+        $job->status          = 'pending';
+        $job->log             = '';
+        $job->lasterror       = null;
+        $job->resultmissionid = 0;
+        $job->attempts        = 0;
+        $job->notbefore       = 0;
+        $job->timecreated     = $now;
+        $job->timemodified    = $now;
+        $job->id = (int)$DB->insert_record(self::TABLE_JOB, $job);
+        self::enqueue($job->id);
+    }
+
+    /**
+     * Demande d'évaluation de la communication d'un étudiant, à partir de ses
+     * tickets. Les incidents (recadrage, rupture) sont figés dans params.
+     */
+    private function commeval_request(\stdClass $job, array &$params): ?array {
+        global $DB;
+
+        $project = $this->event_project($job, $params);
+        $tickets = $DB->get_records(self::TABLE_TICKET,
+            array('projectid' => (int)$project->id, 'userid' => (int)($params['userid'] ?? 0)), 'timecreated ASC');
+        try {
+            $spec = communication::request($project, array_values($tickets));
+        } catch (\moodle_exception $e) {
+            if ($e->errorcode === 'comm_notickets') {
+                $DB->set_field_select(self::TABLE_COMMEVAL, 'status', 'failed', 'projectid = ? AND userid = ?',
+                    array((int)$project->id, (int)($params['userid'] ?? 0)));
+                $this->log($job, $e->getMessage());
+                return null;
+            }
+            throw $e;
+        }
+        $params['_flags'] = $spec['flags'];
+        return $spec;
+    }
+
+    /**
+     * Enregistre l'évaluation (brouillon, à relire puis envoyer vers EFE).
+     */
+    private function commeval_complete(\stdClass $job, array $params, array $result): void {
+        global $DB;
+
+        $eval = communication::parse($result, (array)($params['_flags'] ?? array()));
+        $rec  = $DB->get_record(self::TABLE_COMMEVAL,
+            array('projectid' => (int)($params['projectid'] ?? 0), 'userid' => (int)($params['userid'] ?? 0)));
+        if (!$rec) {
+            return; // évaluation supprimée entre-temps
+        }
+        $rec->colour       = $eval['colour'];
+        $rec->score        = $eval['score'];
+        $rec->comment      = $eval['comment'];
+        $rec->status       = 'draft';
+        $rec->timemodified = time();
+        $DB->update_record(self::TABLE_COMMEVAL, $rec);
     }
 
     /**
@@ -480,12 +738,14 @@ class job_handler implements \local_aifeedback\job_handler {
     // =====================================================================
 
     /**
-     * Demande au LLM la mission du sprint, en lui fournissant le dossier projet.
+     * Demande au LLM la mission du sprint, en lui fournissant le dossier
+     * projet. La spec renvoyée (title, clientrequest, rubric, competencies[],
+     * deliverables[], companyname, sector, persona, dossier_update) est
+     * validée au retour (is_valid_spec).
      *
-     * @return array spec validée : title, clientrequest, rubric, competencies[],
-     *               deliverables[], companyname, sector, persona, dossier_update.
+     * @return array {messages, options}
      */
-    private function generate_mission(\stdClass $project, int $sprint, array $params,
+    private function mission_messages(\stdClass $project, int $sprint, array $params,
             ?\stdClass $source = null): array {
         $system = $this->system_prompt($project, $sprint, $params);
         if ($source) {
@@ -508,16 +768,7 @@ class job_handler implements \local_aifeedback\job_handler {
             'temperature' => 0.6, // un peu de créativité pour varier les contextes
             'max_tokens'  => 4096,
         );
-        $model = (string)get_config('local_aimissions', 'model');
-        if ($model !== '') {
-            $options['model'] = $model;
-        }
-
-        $result = \local_aifeedback\api::call($messages, $options);
-        if (!$this->is_valid_spec($result)) {
-            throw new \moodle_exception('error_llm_invalid', 'local_aimissions');
-        }
-        return $result;
+        return array('messages' => $messages, 'options' => $options);
     }
 
     /**
@@ -777,26 +1028,6 @@ class job_handler implements \local_aifeedback\job_handler {
         $current = $current === '' ? $line : ($current . "\n" . $line);
         $DB->set_field(self::TABLE_JOB, 'log', $current, array('id' => $job->id));
         $DB->set_field(self::TABLE_JOB, 'timemodified', time(), array('id' => $job->id));
-    }
-
-    /**
-     * Incrémente le compteur d'essais et enregistre l'erreur (avec debuginfo).
-     */
-    private function record_failure(int $rowid, \Throwable $e): void {
-        global $DB;
-        $job = $DB->get_record(self::TABLE_JOB, array('id' => $rowid));
-        if (!$job) {
-            return;
-        }
-        $msg = $e->getMessage();
-        if ($e instanceof \moodle_exception && !empty($e->debuginfo)) {
-            $msg .= ' — ' . $e->debuginfo;
-        }
-        $job->attempts     = (int)$job->attempts + 1;
-        $job->lasterror    = $msg;
-        $job->timemodified = time();
-        $job->status       = ((int)$job->attempts >= self::MAX_ATTEMPTS) ? 'failed' : 'pending';
-        $DB->update_record(self::TABLE_JOB, $job);
     }
 
     /** Garantit du HTML (enveloppe le texte brut dans des <p>). */

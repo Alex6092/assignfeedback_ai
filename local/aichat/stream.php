@@ -3,15 +3,21 @@
  * Flux de génération du tuteur IA (Server-Sent Events).
  *
  * Le script tient la connexion ouverte pendant toute la génération et pousse
- * chaque fragment de texte dès qu'il arrive du serveur LLM, ce qui donne
+ * chaque fragment de texte dès qu'il arrive du serveur IA, ce qui donne
  * l'affichage progressif attendu d'un chat.
+ *
+ * La demande passe par le mode streaming du load balancer d'inférence : elle
+ * y attend d'abord son tour (le widget affiche alors le rang estimé, obtenu
+ * par ajax.php?action=poll), puis la génération arrive fragment par fragment.
  *
  * Contraintes respectées ici :
  *   - NO_OUTPUT_BUFFERING avant config.php (Moodle ferme alors les tampons de
  *     sortie, désactive la compression zlib et pose X-Accel-Buffering: no) ;
  *   - session refermée au plus tôt : sans cela, la session verrouillée
  *     bloquerait toutes les autres requêtes de l'élève pendant la génération ;
- *   - ticket du pool libéré dans tous les cas (finally).
+ *   - abandon de l'élève détecté AUSSI pendant l'attente (les battements du
+ *     load balancer sont relayés au navigateur) : la connexion est coupée et
+ *     le load balancer annule la demande.
  *
  * @package local_aichat
  */
@@ -27,7 +33,7 @@ use local_aichat\generator;
 use local_aichat\quota;
 use local_aichat\tutor;
 use local_aichat\websearch\manager as websearch;
-use local_aifeedback\pool;
+use local_aifeedback\lb\lb_exception;
 
 /** Émet un événement SSE et pousse immédiatement vers le navigateur. */
 function local_aichat_sse($event, array $data) {
@@ -52,23 +58,11 @@ if ($message->status !== 'pending') {
     throw new moodle_exception('error_busy', 'local_aichat');
 }
 
-// Prend possession du serveur réservé par le pool. Null = réservation expirée
-// (l'élève a laissé passer trop de temps entre l'attente et l'ouverture du flux).
-$server = pool::start((int)$message->slotid);
-if ($server === null) {
-    conversation::fail_message($messageid, 'failed',
-        get_string('error_expired', 'local_aichat'), $access->context);
-    throw new moodle_exception('error_expired', 'local_aichat');
+// Le flux est ouvert : la demande va prendre sa place dans la file du load
+// balancer (un second onglet verra le message « en cours »).
+if (!conversation::start_message($messageid)) {
+    throw new moodle_exception('error_busy', 'local_aichat');
 }
-
-$serverid = (int)$server['id'];
-conversation::start_message($messageid, $serverid);
-
-// Le processus tient désormais ce serveur et ce ticket : api::stream() les
-// utilise, entretient le battement de cœur pendant tout l'appel (y compris
-// pendant le calcul du premier mot, qui peut être long) et bascule sur un
-// autre serveur du tuteur si celui-ci est en panne avant le premier fragment.
-pool::set_current($server, (int)$message->slotid, pool::PURPOSE_TUTOR, 'local_aichat');
 
 // --- Mode flux -------------------------------------------------------------
 @header('Content-Type: text/event-stream; charset=utf-8');
@@ -86,7 +80,8 @@ flush();
 // La génération peut durer : on rend la main sur la session, sinon l'élève ne
 // peut plus charger aucune autre page Moodle pendant ce temps.
 \core\session\manager::write_close();
-\core_php_time_limit::raise(600);
+// Attente dans la file du load balancer (10 min au plus) puis génération.
+\core_php_time_limit::raise(1500);
 // On veut être notifié de l'abandon (connection_aborted) SANS être tué, afin
 // de libérer proprement le ticket et de conserver le texte déjà produit.
 ignore_user_abort(true);
@@ -142,13 +137,45 @@ try {
 
 $messages = tutor::build_messages($access, (int)$conv->id, (int)$messageid, $websearch, $material);
 
-// Pas d'URL imposée : le serveur vient du contexte du pool, ce qui autorise
-// le basculement.
-$options = tutor::generation_options();
+$options = tutor::generation_options((int)$USER->id);
+// Une réponse abandonnée en cours de génération n'est pas coupée au serveur
+// IA (le load balancer garderait sa place bloquée) : elle est lue jusqu'au
+// bout sans être transmise.
+$options['drain_on_abort'] = true;
 
 $buffer    = '';
 $lastsave  = time();
 $aborted   = false;
+$lbjobid   = '';
+
+// Identifiant du job au load balancer (un par tour de génération) : le
+// widget s'en sert, via ajax.php, pour afficher le rang dans la file.
+$options['onjobid'] = function($jobid) use ($messageid, &$lbjobid) {
+    $lbjobid = (string)$jobid;
+    conversation::attach_lbjob($messageid, $jobid);
+    local_aichat_sse('queued', array('messageid' => (int)$messageid));
+};
+// Battement du load balancer pendant l'attente : relayé au navigateur (garde
+// la connexion ouverte à travers les proxys) ; c'est aussi le moment de
+// détecter que l'élève est parti. Si sa question attend encore son tour, la
+// connexion est coupée et le load balancer libère la place ; si la
+// génération a déjà commencé, on la laisse finir.
+$options['onwait'] = function() use (&$aborted, &$lbjobid) {
+    if (!$aborted) {
+        echo ": wait\n\n";
+        flush();
+    }
+    if (!connection_aborted()) {
+        return true;
+    }
+    $aborted = true;
+    try {
+        $job = \local_aifeedback\lb\client::get_job($lbjobid);
+        return !(isset($job['status']) && $job['status'] === 'queued');
+    } catch (\Throwable $e) {
+        return true;
+    }
+};
 
 // Recherche ou lecture lancée : le widget l'affiche (sinon quelques secondes
 // de silence). $kind : 'web' (requête) ou 'read' (domaine de la page lue).
@@ -159,18 +186,19 @@ $onsearch = function($label, $kind = 'web') {
 try {
     $result = generator::run($messages, $options,
         function($delta) use (&$buffer, &$lastsave, &$aborted, $messageid) {
+            // L'élève a fermé l'onglet ou cliqué « Arrêter » : la suite de la
+            // réponse n'est plus transmise (voir drain_on_abort).
+            if ($aborted) {
+                return false;
+            }
             $buffer .= $delta;
             local_aichat_sse('delta', array('t' => $delta));
-
-            // L'élève a fermé l'onglet ou cliqué « Arrêter » : on coupe la
-            // génération, ce qui rend la main au suivant dans la file.
             if (connection_aborted()) {
                 $aborted = true;
                 return false;
             }
 
-            // Sauvegarde du partiel : si ce PHP meurt, rien n'est perdu. (Le
-            // battement de cœur du ticket, lui, est entretenu par api::stream.)
+            // Sauvegarde du partiel : si ce PHP meurt, rien n'est perdu.
             $now = time();
             if ($now - $lastsave >= 5) {
                 $lastsave = $now;
@@ -182,32 +210,24 @@ try {
     // Recherches de cette réponse : quota de l'élève et transcription.
     conversation::record_searches($messageid, $tool, $websearch);
 
-    // Serveur finalement utilisé (différent du premier en cas de basculement).
-    $final = pool::current();
-    if ($final !== null && (int)$final['id'] !== $serverid) {
-        $DB->set_field('local_aichat_message', 'serverid', (int)$final['id'],
-            array('id' => $messageid));
-    }
-
     // Quota : la question (fichiers joints compris) et ce que l'élève a vu de
     // la réponse (voir quota).
     $asked    = conversation::student_message((int)$conv->id, (int)$messageid);
     $question = ($asked !== null) ? (string)$asked->content : '';
     $filetokens = ($asked !== null) ? \local_aichat\attachment::tokens_for_message((int)$asked->id) : 0;
 
-    if (!empty($result['aborted']) || $aborted) {
-        conversation::store_partial($messageid, $result['content']);
+    // Arrêt demandé pendant que le flux continuait (bouton « Arrêter ») :
+    // traité comme un abandon.
+    $cancelled = ($DB->get_field('local_aichat_message', 'status', array('id' => $messageid)) === 'cancelled');
+    if (!empty($result['aborted']) || $aborted || $cancelled) {
+        conversation::store_partial($messageid, $buffer);
         conversation::fail_message($messageid, 'cancelled', null, $access->context);
-        quota::record($messageid, $question, (string)$result['content'], $filetokens);
-        pool::release(pool::current_slot(), 'cancelled');
-        pool::clear_current();
+        quota::record($messageid, $question, $buffer, $filetokens);
         exit;
     }
 
     conversation::finish_message($messageid, $result['content'], $access->context, 'done');
     quota::record($messageid, $question, (string)$result['content'], $filetokens);
-    pool::release(pool::current_slot(), 'done');
-    pool::clear_current();
 
     $updated = $DB->get_record('local_aichat_message', array('id' => $messageid));
     local_aichat_sse('done', array(
@@ -217,9 +237,9 @@ try {
     ));
 
 } catch (\Throwable $e) {
-    // Les pannes de serveur ont déjà été traitées par le pool (quarantaine,
-    // essai sur un autre serveur du tuteur) : si l'on arrive ici, aucun
-    // serveur n'a pu répondre, ou la panne est survenue en cours de réponse.
+    // Le load balancer réessaie lui-même avant le premier fragment : si l'on
+    // arrive ici, la demande a été refusée (quota, file saturée), a échoué,
+    // ou la panne est survenue en cours de réponse.
     $detail = ($e instanceof \moodle_exception && !empty($e->debuginfo))
         ? (string)$e->debuginfo : (string)$e->getMessage();
     debugging('local_aichat: échec du flux — ' . $detail, DEBUG_DEVELOPER);
@@ -227,12 +247,30 @@ try {
     // Les recherches déjà faites comptent, même si la réponse a échoué.
     conversation::record_searches($messageid, $tool, $websearch);
     conversation::store_partial($messageid, $buffer);
+
+    // Annulé entre-temps (bouton « Arrêter », nouvelle discussion) : le load
+    // balancer a interrompu la génération à notre demande.
+    $current = $DB->get_field('local_aichat_message', 'status', array('id' => $messageid));
+    if ($current === 'cancelled') {
+        $asked = conversation::student_message((int)$conv->id, (int)$messageid);
+        quota::record($messageid, ($asked !== null) ? (string)$asked->content : '', $buffer,
+            ($asked !== null) ? \local_aichat\attachment::tokens_for_message((int)$asked->id) : 0);
+        conversation::fail_message($messageid, 'cancelled', null, $access->context);
+        exit;
+    }
+
+    $errorkey = 'error_llm';
+    if ($e instanceof lb_exception) {
+        if ($e->is_quota()) {
+            $errorkey = 'error_lbquota';
+        } else if ($e->is_busy()) {
+            $errorkey = 'error_lbbusy';
+        }
+    }
     conversation::fail_message($messageid, 'failed',
-        get_string('error_llm', 'local_aichat'), $access->context);
-    pool::release(pool::current_slot(), 'failed');
-    pool::clear_current();
+        get_string($errorkey, 'local_aichat'), $access->context);
 
     local_aichat_sse('error', array(
-        'message' => get_string('error_llm', 'local_aichat'),
+        'message' => get_string($errorkey, 'local_aichat'),
     ));
 }
