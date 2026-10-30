@@ -1,7 +1,7 @@
 # Correction IA pour Moodle
 
-Écosystème de plugins Moodle pour la **correction automatique par IA** (LLM local
-type LM Studio / API compatible OpenAI). Les devoirs et les questions de composition
+Écosystème de plugins Moodle pour la **correction automatique par IA** (serveurs IA
+du lycée derrière un **load balancer d'inférence**, ou API compatible OpenAI). Les devoirs et les questions de composition
 sont notés et commentés automatiquement par un modèle de langage, avec un feedback
 structuré (note, niveau de maîtrise, points forts, points à améliorer, évaluation par
 compétences).
@@ -36,42 +36,55 @@ compétences).
 
 ## Architecture
 
-Le projet est volontairement découpé en **trois plugins**. Toute l'infrastructure
-partagée (appel API, file d'attente, chiffrement de la clé, calcul de note) vit dans
-une bibliothèque `local_aifeedback` ; les plugins « consommateurs » (feedback de
-devoir, type de question) ne font qu'implémenter une interface et déléguer.
+Toute l'infrastructure partagée (appel des modèles, file de jobs, chiffrement des
+clés, calcul de note) vit dans la bibliothèque `local_aifeedback` ; les plugins
+« consommateurs » (feedback de devoir, types de question, tuteur, générateur de
+tests, missions) n'implémentent qu'une interface et délèguent.
+
+La **répartition de la charge entre serveurs IA n'est plus faite par Moodle** : elle
+est confiée au **load balancer d'inférence** (dépôt `loadbalancer-ai-inference-server`),
+qui met les demandes en file, les répartit entre les serveurs IA et applique ses
+quotas. Moodle lui parle de deux façons :
 
 ```
-                ┌─────────────────────────────────────────────┐
-                │            local_aifeedback                  │
-                │  (bibliothèque partagée — aucune dépendance) │
-                │                                              │
-                │  • api::call()      appel OpenAI/JSON schema │
-                │  • task\run_job     file d'attente + lock    │
-                │  • secret           chiffrement clé API      │
-                │  • math             arrondi note 0,25 sup.   │
-                │  • job_handler      interface des handlers   │
-                └───────────────┬──────────────┬───────────────┘
-                                │              │
-              implémente        │              │   implémente
-        job_handler             │              │            job_handler
-                ┌───────────────┴───┐    ┌─────┴──────────────────┐
-                │ assignfeedback_ai │    │     qtype_aiessay       │
-                │ (feedback devoir) │    │ (question composition)  │
-                └───────────────────┘    └─────────────────────────┘
+                       ┌──────────────────────────────────────────┐
+  traitements de fond  │            local_aifeedback               │
+  (corrections, quiz,  │  • jobs / task\run_job : prépare la       │      POST /v1/jobs
+   missions,           │    demande, la SOUMET et rend la main ────┼────▶ (callbackURL,
+   modération…)        │  • callback.php : résultat signé (HMAC),  │◀──── Idempotency-Key)
+                       │    appliqué aussitôt (note, feedback…)    │   callback signé
+                       │  • task\reconcile_jobs : filet de         │
+                       │    sécurité si un callback se perd ───────┼────▶ GET /v1/jobs/{id}
+                       │  • api::stream() ─────────────────────────┼────▶ POST /v1/chat/completions
+  tuteur IA (chat) ────┤    X-Job-ID, attente, fragments           │      (stream:true)
+                       └────────────┬─────────────────────────────┘
+                     implémente     │  async_handler (build_request / complete / fail)
+     ┌──────────────────┬──────────┴──────┬──────────────────┬──────────────────┐
+ assignfeedback_ai  qtype_aiessay /   local_aichat       local_aiquizgen    local_aimissions
+ (feedback devoir)  aishortanswer     (modération,       (une étape par     (missions, client,
+                    (quiz_grader)      brief)             type de question)  évaluations)
 ```
 
 **Principes clés :**
 
-- **Un seul appel LLM à la fois sur tout le site.** Toutes les corrections
-  (devoirs *et* questions) passent par la **même file d'attente** (`local_aifeedback\task\run_job`),
-  protégée par un verrou global (`\core\lock`). Quand un tick tient le verrou, il
-  *draine* la file tant qu'il reste du travail, dans la limite d'un budget de temps.
+- **Aucun cron n'attend une génération.** Une tâche ad-hoc prépare la demande (lecture
+  de la copie, prompts), la soumet au load balancer comme **job asynchrone** et rend la
+  main. Le résultat revient par un **callback signé** (`/local/aifeedback/callback.php`)
+  et il est appliqué tout de suite. Le suivi vit dans `{local_aifeedback_job}`.
+- **Robuste aux pertes** : soumission idempotente (`Idempotency-Key`), callback
+  idempotent, et tâche de **réconciliation** toutes les 5 minutes qui interroge le load
+  balancer pour les jobs sans nouvelles (callback perdu, Moodle injoignable, secret
+  erroné), termine les traitements interrompus et remet en file les travaux orphelins.
+- **Surcharge cloud** : une activité configurée avec sa propre URL d'API (OpenAI,
+  Mistral…) est corrigée **directement** par cette API, hors load balancer.
+- **Une génération commencée n'est jamais interrompue** au load balancer (il garderait la
+  place du serveur IA bloquée) : seules les demandes encore en file sont annulées ; un
+  « Arrêter » du tuteur pendant la réponse lit la fin sans l'afficher.
 - **Sortie LLM contrainte par JSON Schema strict** : le modèle est forcé de renvoyer
   une structure exploitable (niveau, score, points forts, etc.).
 - **Notation** : le LLM renvoie un score 0–100, converti en note sur le barème de
   l'item via `note = arrondi_au_quart_supérieur(score / 100 × note_max)`.
-- **Découplage appel LLM / application de note** : le résultat du LLM est persisté
+- **Découplage résultat / application de note** : le résultat du LLM est persisté
   *avant* d'appliquer la note. Si l'application de note échoue, seule celle-ci est
   rejouée — le modèle n'est jamais rappelé inutilement.
 
@@ -101,10 +114,13 @@ Le feedback s'articule autour de 4 niveaux :
 ## Prérequis
 
 - **Moodle 4.2+** (`requires = 2023042400`). Testé jusqu'à **Moodle 5.2**.
-- **Le cron Moodle doit tourner** (les corrections sont des tâches ad-hoc en arrière-plan).
-- Un **serveur d'inférence compatible OpenAI** exposant `/v1/chat/completions`, par
-  exemple [LM Studio](https://lmstudio.ai/), avec un modèle supportant le **JSON
-  Schema / structured output** (et la **vision** si vous activez l'envoi d'images).
+- **Le cron Moodle doit tourner** (soumission des jobs, réconciliation).
+- Le **load balancer d'inférence** (`loadbalancer-ai-inference-server`), avec des serveurs
+  IA compatibles OpenAI (LM Studio, vLLM…) et des modèles supportant le **JSON Schema /
+  structured output** (et la **vision** si vous activez l'envoi d'images).
+- Le load balancer doit pouvoir **joindre Moodle** en HTTP(S) pour les callbacks (sinon
+  les résultats arrivent quand même, par la réconciliation, avec quelques minutes de
+  retard).
 - **Optionnel (vision sur PDF)** : [`poppler-utils`](https://poppler.freedesktop.org/)
   côté serveur (`pdftotext`, `pdftoppm`, `pdfimages`) pour extraire texte et images des PDF.
 
@@ -140,18 +156,50 @@ Tous les réglages globaux sont centralisés dans
 **Administration du site → Plugins → Plugins locaux → Correction IA**
 (`local_aifeedback`) :
 
-### API
-- **`apiurl`** — URL du endpoint chat completions (défaut `http://localhost:1234/v1/chat/completions`).
-- **`model`** — nom du modèle (défaut `qwen3.5-9b-instruct`).
-- **`apikey`** — clé API, **stockée chiffrée** (préfixe `__enc1__:`, via `\core\encryption`).
-  Laisser vide si le serveur n'exige pas d'authentification.
+### Serveur IA (load balancer)
+
+Dans l'**administration du load balancer** :
+
+1. Déclarer les modèles (identifiant exact, contexte, sortie maximale, vision) et les
+   serveurs IA (workers).
+2. Créer une **application « Moodle »** avec l'URL de base de callback
+   `https://<votre-moodle>/local/aifeedback/` (préfixe dédié), et **conserver son secret
+   de callback** (affiché une seule fois).
+3. Créer une **clé d'API** pour cette application, autorisée en modes `async`, `stream`
+   et `sync`. Garder « identifiant utilisateur requis » : Moodle envoie toujours
+   `X-End-User-ID` (`moodle-<id>` : l'élève pour les corrections, le tuteur et la
+   modération ; l'enseignant pour les tests et missions ; `moodle-system` pour le
+   brief). Les quotas par utilisateur du load balancer s'appliquent donc aussi aux
+   corrections d'un élève.
+
+Dans Moodle (**Correction IA**) :
+
+- **`lb_url`** — adresse de base du load balancer (sans `/v1`).
+- **`lb_apikey`** — clé d'API de l'application, **stockée chiffrée**.
+- **`lb_callbacksecret`** — secret de signature des callbacks, **stocké chiffré**.
+- **`lb_callbackurl`** — facultatif : URL de callback si le load balancer joint Moodle
+  par une autre adresse que `wwwroot` (réseau interne).
+- **`model_feedback`** — **modèle des corrections IA** (liste issue du catalogue du load
+  balancer ; champ libre si le catalogue est injoignable). C'est aussi le modèle de
+  repli des autres plugins.
 - **`defaultsystemprompt`** — prompt système par défaut (un prompt pédagogique est
   fourni si laissé vide).
 - **`reasoning_budget`** — tokens ajoutés au maximum de chaque appel pour les **modèles
   à raisonnement** (Qwen3, gpt-oss, DeepSeek-R1…), dont la réflexion est décomptée du
-  même budget que la réponse (défaut 0 ; conseillé 4096 à 8192 avec un tel modèle).
-  La réflexion, qu'elle arrive à part (`reasoning_content` / `reasoning`) ou dans le
-  texte (`<think>…</think>`), n'est jamais montrée ni enregistrée.
+  même budget que la réponse (défaut 0 ; conseillé 4096 à 8192 avec un tel modèle). Le
+  total est plafonné à la sortie maximale déclarée pour le modèle dans le load
+  balancer. La réflexion, qu'elle arrive à part (`reasoning_content` / `reasoning`) ou
+  dans le texte (`<think>…</think>`), n'est jamais montrée ni enregistrée.
+
+**Modèles par plugin** (vide = modèle des corrections) : `local_aichat/model_tutor`
+(**modèle du tuteur IA**), `local_aichat/model_moderation` (modération et brief),
+`local_aiquizgen/model` (génération de tests), `local_aimissions/model` (missions).
+
+La page **État du serveur IA** (`/local/aifeedback/servers.php`) affiche ce que le load
+balancer expose par son API — santé, capacité et occupation par modèle, catalogue (avec
+alerte si un modèle configuré dans Moodle en est absent), consommation et quotas — ainsi
+que les jobs Moodle en cours et les dernières erreurs. Le détail par serveur IA se
+consulte dans l'administration du load balancer.
 
 ### Vision
 - **`vision_enabled`** — autoriser l'envoi d'images au modèle.
@@ -175,10 +223,13 @@ Tous les réglages globaux sont centralisés dans
 ### Devoir (`assignfeedback_ai`)
 
 1. L'étudiant remet son devoir → l'événement `assessable_submitted` est capté.
-2. Un job est mis en file ; le cron l'exécute (un seul appel LLM à la fois).
-3. Le texte en ligne, les PDF et (si activé) les images sont extraits et envoyés au LLM.
+2. Un job est mis en file ; une tâche ad-hoc extrait le texte en ligne, les PDF et (si
+   activé) les images, puis soumet la demande au load balancer.
+3. Le load balancer génère le feedback quand un serveur IA est libre et le renvoie par
+   callback.
 4. Le feedback structuré est enregistré et **publié automatiquement** à l'étudiant ;
-   la note est appliquée selon le barème/échelle du devoir.
+   la note est appliquée selon le barème/échelle du devoir. Une copie remise à nouveau
+   remplace la correction encore en file.
 
 #### Note appliquée automatiquement, ou saisie par l'enseignant
 
@@ -210,9 +261,9 @@ existants, et ceux créés par les Missions IA, restent en mode automatique.
    (la note arrive *a posteriori*, comme une notation manuelle).
 2. À la soumission de la tentative (`\mod_quiz\event\attempt_submitted`), une ligne
    `pending` est créée dans `qtype_aiessay_grading` et un job est mis en file.
-3. Le cron exécute le job : appel LLM → calcul de la note → `manual_grade()` sur la
-   tentative → recalcul de la note du quiz et **propagation au carnet de notes**
-   (via `\mod_quiz\grade_calculator`).
+3. La demande part au load balancer ; à son retour : calcul de la note →
+   `manual_grade()` sur la tentative → recalcul de la note du quiz et **propagation au
+   carnet de notes** (via `\mod_quiz\grade_calculator`).
 4. À la relecture de la tentative, l'étudiant voit une **carte de feedback** complète
    (score, niveau, points forts/faibles, tableau par compétences).
 
@@ -241,13 +292,14 @@ minimale pour écarter les pictogrammes.
 Chaque devoir et chaque question peut **surcharger** la configuration globale via des
 cases à cocher dédiées :
 
-- URL de l'API
-- Nom du modèle
-- Clé API (stockée chiffrée par item)
-- Activation de la vision
-
-Pratique pour router certaines activités vers un modèle plus puissant ou un endpoint
-différent.
+- **API externe** (URL) : l'activité est corrigée **directement** par cette API
+  compatible OpenAI (ex. OpenAI, Mistral), **hors load balancer**, depuis la tâche de
+  fond. Renseigner alors aussi son modèle et sa clé.
+- **Modèle** : sans API externe, un **autre modèle du catalogue du load balancer** (il
+  doit y être déclaré ; la page « État du serveur IA » signale un modèle absent) ; avec
+  une API externe, le modèle de cette API.
+- **Clé API** (stockée chiffrée par item) : n'a de sens qu'avec une API externe.
+- Activation de la vision.
 
 La clé API propre à une **question** ne la suit pas : la duplication d'un test, la
 sauvegarde/restauration, l'import ou la copie de cours et l'export XML reprennent tous
@@ -414,9 +466,9 @@ diagnostic.
 Préférences > « Tuteur IA : mes clés de recherche » (mykeys.php)
    clés Tavily / Brave chiffrées dans les préférences, jamais réaffichées, « Tester »
 
-stream.php (SSE, ticket du pool tenu pendant toute la réponse)
+stream.php (SSE ; chaque tour attend son tour dans la file du load balancer)
   └─ generator::run()
-       tour 1 : api::stream(messages, tools=[web_search]) ──▶ LM Studio / Gemma
+       tour 1 : api::stream(messages, tools=[web_search]) ──▶ load balancer ──▶ serveur IA
           ├─ delta.content     → SSE « delta » vers l'élève (inchangé)
           └─ delta.tool_calls  → accumulés (index, id, nom, arguments en morceaux)
        appel reçu → websearch\tool::execute()
@@ -1300,19 +1352,28 @@ contiennent des questions de tests réels.
 ```
 local/aifeedback/                  Bibliothèque partagée
 ├── classes/
-│   ├── api.php                    Appel HTTP OpenAI + JSON Schema + surcharges
+│   ├── api.php                    Appel HTTP OpenAI (load balancer ou API externe) + JSON Schema + streaming
+│   ├── lb/client.php              Client du load balancer (jobs, catalogue, capacité, consommation)
+│   ├── lb/signature.php           Vérification HMAC des callbacks
+│   ├── jobs.php                   File de jobs asynchrones : soumission, réception, réconciliation
+│   ├── async_handler.php          Interface des handlers (build_request / complete / fail)
+│   ├── request.php                Demande de génération (messages, options, modèle, API externe)
+│   ├── models.php                 Modèle par usage (repli : modèle des corrections)
 │   ├── content_extractor.php      Extraction texte/PDF/DOCX/ZIP + images (vision)
-│   ├── task/run_job.php           File d'attente ad-hoc + verrou global + drainage
+│   ├── task/run_job.php           Tâche ad-hoc : prépare et soumet un job
+│   ├── task/reconcile_jobs.php    Réconciliation avec le load balancer (toutes les 5 min)
 │   ├── secret.php                 Chiffrement/déchiffrement de la clé API
 │   ├── math.php                   round_up_quarter()
-│   ├── job_handler.php            Interface des handlers
 │   ├── quiz_grader.php            Base partagée des correcteurs IA pour quiz
 │   ├── feedback_card.php          Rendu HTML des cartes de feedback
 │   ├── prompt.php                 Consignes injectées (accessibilité dys, etc.)
 │   ├── observer.php               Observer partagé des soumissions de quiz
-│   └── admin/encrypted_password.php
+│   └── admin/{encrypted_password,lb_model_setting}.php
+├── callback.php                   Callbacks signés du load balancer (sans session)
+├── servers.php                    État du serveur IA (API du load balancer + jobs Moodle)
 ├── settings.php                   Tous les réglages globaux
 ├── retry.php                      Relance manuelle d'une correction IA
+├── tests/                         PHPUnit : signature, réponses et flux SSE, file de jobs
 └── version.php
 
 mod/assign/feedback/ai/            Feedback IA des devoirs
