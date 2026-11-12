@@ -16,6 +16,7 @@ class registry {
     public static function all(): array {
         return array(
             new aifeedback(),
+            new notebook(),
             new aichat(),
             new efe(),
             new classhours(),

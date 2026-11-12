@@ -1,0 +1,49 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      ROLE: workspace
+      SERVICE_TOKEN: ${WORKSPACE_TOKEN:?required}
+      MOODLE_TOKEN: ${MOODLE_TOKEN:?required}
+      MOODLE_URL: ${MOODLE_URL:?required}
+      HUB_TOKEN: ${HUB_TOKEN:?required}
+      HUB_API_URL: http://hub:8081/hub/api
+      WORKSPACE_SLOTS: ${WORKSPACE_SLOTS:-128}
+      PYTHON_IMAGE: ${PYTHON_IMAGE:?required}
+      PYTHON_IMAGES: ${PYTHON_IMAGES:-}
+    volumes:
+      - workspace-state:/state
+      - ${HOST_WORKSPACE_ROOT:?required}:/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports: ["127.0.0.1:8082:8080"]
+    networks: [control]
+  hub:
+    build:
+      context: .
+      dockerfile: hub/Dockerfile
+    container_name: moodle-notebook-hub
+    restart: unless-stopped
+    environment:
+      WORKSPACE_API_URL: http://api:8080
+      WORKSPACE_TOKEN: ${WORKSPACE_TOKEN:?required}
+      MOODLE_TOKEN: ${MOODLE_TOKEN:?required}
+      MOODLE_URL: ${MOODLE_URL:?required}
+      HUB_PUBLIC_URL: ${HUB_PUBLIC_URL:?required}
+      HUB_TOKEN: ${HUB_TOKEN:?required}
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY:?required}
+      PYTHON_IMAGE: ${PYTHON_IMAGE:?required}
+      HOST_WORKSPACE_ROOT: ${HOST_WORKSPACE_ROOT:?required}
+      HUB_CONTAINER: moodle-notebook-hub
+      CONTROL_NETWORK: moodle-notebook-control
+      PROXY_IMAGE: ${PROXY_IMAGE:-moodle-notebook-proxy:0.1.0}
+      API_ALLOWLIST: ${API_ALLOWLIST:-}
+    volumes: ["hub-state:/data", "/var/run/docker.sock:/var/run/docker.sock"]
+    ports: ["127.0.0.1:8000:8000"]
+    networks: [control]
+networks:
+  control:
+    name: moodle-notebook-control
+volumes:
+  workspace-state: {}
+  hub-state: {}

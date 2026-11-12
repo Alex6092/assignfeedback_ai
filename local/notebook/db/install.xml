@@ -1,0 +1,93 @@
+<?xml version='1.0' encoding='utf-8'?>
+<XMLDB PATH="local/notebook/db" VERSION="20261111" COMMENT="Notebook activity versions, launch tickets and immutable submissions">
+  <TABLES>
+    <TABLE NAME="local_notebook_version" COMMENT="local_notebook_version">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="cmid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="bundle" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+        <FIELD NAME="released" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="fingerprint" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="status" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="20" DEFAULT="draft" />
+        <FIELD NAME="remoteid" TYPE="char" NOTNULL="false" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="report" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm-user" UNIQUE="false" FIELDS="cmid, userid" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_notebook_launch" COMMENT="local_notebook_launch">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="cmid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="versionid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="teacher" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="1" DEFAULT="0" />
+        <FIELD NAME="codehash" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="lease" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="expires" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="used" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="1" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm-user" UNIQUE="false" FIELDS="cmid, userid" />
+        <INDEX NAME="codehash" UNIQUE="true" FIELDS="codehash" />
+        <INDEX NAME="lease" UNIQUE="true" FIELDS="lease" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_notebook_run" COMMENT="local_notebook_run">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="cmid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="submissionid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="attempt" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="versionid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="fingerprint" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="generation" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="32" />
+        <FIELD NAME="status" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="20" DEFAULT="draft" />
+        <FIELD NAME="remoteid" TYPE="char" NOTNULL="false" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="tests" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="result" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="error" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="gradeid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="gradestamp" TYPE="char" NOTNULL="false" SEQUENCE="false" LENGTH="64" />
+        <FIELD NAME="feedbackid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="timemodified" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm-user" UNIQUE="false" FIELDS="cmid, userid" />
+        <INDEX NAME="submission" UNIQUE="false" FIELDS="submissionid" />
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_notebook_gen" COMMENT="local_notebook_gen">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" />
+        <FIELD NAME="cmid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="userid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" />
+        <FIELD NAME="prompt" TYPE="text" NOTNULL="true" SEQUENCE="false" />
+        <FIELD NAME="status" TYPE="char" NOTNULL="true" SEQUENCE="false" LENGTH="20" DEFAULT="pending" />
+        <FIELD NAME="versionid" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+        <FIELD NAME="error" TYPE="text" NOTNULL="false" SEQUENCE="false" />
+        <FIELD NAME="timecreated" TYPE="int" NOTNULL="true" SEQUENCE="false" LENGTH="10" DEFAULT="0" />
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" />
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cm-user" UNIQUE="false" FIELDS="cmid, userid" />
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

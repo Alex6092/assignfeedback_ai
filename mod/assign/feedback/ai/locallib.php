@@ -561,6 +561,23 @@ class assign_feedback_ai extends assign_feedback_plugin {
         return $this->build_request($messages, $cfg, (int)$fb->userid);
     }
 
+    /** Notebook correction reads the immutable capture and its trusted test report. */
+    public function build_notebook_request(\stdClass $run) {
+        global $DB;
+        $cfg = $this->load_config((int)$this->assignment->get_instance()->id);
+        if (!$cfg) {
+            throw new moodle_exception('noconfiguration', 'assignfeedback_ai');
+        }
+        $v = $DB->get_record('local_notebook_version', ['id' => $run->versionid], '*', MUST_EXIST);
+        $spec = json_decode($v->bundle, true);
+        $cfg->expectedanswer = $spec['rubric'];
+        $messages = $this->build_messages(\local_notebook\grading::input($run), $cfg);
+        $messages[0]['content'] .= "\nPour ce notebook, score évalue EXCLUSIVEMENT les explications, la méthode "
+            . "et la lisibilité sur 100. Les tests sont calculés séparément par le serveur. "
+            . "Ne pas combiner les scores et ne pas divulguer de test caché.";
+        return $this->build_request($messages, $cfg, (int)$run->userid);
+    }
+
     /**
      * Applique le résultat de la correction : feedback enregistré et publié,
      * note reportée si le devoir le prévoit.
@@ -574,7 +591,18 @@ class assign_feedback_ai extends assign_feedback_plugin {
 
         $fb  = $DB->get_record(self::TABLE_GRADE, array('id' => $rowid), '*', MUST_EXIST);
         $cfg = $this->load_config((int)$this->assignment->get_instance()->id);
-        return $this->store_result($fb, $this->normalize($result), $cfg);
+        // This marker is controller-owned; a model correcting an ordinary assignment cannot opt into it.
+        if (isset($result['notebook']) && (!class_exists('\\local_notebook\\grading')
+                || !\local_notebook\grading::owns_feedback((int)$rowid))) {
+            unset($result['notebook']);
+        }
+        $normalized = $this->normalize($result);
+        if (isset($result['notebook'])) {
+            // The combined server score is fractional and authoritative, unlike an LLM score.
+            $normalized['score'] = $result['score'];
+            $normalized['niveau'] = $result['niveau'];
+        }
+        return $this->store_result($fb, $normalized, $cfg);
     }
 
     /**
@@ -685,9 +713,32 @@ class assign_feedback_ai extends assign_feedback_plugin {
             return;
         }
 
-        $assigngrade->grade        = $proposal['value'];
-        $assigngrade->timemodified = time();
-        $DB->update_record('assign_grades', $assigngrade);
+        if (isset($result['notebook'])) {
+            $detail = $result['notebook'];
+            $run = \local_notebook\grading::active((object)['runid' => $detail['runid'],
+                'generation' => $detail['generation']]);
+            if (!$run || !hash_equals($run->gradestamp, \local_notebook\grading::stamp($assigngrade))) {
+                throw new moodle_exception('notready', 'local_notebook');
+            }
+            // Compare-and-set: even a manual edit made during this callback wins.
+            $params = ['newgrade' => $proposal['value'], 'newtime' => time(), 'id' => $assigngrade->id,
+                'oldgrade' => $assigngrade->grade, 'oldgrader' => $assigngrade->grader,
+                'oldtime' => $assigngrade->timemodified, 'attempt' => $assigngrade->attemptnumber];
+            $DB->execute('UPDATE {assign_grades} SET grade = :newgrade, timemodified = :newtime
+                WHERE id = :id AND grade = :oldgrade AND grader = :oldgrader
+                    AND timemodified = :oldtime AND attemptnumber = :attempt', $params);
+            $expected = clone $assigngrade;
+            $expected->grade = $params['newgrade'];
+            $expected->timemodified = $params['newtime'];
+            $actual = $DB->get_record('assign_grades', ['id' => $assigngrade->id], '*', MUST_EXIST);
+            if (!hash_equals(\local_notebook\grading::stamp($expected), \local_notebook\grading::stamp($actual))) {
+                throw new moodle_exception('notready', 'local_notebook');
+            }
+        } else {
+            $assigngrade->grade        = $proposal['value'];
+            $assigngrade->timemodified = time();
+            $DB->update_record('assign_grades', $assigngrade);
+        }
 
         // Pousse la note vers le gradebook.
         assign_update_grades($this->assignment->get_instance(), (int)$assigngrade->userid);
@@ -736,8 +787,14 @@ class assign_feedback_ai extends assign_feedback_plugin {
      * @param int $assigngradeid id du assign_grades (à créer en amont si besoin)
      * @return int              l'id de la ligne TABLE_GRADE
      */
-    public static function enqueue_for_grade($assignid, $userid, $assigngradeid) {
+    public static function enqueue_for_grade($assignid, $userid, $assigngradeid, $force = false) {
         global $DB;
+
+        if (class_exists('\\local_notebook\\grading')) {
+            $notebookrow = \local_notebook\grading::enqueue_feedback((int)$assignid, (int)$userid,
+                (int)$assigngradeid, (bool)$force);
+            if ($notebookrow !== null) { return $notebookrow; }
+        }
 
         $now      = time();
         $existing = $DB->get_record(self::TABLE_GRADE, array(

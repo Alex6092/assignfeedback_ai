@@ -16,6 +16,14 @@ Thumbs.db
 
 # Dépendances Node (serveur MCP)
 node_modules/
+__pycache__/
+.venv/
+.pytest_cache/
+services/notebook/.env
+services/notebook/labextension/labextension/
+services/notebook/labextension/.build-config/
+services/notebook/labextension/.build-data/
+services/notebook/*.egg-info/
 
 # Exemples tirés des vrais parcours (questions de tests, sujets de TP évalués, corrigés) : jamais dans le dépôt
 skills/moodle-ciel/templates/exemples-ia/

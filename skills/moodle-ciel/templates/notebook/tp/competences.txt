@@ -1,0 +1,1 @@
+Écrire une fonction Python simple, la vérifier et expliquer son fonctionnement. Gabarit de vérification interne sans report EFE ; adapter les compétences au véritable TP.

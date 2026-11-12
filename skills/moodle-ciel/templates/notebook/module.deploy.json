@@ -1,0 +1,13 @@
+{
+  "format": "moodle-ciel/module@1",
+  "course": {"id": 0},
+  "section": {"number": 1, "name": "Pilote notebooks"},
+  "activities": [{
+    "key": "tp-notebook",
+    "role": "tp",
+    "name": "Vérification du circuit notebook",
+    "dir": "tp",
+    "notebook": {"bundle_file": "bundle.json"},
+    "overrides": {"grade": 100, "aichatenabled": 0, "efenotes_enabled": 0}
+  }]
+}

@@ -33,7 +33,7 @@ test('les outils de lecture sont déclarés en lecture seule', async () => {
   const { tools } = await client.listTools();
   const names = tools.map((tool) => tool.name).sort();
   assert.deepEqual(names, ['moodle_export_lessons_pdf', 'moodle_get_course', 'moodle_get_efe_competences',
-    'moodle_get_module', 'moodle_get_questions', 'moodle_list_courses', 'moodle_site_info', 'moodle_snapshot_course']);
+    'moodle_get_module', 'moodle_get_notebook_validation', 'moodle_get_questions', 'moodle_list_courses', 'moodle_site_info', 'moodle_snapshot_course']);
   // Le snapshot et l'export PDF écrivent sur le disque, pas dans Moodle.
   for (const tool of tools.filter((t) => !['moodle_snapshot_course', 'moodle_export_lessons_pdf'].includes(t.name))) {
     assert.equal(tool.annotations?.readOnlyHint, true, tool.name);

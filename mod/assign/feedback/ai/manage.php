@@ -39,7 +39,7 @@ if ($action !== '') {
             'id'         => $rowid,
             'assignment' => $assignid,
         ), '*', MUST_EXIST);
-        assign_feedback_ai::enqueue_for_grade($assignid, (int)$row->userid, (int)$row->grade);
+        assign_feedback_ai::enqueue_for_grade($assignid, (int)$row->userid, (int)$row->grade, true);
         $count = 1;
 
     } else if ($action === 'requeue_failed') {
@@ -48,7 +48,7 @@ if ($action !== '') {
             'status'     => assign_feedback_ai::STATUS_FAILED,
         ));
         foreach ($failed as $row) {
-            assign_feedback_ai::enqueue_for_grade($assignid, (int)$row->userid, (int)$row->grade);
+            assign_feedback_ai::enqueue_for_grade($assignid, (int)$row->userid, (int)$row->grade, true);
             $count++;
         }
 
@@ -64,7 +64,7 @@ if ($action !== '') {
             if (!$grade) {
                 continue;
             }
-            assign_feedback_ai::enqueue_for_grade($assignid, (int)$sub->userid, (int)$grade->id);
+            assign_feedback_ai::enqueue_for_grade($assignid, (int)$sub->userid, (int)$grade->id, true);
             $count++;
         }
 

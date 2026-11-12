@@ -11,6 +11,7 @@ import { exportLessonsPdf } from './pdf.js';
 import fs from 'node:fs/promises';
 import { errorResult, textResult, truncateStrings } from './shape.js';
 import { snapshotCourse } from './snapshot.js';
+import { readNotebookBundle } from './notebook.js';
 
 /** Longueur au-delà de laquelle un contenu est tronqué (mode html: "truncate"). */
 export const TRUNCATE_AT = 1500;
@@ -41,6 +42,12 @@ export function registerTools(server, client, { log = () => {}, readonly = true 
     }
   };
   const shaped = (data, html) => textResult(html === 'full' ? data : truncateStrings(data, TRUNCATE_AT));
+
+  server.registerTool('moodle_get_notebook_validation', {
+    title: 'Moodle : validation du notebook',
+    description: 'État et rapport de vérification du corrigé, sans copie élève ni secret.',
+    inputSchema: { versionid: z.number().int().positive() }, annotations: READ,
+  }, safe(async ({ versionid }) => textResult(await client.callJson('local_aibridge_get_notebook_validation', { versionid }))));
 
   server.registerTool('moodle_site_info', {
     title: 'Moodle : informations du site',
@@ -194,6 +201,19 @@ export function registerTools(server, client, { log = () => {}, readonly = true 
  */
 function registerWriteTools(server, client, safe) {
   const call = async (fn, params) => textResult(await client.callJson(fn, params));
+
+  server.registerTool('moodle_set_notebook_assignment', {
+    title: 'Moodle : importer un TP notebook',
+    description: 'Importe une nouvelle version privée du sujet, des tests et du barème dans un devoir brouillon du pont.',
+    inputSchema: { cmid: z.number().int().positive(), bundle_file: z.string(), dry_run: dryRun }, annotations: CREATE,
+  }, safe(async ({ cmid, bundle_file, dry_run: dryrun }) => call('local_aibridge_set_notebook_assignment', {
+    cmid, bundle: JSON.stringify(await readNotebookBundle(bundle_file)), dryrun,
+  })));
+  server.registerTool('moodle_validate_notebook_assignment', {
+    title: 'Moodle : vérifier un TP notebook',
+    description: 'Exécute le corrigé et une copie vide dans le correcteur isolé. Consulter ensuite le rapport.',
+    inputSchema: { versionid: z.number().int().positive() }, annotations: CREATE,
+  }, safe(async ({ versionid }) => call('local_aibridge_validate_notebook_assignment', { versionid })));
 
   server.registerTool('moodle_create_course', {
     title: 'Moodle : créer un cours (bac à sable)',

@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { extractBlocks, readField } from './content.js';
 import { ROLE_MODULES, roleSettings, shuffles } from './roles.js';
+import { readNotebookBundle } from './notebook.js';
 
 const QUIZ_ROLES = new Set(['entrainement', 'td', 'quiz-ia', 'sommatif', 'finale']);
 const AI_QTYPES = new Set(['aiessay', 'aishortanswer']);
@@ -208,6 +209,13 @@ export async function deployModule(client, manifestPath, { courseid, dryRun = fa
   };
   const read = (relative) => readField(relative, dir);
   const readRaw = async (relative) => (await fs.readFile(path.resolve(dir, relative), 'utf8')).replace(/^﻿/, '');
+  const notebooks = new Map();
+  for (const activity of manifest.activities) {
+    if (activity.notebook) {
+      if (ROLE_MODULES[activity.role] !== 'assign') throw new Error('Un notebook doit être associé à un devoir.');
+      notebooks.set(activity.key, await readNotebookBundle(activity.notebook.bundle_file, dir));
+    }
+  }
 
   // Références entre activités (before, requires) : un cmid, ou la clé d'une activité placée plus haut.
   manifest.activities.forEach((a, i) => {
@@ -312,6 +320,15 @@ export async function deployModule(client, manifestPath, { courseid, dryRun = fa
       entry.links = links.get(activity.key).refs;
     }
     const settings = roleSettings(activity, manifest);
+    const notebook = notebooks.get(activity.key);
+    if (notebook) {
+      if (modname !== 'assign') throw new Error('Un notebook doit être associé à un devoir.');
+      settings.assignsubmission_notebook_enabled = 1;
+      settings.assignsubmission_file_enabled = 0;
+      settings.assignsubmission_onlinetext_enabled = 0;
+      settings.submissiondrafts = 1;
+      settings.teamsubmission = 0;
+    }
     let intro = '';
 
     // Contenus lus dans les fichiers du module, liens @@CM résolus (leurs cibles sont déjà créées).
@@ -384,6 +401,17 @@ export async function deployModule(client, manifestPath, { courseid, dryRun = fa
       ...(before ? { beforecmid: before } : {}),
     }));
     entry.cmid = created.cmid ?? null;
+    if (notebook) {
+      entry.notebook = { tests_weight: notebook.tests_weight, status: dryRun ? 'simulation' : 'draft' };
+      if (!dryRun) {
+        const version = step(`${activity.key} : notebook`, await client.callJson('local_aibridge_set_notebook_assignment',
+          { cmid: entry.cmid, bundle: JSON.stringify(notebook), dryrun: false }));
+        entry.notebook.version = version.version;
+        step(`${activity.key} : validation notebook`, await client.callJson('local_aibridge_validate_notebook_assignment',
+          { versionid: version.version }));
+        report.warnings.push(`${activity.key} : consulter la validation puis activer la version depuis le devoir. L’activité reste masquée.`);
+      }
+    }
     if (dryRun) {
       entry.settings = Object.keys(settings).length;
       continue;

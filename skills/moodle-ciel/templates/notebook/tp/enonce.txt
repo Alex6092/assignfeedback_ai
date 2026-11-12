@@ -1,0 +1,1 @@
+Compléter une fonction Python add(a, b) et expliquer la méthode utilisée. Le notebook contient les cellules de réponse et les vérifications visibles. Ce sujet minimal sert à tester le circuit de remise avant de créer les vrais TP.

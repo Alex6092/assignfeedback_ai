@@ -237,6 +237,11 @@ compétence annoncée).
 
 ## Références (à lire au moment où tu en as besoin)
 
+Pour créer un **TP Python en notebook exécutable dans Moodle**, lire
+`references/notebooks.md` et partir de `templates/notebook/bundle.json`.
+Cette voie ajoute la vérification exécutée du corrigé et des tests avant la publication
+enseignante ; elle conserve les règles de surveillance et de report EFE du rôle du TP.
+
 | Fichier | Quand le lire |
 |---|---|
 | `references/anatomie-module.md` | carte du parcours, structure d'un module, découpage d'une leçon, appariements, finale, projet |

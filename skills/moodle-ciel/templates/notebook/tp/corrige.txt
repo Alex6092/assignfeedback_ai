@@ -1,0 +1,1 @@
+Le maître et ses tests sont conservés dans bundle.json. L'IA évalue uniquement l'explication, la méthode et la lisibilité sur 100. Le serveur combine ce score avec celui des tests ; ne pas recalculer les points des tests.

@@ -33,7 +33,7 @@ try {
         $gradeid = (int)$grade->id;
     }
 
-    assign_feedback_ai::enqueue_for_grade($assignid, $userid, $gradeid);
+    assign_feedback_ai::enqueue_for_grade($assignid, $userid, $gradeid, true);
 
     echo json_encode(array(
         'success' => true,

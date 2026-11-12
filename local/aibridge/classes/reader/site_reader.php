@@ -15,6 +15,7 @@ class site_reader {
     /** Plugins dont l'agent doit connaître la présence et la version. */
     const COMPONENTS = array(
         'local_aibridge', 'local_lessonexport',
+        'local_notebook', 'assignsubmission_notebook',
         'local_aifeedback', 'assignfeedback_ai', 'qtype_aiessay', 'qtype_aishortanswer',
         'local_aiquizgen', 'local_aichat', 'local_aimissions', 'local_moodlesearch',
         'local_classhours', 'availability_classhours', 'availability_supervised',

@@ -7,6 +7,21 @@ defined('MOODLE_INTERNAL') || die();
  * plugins installés, et son seul client est le serveur MCP tools/moodle-mcp.
  */
 $functions = array(
+    'local_aibridge_set_notebook_assignment' => [
+        'classname' => 'local_aibridge\\external\\set_notebook_assignment',
+        'description' => 'Importe un dossier notebook dans un devoir brouillon.', 'type' => 'write',
+        'capabilities' => 'local/aibridge:write, local/notebook:manage',
+    ],
+    'local_aibridge_validate_notebook_assignment' => [
+        'classname' => 'local_aibridge\\external\\validate_notebook_assignment',
+        'description' => 'Vérifie le corrigé et les tests du notebook.', 'type' => 'write',
+        'capabilities' => 'local/aibridge:write, local/notebook:manage',
+    ],
+    'local_aibridge_get_notebook_validation' => [
+        'classname' => 'local_aibridge\\external\\get_notebook_validation',
+        'description' => 'État de validation du notebook, sans copies élèves.', 'type' => 'read',
+        'capabilities' => 'local/aibridge:read, local/notebook:manage',
+    ],
     'local_aibridge_get_site_info' => array(
         'classname'    => 'local_aibridge\external\get_site_info',
         'description'  => 'Version de Moodle, plugins du projet, réglages utiles, thème, droits du jeton.',
@@ -104,6 +119,9 @@ $services = array(
     'Pont IA (Claude Code, Codex)' => array(
         'shortname'       => 'local_aibridge',
         'functions'       => array(
+            'local_aibridge_set_notebook_assignment',
+            'local_aibridge_validate_notebook_assignment',
+            'local_aibridge_get_notebook_validation',
             'local_aibridge_get_site_info',
             'local_aibridge_list_courses',
             'local_aibridge_get_course',

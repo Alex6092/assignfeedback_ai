@@ -1,0 +1,4 @@
+{
+  "argv": ["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups", "--bounding-set=-all", "--", "/usr/local/bin/python", "-m", "ipykernel_launcher", "-f", "{connection_file}"],
+  "display_name": "Isolated Python grading kernel", "language": "python"
+}

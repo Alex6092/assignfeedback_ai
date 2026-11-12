@@ -1,0 +1,15 @@
+{
+  "name": "@moodle/notebook",
+  "version": "0.1.0",
+  "description": "Save notebook documents and return to the Moodle submission confirmation",
+  "license": "GPL-3.0-or-later",
+  "main": "index.js",
+  "scripts": { "build": "node build.cjs" },
+  "dependencies": {
+    "@jupyterlab/application": "^4.4.0",
+    "@jupyterlab/apputils": "^4.4.0",
+    "@jupyterlab/coreutils": "^6.4.0"
+  },
+  "devDependencies": { "@jupyterlab/builder": "^4.4.0" },
+  "jupyterlab": { "extension": true, "outputDir": "labextension" }
+}

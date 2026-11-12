@@ -1,5 +1,10 @@
 # Correction IA pour Moodle
 
+**Notebooks Python locaux (alpha)** : nouveaux plugins `local_notebook` et
+`assignsubmission_notebook`, services JupyterHub/correction sur deux VM, remise immuable,
+note tests + IA, génération enseignante et outils MCP. Voir le
+[guide de déploiement et de réception](services/notebook/README.md).
+
 Écosystème de plugins Moodle pour la **correction automatique par IA** (serveurs IA
 du lycée derrière un **load balancer d'inférence**, ou API compatible OpenAI). Les devoirs et les questions de composition
 sont notés et commentés automatiquement par un modèle de langage, avec un feedback

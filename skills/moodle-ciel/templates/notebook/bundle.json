@@ -1,0 +1,72 @@
+{
+  "master": {
+    "nbformat": 4,
+    "nbformat_minor": 5,
+    "metadata": {
+      "kernelspec": {
+        "name": "python3",
+        "display_name": "Python 3",
+        "language": "python"
+      }
+    },
+    "cells": [
+      {
+        "cell_type": "markdown",
+        "id": "intro",
+        "metadata": {},
+        "source": "# Addition de deux nombres\nImplémenter add(a, b), puis expliquer la méthode dans la cellule prévue."
+      },
+      {
+        "cell_type": "code",
+        "id": "answer",
+        "metadata": {
+          "nbgrader": {
+            "grade": false,
+            "solution": true,
+            "locked": false,
+            "grade_id": "answer_add",
+            "schema_version": 3
+          }
+        },
+        "source": "def add(a, b):\n    ### BEGIN SOLUTION\n    return a + b\n    ### END SOLUTION",
+        "outputs": [],
+        "execution_count": null
+      },
+      {
+        "cell_type": "markdown",
+        "id": "reason",
+        "metadata": {
+          "nbgrader": {
+            "grade": false,
+            "solution": true,
+            "locked": false,
+            "grade_id": "explanation",
+            "schema_version": 3
+          }
+        },
+        "source": "On retourne la somme des paramètres sans modifier les entrées."
+      },
+      {
+        "cell_type": "code",
+        "id": "test",
+        "metadata": {
+          "nbgrader": {
+            "grade": true,
+            "solution": false,
+            "locked": true,
+            "grade_id": "test_add",
+            "schema_version": 3,
+            "points": 10
+          }
+        },
+        "source": "### BEGIN HIDDEN TESTS\n# SECRET_TEST_SENTINEL\nassert add(2, 3) == 5\nassert add(-2, 2) == 0\nassert add(1.5, 2.5) == 4\n### END HIDDEN TESTS",
+        "outputs": [],
+        "execution_count": null
+      }
+    ]
+  },
+  "rubric": "Sur 100 pour la composante IA : méthode expliquée 50 ; explication du comportement sur nombres négatifs et décimaux 30 ; lisibilité 20. Ne pas noter les résultats déjà vérifiés par les tests.",
+  "tests_weight": 70,
+  "profile": "python",
+  "files": {}
+}

@@ -1,0 +1,12 @@
+# Direct infrastructure versions exercised by the local contract tests.
+# Runtime images and transitive dependencies must be frozen by digest after the VM pilot.
+fastapi==0.162.4
+uvicorn==0.54.0
+httpx==0.28.1
+docker==7.2.0
+nbformat==5.11.1
+nbgrader==0.9.6
+jupyterlab==4.6.6
+jupyterhub==5.5.5
+dockerspawner==14.0.0
+nbclient==0.10.4

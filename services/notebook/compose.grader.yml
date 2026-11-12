@@ -1,0 +1,15 @@
+services:
+  grader:
+    build: .
+    restart: unless-stopped
+    environment:
+      ROLE: grader
+      SERVICE_TOKEN: ${GRADER_TOKEN:?required}
+      PYTHON_IMAGE: ${PYTHON_IMAGE:?required}
+      PYTHON_IMAGES: ${PYTHON_IMAGES:-}
+      CELL_TIMEOUT: ${CELL_TIMEOUT:-60}
+      COPY_TIMEOUT: ${COPY_TIMEOUT:-300}
+    volumes: ["grader-state:/state", "/var/run/docker.sock:/var/run/docker.sock"]
+    ports: ["127.0.0.1:8083:8080"]
+volumes:
+  grader-state: {}

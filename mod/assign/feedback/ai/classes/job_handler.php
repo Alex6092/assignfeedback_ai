@@ -53,6 +53,9 @@ class job_handler implements \local_aifeedback\async_handler {
         require_once($CFG->dirroot . '/mod/assign/feedback/ai/locallib.php');
 
         $rowid = isset($payload->rowid) ? (int)$payload->rowid : 0;
+        if (class_exists('\\local_notebook\\grading') && \local_notebook\grading::owns_feedback($rowid)) {
+            return null;
+        }
         $fb    = $DB->get_record(\assign_feedback_ai::TABLE_GRADE, array('id' => $rowid));
         if (!$fb || $fb->status !== \assign_feedback_ai::STATUS_PENDING) {
             return null;
@@ -76,6 +79,9 @@ class job_handler implements \local_aifeedback\async_handler {
             'status = ? AND timemodified < ?', array(\assign_feedback_ai::STATUS_PENDING, $before));
         $out = array();
         foreach (array_slice($ids, 0, 50) as $id) {
+            if (class_exists('\\local_notebook\\grading') && \local_notebook\grading::owns_feedback((int)$id)) {
+                continue;
+            }
             $out[] = (object)array('rowid' => (int)$id);
         }
         return $out;
@@ -89,6 +95,11 @@ class job_handler implements \local_aifeedback\async_handler {
      */
     private function plugin_for(\stdClass $payload) {
         global $CFG, $DB;
+
+        if (class_exists('\\local_notebook\\grading')
+                && \local_notebook\grading::owns_feedback((int)($payload->rowid ?? 0))) {
+            return null;
+        }
 
         require_once($CFG->dirroot . '/mod/assign/locallib.php');
         require_once($CFG->dirroot . '/mod/assign/feedback/ai/locallib.php');

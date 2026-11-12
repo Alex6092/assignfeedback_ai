@@ -114,6 +114,8 @@ function fakeMoodle({ existing = [], elsewhere = [], lostImage = null } = {}) {
           sections: [{ number: 4, cms: elsewhere }, { number: 5, cms: existing }] };
         case 'local_aibridge_upsert_section': return { sectionid: 1, section: params.section };
         case 'local_aibridge_import_questions': return params.dryrun ? { dryrun: true } : { categoryid: ++categoryid };
+        case 'local_aibridge_set_notebook_assignment': return { version: 91, status: 'draft' };
+        case 'local_aibridge_validate_notebook_assignment': return { version: params.versionid, status: 'validating' };
         case 'local_aibridge_create_module': {
           if (params.dryrun) {
             return { dryrun: true, moduleinfo: {} };
@@ -170,6 +172,35 @@ test('deployModule en simulation : rien n\'est créé, chaque création est simu
   assert.equal(report.activities[0].pages, 2);
   assert.equal(report.activities[0].images, 2);
   assert.match(report.warnings.join('\n'), /video : rôle « video » non déployable/);
+});
+
+test('notebook deployment imports and validates a private version; simulation executes no code', async () => {
+  const file = await moduleOnDisk();
+  const manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+  const tp = manifest.activities.find(a => a.role === 'tp');
+  tp.notebook = { bundle_file: 'notebook.json' };
+  await fs.writeFile(file, JSON.stringify(manifest));
+  await fs.copyFile(new URL('../../../skills/moodle-ciel/templates/notebook/bundle.json', import.meta.url),
+    path.join(path.dirname(file), 'notebook.json'));
+  for (const dryRun of [true, false]) {
+    const moodle = fakeMoodle();
+    const report = await deployModule(moodle, file, { dryRun });
+    const create = moodle.calls.find(c => c.fn === 'local_aibridge_create_module' && c.params.modname === 'assign');
+    const settings = JSON.parse(create.params.settings);
+    assert.equal(settings.assignsubmission_notebook_enabled, 1);
+    assert.equal(settings.assignsubmission_onlinetext_enabled, 0);
+    assert.equal(settings.assignsubmission_file_enabled, 0);
+    assert.equal(settings.submissiondrafts, 1);
+    const imports = moodle.calls.filter(c => c.fn === 'local_aibridge_set_notebook_assignment');
+    const validation = moodle.calls.filter(c => c.fn === 'local_aibridge_validate_notebook_assignment');
+    assert.equal(imports.length, dryRun ? 0 : 1);
+    assert.equal(validation.length, dryRun ? 0 : 1);
+    if (!dryRun) {
+      assert.equal(validation[0].params.versionid, 91);
+      assert.equal(report.activities.find(a => a.key === tp.key).notebook.version, 91);
+      assert.match(report.warnings.join('\n'), /L’activité reste masquée/);
+    }
+  }
 });
 
 test('deployModule : ordre des appels, tirages, questions fixes, surveillance et rapport sans écart', async () => {
