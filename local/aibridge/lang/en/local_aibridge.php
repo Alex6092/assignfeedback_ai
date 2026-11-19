@@ -42,6 +42,7 @@ $string['error_sectionnumber'] = 'Invalid section number: {$a}.';
 $string['error_modname'] = 'Activity type not supported by the bridge: {$a}.';
 $string['error_settings'] = 'Settings must be a JSON object (named fields of the activity form).';
 $string['error_date'] = 'Invalid date (expected format YYYY-MM-DDTHH:MM): {$a}.';
+$string['error_videoqcm'] = 'Invalid videoqcm field: {$a}.';
 $string['error_scale'] = 'Scale not found: {$a}.';
 $string['error_efenocompetence'] = 'EFE reporting enabled without a competency: at least one code is required.';
 $string['error_efecode'] = 'EFE code refused: {$a} (level N2 at least, for example C04.3 or C04.3.D4.T4).';

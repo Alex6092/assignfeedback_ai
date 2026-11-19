@@ -138,7 +138,7 @@ résultat et message d'erreur de chaque appel.
 | `local_aibridge_get_efe_competences` | Référentiel EFE (N1, N2, N3). |
 | `local_aibridge_create_course` | Écriture : cours masqué dans une catégorie bac à sable (format Thématique, achèvement activé). |
 | `local_aibridge_upsert_section` | Écriture : section créée si elle manque (masquée), nom et résumé. |
-| `local_aibridge_create_module` | Écriture : activité masquée (page, étiquette, URL, leçon, test, devoir) par `create_module()` du cœur, avec les champs de son formulaire ; Tuteur IA et EFE par leurs propres champs, Correction IA écrite après coup. |
+| `local_aibridge_create_module` | Écriture : activité masquée (page, étiquette, URL, leçon, test, devoir, vidéo + QCM `videoqcm`) par `create_module()` du cœur, avec les champs de son formulaire ; Tuteur IA et EFE par leurs propres champs, Correction IA écrite après coup. |
 | `local_aibridge_set_lesson_pages` | Écriture : remplace les pages d'une leçon du pont (boutons Suivant / Précédent / Terminer), avec les images qu'elles citent en relatif (`files`, voir ci-dessous). |
 | `local_aibridge_import_questions` | Écriture : Moodle XML dans une catégorie de la banque du cours (banque « système » créée masquée si besoin ; catégorie refusée si elle contient déjà des questions). |
 | `local_aibridge_set_quiz_layout` | Écriture : remplit un test vide du pont (questions fixes par idnumber, tirages aléatoires par catégorie, mélange). |
