@@ -42,6 +42,7 @@ $string['error_sectionnumber'] = 'Numéro de section invalide : {$a}.';
 $string['error_modname'] = 'Type d\'activité non pris en charge par le pont : {$a}.';
 $string['error_settings'] = 'Les réglages doivent être un objet JSON (champs nommés du formulaire de l\'activité).';
 $string['error_date'] = 'Date invalide (format attendu AAAA-MM-JJTHH:MM) : {$a}.';
+$string['error_videoqcm'] = 'Champ videoqcm invalide : {$a}.';
 $string['error_scale'] = 'Barème introuvable : {$a}.';
 $string['error_efenocompetence'] = 'Report EFE activé sans compétence : au moins un code est obligatoire.';
 $string['error_efecode'] = 'Code EFE refusé : {$a} (niveau N2 au minimum, par exemple C04.3 ou C04.3.D4.T4).';

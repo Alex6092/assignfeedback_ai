@@ -17,7 +17,7 @@ defined('MOODLE_INTERNAL') || die();
 class module_writer {
 
     /** Types d'activité que le pont sait créer. */
-    const MODULES = array('page', 'label', 'url', 'lesson', 'quiz', 'assign');
+    const MODULES = array('page', 'label', 'url', 'lesson', 'quiz', 'assign', 'videoqcm');
 
     /** Champs que l'appelant ne peut pas fixer : le pont les calcule ou les impose. */
     const PROTECTED_FIELDS = array('id', 'course', 'section', 'module', 'modulename', 'coursemodule', 'instance',
@@ -33,7 +33,7 @@ class module_writer {
      *
      * @param \stdClass $course   cours (écriture déjà autorisée par guard)
      * @param int       $section  numéro de section
-     * @param string    $modname  page, label, url, lesson, quiz, assign
+     * @param string    $modname  page, label, url, lesson, quiz, assign, videoqcm
      * @param string    $name     nom affiché
      * @param string    $intro    description (HTML)
      * @param array     $settings champs du formulaire de l'activité
@@ -180,6 +180,10 @@ class module_writer {
                     'markingallocation' => 0, 'markinganonymous' => 0, 'preventsubmissionnotingroup' => 0,
                     'timelimit' => 0, 'submissionattachments' => 0, 'completionsubmit' => 0,
                 );
+            case 'videoqcm':
+                // Vidéo YouTube + questions pendant la vidéo + QCM live (mod_videoqcm).
+                return $common + array('youtubeurl' => '', 'questions' => '[]', 'livequestions' => '[]',
+                    'allowtablet' => 0, 'grade' => 10, 'completionfinish' => 0);
         }
         return $common;
     }
@@ -200,10 +204,61 @@ class module_writer {
             $settings['activityeditor'] = array('text' => $settings['activity'], 'format' => FORMAT_HTML);
             unset($settings['activity']);
         }
+        if ($modname === 'videoqcm') {
+            $settings = self::convert_videoqcm($settings);
+        }
         if (isset($settings['grade']) && is_array($settings['grade'])) {
             $settings['grade'] = -self::scale_id((int)$course->id, (string)($settings['grade']['scale'] ?? ''));
         }
         return $settings;
+    }
+
+    /**
+     * Activité videoqcm : « questions » et « livequestions » peuvent être passées en tableau JSON
+     * (ils sont alors encodés) ou en chaîne. Le formulaire web valide ces champs ; créée par
+     * programme, l'activité n'y passe pas : le pont applique les mêmes règles.
+     * Une question de la vidéo : question, time (secondes ou « end »), 4 choices, correct (0 à 3).
+     * Une question du QCM live : mêmes champs, sans time.
+     */
+    private static function convert_videoqcm(array $settings): array {
+        foreach (array('questions', 'livequestions') as $field) {
+            if (isset($settings[$field]) && is_array($settings[$field])) {
+                $settings[$field] = json_encode($settings[$field], JSON_UNESCAPED_UNICODE);
+            }
+        }
+        $url = trim((string)($settings['youtubeurl'] ?? ''));
+        if (!preg_match('~^https://(www\\.)?(youtube\\.com/watch\\?v=|youtu\\.be/)[\\w-]{11}~', $url)) {
+            throw new \moodle_exception('error_videoqcm', 'local_aibridge', '', 'youtubeurl');
+        }
+        $questions = json_decode((string)($settings['questions'] ?? ''), true);
+        if (!is_array($questions) || !$questions) {
+            throw new \moodle_exception('error_videoqcm', 'local_aibridge', '', 'questions');
+        }
+        self::check_videoqcm_questions($questions, true, 'questions');
+        $live = trim((string)($settings['livequestions'] ?? ''));
+        if ($live !== '' && $live !== '[]') {
+            $livequestions = json_decode($live, true);
+            if (!is_array($livequestions)) {
+                throw new \moodle_exception('error_videoqcm', 'local_aibridge', '', 'livequestions');
+            }
+            self::check_videoqcm_questions($livequestions, false, 'livequestions');
+        }
+        return $settings;
+    }
+
+    /** @param array $questions liste de questions ; $withtime : champ time obligatoire. */
+    private static function check_videoqcm_questions(array $questions, bool $withtime, string $field): void {
+        foreach (array_values($questions) as $i => $q) {
+            $ok = is_array($q) && !empty($q['question']) && !empty($q['choices']) && is_array($q['choices'])
+                && count($q['choices']) === 4 && isset($q['correct']) && (int)$q['correct'] >= 0
+                && (int)$q['correct'] <= 3;
+            if ($ok && $withtime) {
+                $ok = isset($q['time']) && ($q['time'] === 'end' || (is_numeric($q['time']) && $q['time'] >= 0));
+            }
+            if (!$ok) {
+                throw new \moodle_exception('error_videoqcm', 'local_aibridge', '', $field . ' #' . ($i + 1));
+            }
+        }
     }
 
     /** Date « AAAA-MM-JJTHH:MM » dans le fuseau du serveur → horodatage. */

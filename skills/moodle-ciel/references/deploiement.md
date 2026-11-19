@@ -100,7 +100,7 @@ Par le serveur MCP « moodle », quand ses outils d'écriture sont disponibles (
    (leçon) ou ses questions (fixes par idnumber, ou tirées au hasard), enfin la surveillance, les activités à
    achever d'abord (`requires`) et l'Avancement. Une
    activité du même nom déjà présente dans la section fait refuser le déploiement : supprime d'abord
-   les brouillons (`moodle_delete_draft`). Les vidéos (`mod_videoqcm`) se créent encore à la main.
+   les brouillons (`moodle_delete_draft`). Les vidéos (`mod_videoqcm`) se créent par `moodle_create_module` avec `modname=videoqcm` (champs : `youtubeurl`, `questions`, `livequestions`, `allowtablet`, `grade`, `completionfinish`).
 4. Le rapport d'écart que renvoie l'outil (manifeste comparé à ce que Moodle a enregistré) doit être
    vide ; sinon, explique chaque écart.
 

@@ -216,7 +216,7 @@ L'agent vous donne cette liste à la fin. En résumé :
 - **publier** : rendre visibles la section et les activités ;
 - après chaque test sommatif, **publier la correction** avec le bouton « Correction » du bloc Avancement, une fois que tout le monde l'a passé.
 
-Les vidéos (`mod_videoqcm`) se créent encore à la main.
+Les vidéos (`mod_videoqcm`) se créent par `moodle_create_module` avec `modname=videoqcm` (champs : `youtubeurl`, `questions`, `livequestions`, `allowtablet`, `grade`, `completionfinish`).
 
 ### 4.5 Les leçons en PDF
 
